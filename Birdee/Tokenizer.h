@@ -32,7 +32,11 @@ namespace Birdee
 		//type
 		tok_int,
 
-		tok_add
+		tok_add,
+		tok_mul,
+		tok_div,
+		tok_mod,
+		tok_assign
 	};
 
 	class Tokenizer
@@ -56,6 +60,8 @@ namespace Birdee
 	public:
 		int GetLine() { return line; }
 		int GetPos() { return pos; }
+		Token CurTok =tok_add;
+		Token GetNextToken() { return CurTok = gettok(); }
 
 		Tokenizer(FILE* file) { f = file; line = 1; pos = 1; }
 
@@ -66,7 +72,11 @@ namespace Birdee
 		{')',tok_right_bracket },
 		{ '+',tok_add },
 		{'\n',tok_newline},
-		{',',tok_comma}
+		{',',tok_comma},
+		{'=',tok_assign},
+		{'*',tok_mul},
+		{'/',tok_div},
+		{ '%',tok_mod },
 		};
 		std::map < std::string , Token > token_map = {
 			{ "dim",tok_dim },

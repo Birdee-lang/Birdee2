@@ -1,2 +1,3 @@
-dim a as int #this is comment
+dim a as int, c as int #this is comment
 dim b as int
+dim p as int=(b+234) * b * (56 + c)
