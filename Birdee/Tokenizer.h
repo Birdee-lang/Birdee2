@@ -18,6 +18,7 @@ namespace Birdee
 		// commands
 		tok_def,
 		tok_extern,
+		tok_func,
 
 		// primary
 		tok_identifier,
@@ -28,9 +29,12 @@ namespace Birdee
 		tok_dim,
 		tok_as,
 		tok_comma,
+		tok_end,
 
 		//type
 		tok_int,
+		tok_auto,
+		tok_void,
 
 		tok_add,
 		tok_mul,
@@ -39,6 +43,18 @@ namespace Birdee
 		tok_assign
 	};
 
+
+	class TokenizerError {
+		int linenumber;
+		int pos;
+		std::string msg;
+	public:
+		TokenizerError(int _linenumber, int _pos, const std::string& _msg) : linenumber(_linenumber), pos(_pos), msg(_msg) {}
+		void print()
+		{
+			printf("Compile Error at line %d, postion %d : %s", linenumber, pos, msg.c_str());
+		}
+	};
 	class Tokenizer
 	{
 
@@ -54,6 +70,7 @@ namespace Birdee
 				line++;
 				pos = 0;
 			}
+			pos++;
 			return c;
 		}
 
@@ -82,6 +99,8 @@ namespace Birdee
 			{ "dim",tok_dim },
 		{ "as",tok_as },
 		{ "int",tok_int },
+		{"function",tok_func},
+		{"end",tok_end},
 		};
 		std::string IdentifierStr; // Filled in if tok_identifier
 		double NumVal;             // Filled in if tok_number
@@ -125,12 +144,34 @@ namespace Birdee
 			}
 
 
-
 			if (LastChar == '#') {
 				// Comment until end of line.
-				do
-					LastChar = GetChar();
-				while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+				LastChar = GetChar();
+				if (LastChar == '#')
+				{
+					int cnt_sharp = 0;
+					while (LastChar != EOF)
+					{
+						LastChar = GetChar();
+						if (LastChar == '#')
+						{
+							cnt_sharp++;
+							if (cnt_sharp == 2)
+								break;
+						}
+						else
+							cnt_sharp = 0;
+					}
+					if (LastChar == EOF)
+						throw TokenizerError(line, pos, "Unexpected end of file: expected ##");
+				}
+				else
+				{
+					while (LastChar != EOF && LastChar != '\n' && LastChar != '\r')
+						LastChar = GetChar();
+				}
+
+				
 
 				if (LastChar != EOF)
 					return gettok();

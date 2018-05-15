@@ -1,3 +1,15 @@
 dim a as int, c as int #this is comment
 dim b as int
-dim p as int=(b+234) * b * (56 + c)
+#dim p as int=2+a/c+p%2
+#p= b+ a * b * (56 + c)
+#a= 2+a/c+p%2
+##function add(a as int, b as string)
+	dim aa as int=1, bb as int
+	aa=bb+1
+	dim kk as int = function ()
+		aa=0
+	end
+	bb=aa+1
+end##
+
+a=3
