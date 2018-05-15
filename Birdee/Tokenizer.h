@@ -1,6 +1,6 @@
 #pragma once
 #include <map>
-
+#include <stdint.h>
 #include <string>
 
 //modified based on LLVM tutorial
@@ -30,6 +30,7 @@ namespace Birdee
 		tok_as,
 		tok_comma,
 		tok_end,
+		tok_string_literal,
 
 		//type
 		tok_int,
@@ -43,7 +44,24 @@ namespace Birdee
 		tok_assign
 	};
 
-
+	enum ConstType {
+		const_int,
+		const_long,
+		const_uint,
+		const_ulong,
+		const_float,
+		const_double,
+	};
+	struct NumberLiteral{
+		union {
+			double v_double;
+			int32_t v_int;
+			int64_t v_long;
+			uint32_t v_uint;
+			uint64_t v_ulong;
+		};
+		ConstType type;
+	};
 	class TokenizerError {
 		int linenumber;
 		int pos;
@@ -61,7 +79,8 @@ namespace Birdee
 		FILE * f;
 		int line;
 		int pos;
-
+		int LastChar = ' ';
+		
 		int GetChar()
 		{
 			int c = getc(f);
@@ -74,6 +93,78 @@ namespace Birdee
 			return c;
 		}
 
+
+		void ParseString()
+		{
+			IdentifierStr = "";
+			LastChar = GetChar();
+			while (true)
+			{
+				switch (LastChar)
+				{
+				case '\n':
+					throw TokenizerError(line, pos, "New line is not allowed in simple string literal");
+					break;
+				case  EOF:
+					throw TokenizerError(line, pos, "Unexpected end of file when parsing a string literal: expected \"");
+					break;
+				case '\"':
+					LastChar = GetChar();
+					return;
+					break;
+				case '\\':
+					LastChar = GetChar();
+					switch (LastChar)
+					{
+					case 'n':
+						IdentifierStr += '\n';
+						break;
+					case '\\':
+						IdentifierStr += '\\';
+						break;
+					case '\'':
+						IdentifierStr += '\'';
+						break;
+					case '\"':
+						IdentifierStr += '\"';
+						break;
+					case '?':
+						IdentifierStr += '\?';
+						break;
+					case 'a':
+						IdentifierStr += '\a';
+						break;
+					case 'b':
+						IdentifierStr += '\b';
+						break;
+					case 'f':
+						IdentifierStr += '\f';
+						break;
+					case 'r':
+						IdentifierStr += '\r';
+						break;
+					case 't':
+						IdentifierStr += '\t';
+						break;
+					case 'v':
+						IdentifierStr += '\v';
+						break;
+					case '0':
+						IdentifierStr += '\0';
+						break;
+					case EOF:
+						throw TokenizerError(line, pos, "Unexpected end of file");
+						break;
+					default:
+						throw TokenizerError(line, pos, "Unknown escape sequence \\"+(char)LastChar);
+					}
+					break;
+				default:
+					IdentifierStr += (char)LastChar;
+				}
+				LastChar = GetChar();
+			}
+		}
 	public:
 		int GetLine() { return line; }
 		int GetPos() { return pos; }
@@ -81,7 +172,7 @@ namespace Birdee
 		Token GetNextToken() { return CurTok = gettok(); }
 
 		Tokenizer(FILE* file) { f = file; line = 1; pos = 1; }
-
+		NumberLiteral NumVal;
 
 
 		std::map<int, Token> single_token_map={
@@ -103,11 +194,12 @@ namespace Birdee
 		{"end",tok_end},
 		};
 		std::string IdentifierStr; // Filled in if tok_identifier
-		double NumVal;             // Filled in if tok_number
+
+
+		            // Filled in if tok_number
 
 		/// gettok - Return the next token from standard input.
 		Token gettok() {
-			static int LastChar = ' ';
 
 			// Skip any whitespace.
 			while (isspace(LastChar)&& LastChar!='\n')
@@ -134,15 +226,75 @@ namespace Birdee
 
 			if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
 				std::string NumStr;
-				do {
+				bool isfloat = (LastChar == '.');
+				for(;;)
+				{
 					NumStr += LastChar;
 					LastChar = GetChar();
-				} while (isdigit(LastChar) || LastChar == '.');
-
-				NumVal = strtod(NumStr.c_str(), nullptr);
+					if (!isdigit(LastChar))
+					{
+						if (LastChar == '.')
+						{
+							if (isfloat)
+								throw TokenizerError(line, pos, "Bad number literal");
+							isfloat = true; //we only allow one dot in number literal
+							continue;
+						}
+						break;
+					}
+				} 
+				switch (LastChar)
+				{
+				case 'L':
+					if(isfloat)
+						throw TokenizerError(line, pos, "Should not have \'L\' after a float literal");
+					NumVal.type = const_long;
+					NumVal.v_long = std::stoll(NumStr);
+					LastChar = GetChar();
+					break;
+				case 'U':
+					if (isfloat)
+						throw TokenizerError(line, pos, "Should not have \'U\' after a float literal");
+					NumVal.type = const_ulong;
+					NumVal.v_ulong = std::stoull(NumStr);
+					LastChar = GetChar();
+					break;
+				case 'u':
+					if (isfloat)
+						throw TokenizerError(line, pos, "Should not have \'u\' after a float literal");
+					NumVal.type = const_uint;
+					NumVal.v_uint = std::stoul(NumStr);
+					LastChar = GetChar();
+					break;
+				case 'f':
+					NumVal.type = const_float;
+					NumVal.v_double = std::stof(NumStr);
+					LastChar = GetChar();
+					break;
+				case 'd':
+					NumVal.type = const_double;
+					NumVal.v_double = std::stod(NumStr);
+					LastChar = GetChar();
+					break;
+				default:
+					if (isfloat)
+					{
+						NumVal.type = const_float;
+						NumVal.v_double = std::stod(NumStr);
+					}
+					else
+					{
+						NumVal.type = const_int;
+						NumVal.v_int = std::stoi(NumStr);
+					}
+				}
 				return tok_number;
 			}
 
+			if (LastChar == '\"') {
+				ParseString();
+				return tok_string_literal;
+			}
 
 			if (LastChar == '#') {
 				// Comment until end of line.
