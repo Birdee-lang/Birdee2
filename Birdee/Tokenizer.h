@@ -25,6 +25,8 @@ namespace Birdee
 		tok_number,
 		tok_left_bracket,
 		tok_right_bracket,
+		tok_left_index,
+		tok_right_index,
 		tok_newline,
 		tok_dim,
 		tok_as,
@@ -172,12 +174,14 @@ namespace Birdee
 		Token GetNextToken() { return CurTok = gettok(); }
 
 		Tokenizer(FILE* file) { f = file; line = 1; pos = 1; }
-		NumberLiteral NumVal;
+		NumberLiteral NumVal;		// Filled in if tok_number
 
 
 		std::map<int, Token> single_token_map={
 		{'(',tok_left_bracket },
 		{')',tok_right_bracket },
+		{ '[',tok_left_index },
+		{ ']',tok_right_index },
 		{ '+',tok_add },
 		{'\n',tok_newline},
 		{',',tok_comma},
@@ -196,7 +200,6 @@ namespace Birdee
 		std::string IdentifierStr; // Filled in if tok_identifier
 
 
-		            // Filled in if tok_number
 
 		/// gettok - Return the next token from standard input.
 		Token gettok() {
