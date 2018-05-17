@@ -21,5 +21,11 @@ a=3
 34234
 2345.324##
 
+class string
+	private buf as int[]
+	private len as int
+
+end class
+
 dim  c  as int[]
 dim c=(1+3*a[b][123]*b)

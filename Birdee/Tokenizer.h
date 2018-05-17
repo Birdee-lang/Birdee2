@@ -32,6 +32,9 @@ namespace Birdee
 		tok_as,
 		tok_comma,
 		tok_end,
+		tok_class,
+		tok_private,
+		tok_public,
 		tok_string_literal,
 
 		//type
@@ -196,6 +199,9 @@ namespace Birdee
 		{ "int",tok_int },
 		{"function",tok_func},
 		{"end",tok_end},
+		{"class",tok_class},
+		{"private",tok_private},
+		{"public",tok_public},
 		};
 		std::string IdentifierStr; // Filled in if tok_identifier
 
