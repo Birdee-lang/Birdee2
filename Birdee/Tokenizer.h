@@ -78,6 +78,14 @@ namespace Birdee
 			printf("Compile Error at line %d, postion %d : %s", linenumber, pos, msg.c_str());
 		}
 	};
+
+	struct SourcePos
+	{
+		int line;
+		int pos;
+		SourcePos(int line, int pos) :line(line), pos(pos) {}
+	};
+
 	class Tokenizer
 	{
 
@@ -86,6 +94,8 @@ namespace Birdee
 		int pos;
 		int LastChar = ' ';
 		
+
+
 		int GetChar()
 		{
 			int c = getc(f);
@@ -171,6 +181,12 @@ namespace Birdee
 			}
 		}
 	public:
+
+		SourcePos GetSourcePos()
+		{
+			return SourcePos(line, pos);
+		}
+
 		int GetLine() { return line; }
 		int GetPos() { return pos; }
 		Token CurTok =tok_add;
