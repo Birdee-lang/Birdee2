@@ -24,7 +24,18 @@ a=3
 class string
 	private buf as int[]
 	private len as int
-
+	public function length() as int
+		if buf=null then
+			return 0
+		else if len=2 then
+			return 2
+		else if len=3 then
+			return 3
+		else
+			return len
+		end if
+		len=123
+	end
 end class
 
 dim  c  as int[]

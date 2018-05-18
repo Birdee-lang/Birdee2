@@ -36,6 +36,11 @@ namespace Birdee
 		tok_private,
 		tok_public,
 		tok_string_literal,
+		tok_if,
+		tok_then,
+		tok_else,
+		tok_return,
+		tok_for,
 
 		//type
 		tok_int,
@@ -218,6 +223,11 @@ namespace Birdee
 		{"class",tok_class},
 		{"private",tok_private},
 		{"public",tok_public},
+		{"if",tok_if},
+		{"then",tok_then},
+		{"else",tok_else},
+		{"return",tok_return},
+		{"for",tok_for},
 		};
 		std::string IdentifierStr; // Filled in if tok_identifier
 
