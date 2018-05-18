@@ -51,7 +51,19 @@ namespace Birdee
 		tok_mul,
 		tok_div,
 		tok_mod,
-		tok_assign
+		tok_assign,
+		tok_equal,
+		tok_cmp_equal,
+		tok_ge,
+		tok_le,
+		tok_logic_and,
+		tok_logic_or,
+		tok_gt,
+		tok_lt,
+		tok_and,
+		tok_or,
+		tok_not,
+		tok_xor,
 	};
 
 	enum ConstType {
@@ -200,19 +212,26 @@ namespace Birdee
 		Tokenizer(FILE* file) { f = file; line = 1; pos = 1; }
 		NumberLiteral NumVal;		// Filled in if tok_number
 
-
+		std::map<int, Token> single_operator_map = {
+		{ '+',tok_add },
+		{ ',',tok_comma },
+		{ '=',tok_assign },
+		{ '*',tok_mul },
+		{ '/',tok_div },
+		{ '%',tok_mod },
+		{ '>',tok_gt },
+		{ '<',tok_lt },
+		{ '&',tok_and },
+		{ '|',tok_or },
+		{ '!',tok_not },
+		{ '^',tok_xor },
+		};
 		std::map<int, Token> single_token_map={
 		{'(',tok_left_bracket },
 		{')',tok_right_bracket },
 		{ '[',tok_left_index },
 		{ ']',tok_right_index },
-		{ '+',tok_add },
 		{'\n',tok_newline},
-		{',',tok_comma},
-		{'=',tok_assign},
-		{'*',tok_mul},
-		{'/',tok_div},
-		{ '%',tok_mod },
 		};
 		std::map < std::string , Token > token_map = {
 			{ "dim",tok_dim },
@@ -228,6 +247,12 @@ namespace Birdee
 		{"else",tok_else},
 		{"return",tok_return},
 		{"for",tok_for},
+		{"==",tok_equal},
+		{"===",tok_cmp_equal},
+		{">=",tok_ge},
+		{"<=",tok_le},
+		{"&&",tok_logic_and},
+		{"||",tok_logic_or},
 		};
 		std::string IdentifierStr; // Filled in if tok_identifier
 
@@ -239,12 +264,30 @@ namespace Birdee
 			// Skip any whitespace.
 			while (isspace(LastChar)&& LastChar!='\n')
 				LastChar = GetChar();
-
 			auto single_token = single_token_map.find(LastChar);
 			if (single_token != single_token_map.end())
 			{
 				LastChar = GetChar();
 				return single_token->second;
+			}
+			single_token = single_operator_map.find(LastChar);
+			if (single_token != single_operator_map.end())
+			{
+				IdentifierStr = LastChar;
+				while (single_operator_map.find(LastChar=GetChar())!= single_operator_map.end())
+					IdentifierStr += LastChar;
+				if (IdentifierStr.size() > 1)
+				{
+					auto moperator = token_map.find(IdentifierStr);
+					if (moperator != token_map.end())
+						return moperator->second;
+					else
+						throw TokenizerError(line, pos, "Bad token");
+				}
+				else
+				{
+					return single_token->second;
+				}
 			}
 			if (isalpha(LastChar)|| LastChar=='_') { // identifier: [a-zA-Z][a-zA-Z0-9]*
 				IdentifierStr = LastChar;
