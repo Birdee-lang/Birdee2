@@ -48,11 +48,13 @@ namespace Birdee
 		tok_void,
 
 		tok_add,
+		tok_minus,
 		tok_mul,
 		tok_div,
 		tok_mod,
 		tok_assign,
 		tok_equal,
+		tok_ne,
 		tok_cmp_equal,
 		tok_ge,
 		tok_le,
@@ -212,8 +214,31 @@ namespace Birdee
 		Tokenizer(FILE* file) { f = file; line = 1; pos = 1; }
 		NumberLiteral NumVal;		// Filled in if tok_number
 
+		std::map<Token, std::string> tok_names = {
+			{ tok_mul,"*" },
+		{ tok_div,"/" },
+		{ tok_mod,"%" },
+		{ tok_add,"+" },
+		{ tok_minus,"-"},
+		{ tok_lt,"<" },
+		{ tok_gt,">" },
+		{ tok_le,"<=" },
+		{ tok_ge,">=" },
+		{ tok_equal,"==" },
+		{ tok_ne,"!=" },
+		{ tok_cmp_equal,"===" },
+		{ tok_and,"&" },
+		{ tok_xor,"^" },
+		{ tok_or,"|" },
+		{ tok_logic_and,"&&" },
+		{ tok_logic_or,"||" },
+		{ tok_assign,"=" },
+		};
+
+
 		std::map<int, Token> single_operator_map = {
 		{ '+',tok_add },
+		{'-',tok_minus},
 		{ ',',tok_comma },
 		{ '=',tok_assign },
 		{ '*',tok_mul },
@@ -248,6 +273,7 @@ namespace Birdee
 		{"return",tok_return},
 		{"for",tok_for},
 		{"==",tok_equal},
+		{ "!=",tok_ne },
 		{"===",tok_cmp_equal},
 		{">=",tok_ge},
 		{"<=",tok_le},
