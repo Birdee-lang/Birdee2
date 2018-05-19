@@ -239,7 +239,6 @@ namespace Birdee
 		std::map<int, Token> single_operator_map = {
 		{ '+',tok_add },
 		{'-',tok_minus},
-		{ ',',tok_comma },
 		{ '=',tok_assign },
 		{ '*',tok_mul },
 		{ '/',tok_div },
@@ -257,6 +256,7 @@ namespace Birdee
 		{ '[',tok_left_index },
 		{ ']',tok_right_index },
 		{'\n',tok_newline},
+		{ ',',tok_comma },
 		};
 		std::map < std::string , Token > token_map = {
 			{ "dim",tok_dim },
