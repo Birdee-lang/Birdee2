@@ -31,6 +31,7 @@ namespace Birdee
 		tok_dim,
 		tok_as,
 		tok_comma,
+		tok_dot,
 		tok_end,
 		tok_class,
 		tok_private,
@@ -257,6 +258,7 @@ namespace Birdee
 		{ ']',tok_right_index },
 		{'\n',tok_newline},
 		{ ',',tok_comma },
+		{'.',tok_dot},
 		};
 		std::map < std::string , Token > token_map = {
 			{ "dim",tok_dim },
