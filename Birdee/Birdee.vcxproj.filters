@@ -21,7 +21,19 @@
     <ClInclude Include="targetver.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="Tokenizer.h">
+    <ClInclude Include="include\AST.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Tokenizer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\SourcePos.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Util.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\TokenDef.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
