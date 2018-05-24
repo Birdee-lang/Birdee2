@@ -11,11 +11,11 @@
 
 namespace std
 {
-	bool operator < (reference_wrapper<const string> a, reference_wrapper<const string> b)
+	inline bool operator < (reference_wrapper<const string> a, reference_wrapper<const string> b)
 	{
 		return a.get() < b.get();
 	}
-	bool operator == (reference_wrapper<const string> a, reference_wrapper<const string> b)
+	inline bool operator == (reference_wrapper<const string> a, reference_wrapper<const string> b)
 	{
 		return a.get() == b.get();
 	}
@@ -37,12 +37,55 @@ namespace Birdee {
 	using std::vector;
 	using std::unordered_map;
 	using std::reference_wrapper;
-	void formatprint(int level) {
+	inline void formatprint(int level) {
 		for (int i = 0; i < level; i++)
 			std::cout << "\t";
 	}
+
 	extern SourcePos GetCurrentSourcePos();
 	extern string GetTokenString(Token tok);
+
+
+	class Type {
+
+	public:
+		Token type;
+		int index_level = 0;
+		virtual ~Type() = default;
+		Type(Token _type) :type(_type) {}
+		virtual void print(int level)
+		{
+			formatprint(level);
+			std::cout << "Type " << type << " index: " << index_level;
+		}
+	};
+
+	class IdentifierType :public Type {
+		
+	public:
+		std::string name;
+		IdentifierType(const std::string&_name) :Type(tok_identifier), name(_name) {}
+		void print(int level)
+		{
+			Type::print(level);
+			std::cout << " Name: " << name;
+		}
+	};
+
+	class ClassAST;
+
+	class ResolvedType {
+		void ResolveType(Type& _type, SourcePos pos);
+	public:
+		Token type;
+		int index_level = 0;
+		ClassAST* class_ast;
+		ResolvedType(Type& _type,SourcePos pos) :type(_type.type),index_level(_type.index_level)
+		{
+			ResolveType(_type,pos); 
+		}
+	};
+
 	/// StatementAST - Base class for all expression nodes.
 	class StatementAST {
 	public:
@@ -56,6 +99,7 @@ namespace Birdee {
 
 	class ExprAST : public StatementAST {
 	public:
+		ResolvedType * resolved_type=nullptr;
 		virtual ~ExprAST() = default;
 	};
 
@@ -72,7 +116,7 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
 
 	};
-	CompileUnit cu;
+	extern  CompileUnit cu;
 
 	/// NumberExprAST - Expression class for numeric literals like "1.0".
 	class NumberExprAST : public ExprAST {
@@ -237,30 +281,7 @@ namespace Birdee {
 			: Obj(std::move(Obj)), member(member) {}
 	};
 
-	class Type {
 
-	public:
-		Token type;
-		int index_level = 0;
-		virtual ~Type() = default;
-		Type(Token _type) :type(_type) {}
-		virtual void print(int level)
-		{
-			formatprint(level);
-			std::cout << "Type " << type << " index: " << index_level;
-		}
-	};
-
-	class IdentifierType :public Type {
-		std::string name;
-	public:
-		IdentifierType(const std::string&_name) :Type(tok_identifier), name(_name) {}
-		void print(int level)
-		{
-			Type::print(level);
-			std::cout << " Name: " << name;
-		}
-	};
 
 	class VariableSingleDefAST;
 
@@ -453,16 +474,5 @@ namespace Birdee {
 
 
 
-	class CompileError {
-		int linenumber;
-		int pos;
-		std::string msg;
-	public:
-		CompileError(int _linenumber, int _pos, const std::string& _msg) : linenumber(_linenumber), pos(_pos), msg(_msg) {}
-		CompileError(const std::string& _msg) : linenumber(GetCurrentSourcePos().line), pos(GetCurrentSourcePos().pos), msg(_msg) {}
-		void print()
-		{
-			printf("Compile Error at line %d, postion %d : %s", linenumber, pos, msg.c_str());
-		}
-	};
+
 }

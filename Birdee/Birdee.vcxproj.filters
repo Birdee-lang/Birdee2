@@ -36,12 +36,18 @@
     <ClInclude Include="include\TokenDef.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\CompileError.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Birdee.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="include\Preprocessing.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
