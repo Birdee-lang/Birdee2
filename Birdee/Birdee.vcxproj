@@ -150,6 +150,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\AST.h" />
+    <ClInclude Include="include\CastAST.h" />
     <ClInclude Include="include\CompileError.h" />
     <ClInclude Include="include\SourcePos.h" />
     <ClInclude Include="include\TokenDef.h" />

@@ -39,6 +39,9 @@
     <ClInclude Include="include\CompileError.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\CastAST.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

@@ -36,6 +36,11 @@ namespace Birdee
 
 		//type
 		tok_int,
+		tok_long,
+		tok_ulong,
+		tok_uint,
+		tok_float,
+		tok_double,
 		tok_auto,
 		tok_void,
 
@@ -60,13 +65,13 @@ namespace Birdee
 		tok_xor,
 	};
 
-	enum ConstType {
-		const_int,
-		const_long,
-		const_uint,
-		const_ulong,
-		const_float,
-		const_double,
+	enum NodeType {
+		type_int,
+		type_long,
+		type_uint,
+		type_ulong,
+		type_float,
+		type_double,
 	};
 	struct NumberLiteral {
 		union {
@@ -76,6 +81,6 @@ namespace Birdee
 			uint32_t v_uint;
 			uint64_t v_ulong;
 		};
-		ConstType type;
+		Token type;
 	};
 }

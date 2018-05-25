@@ -163,6 +163,11 @@ namespace Birdee
 			{ "dim",tok_dim },
 		{ "as",tok_as },
 		{ "int",tok_int },
+		{ "long",tok_long},
+		{ "ulong",tok_ulong},
+		{ "uint",tok_uint},
+		{ "float",tok_float},
+		{ "double",tok_double},
 		{"function",tok_func},
 		{"end",tok_end},
 		{"class",tok_class},
@@ -253,43 +258,43 @@ namespace Birdee
 				case 'L':
 					if(isfloat)
 						throw TokenizerError(line, pos, "Should not have \'L\' after a float literal");
-					NumVal.type = const_long;
+					NumVal.type = tok_long;
 					NumVal.v_long = std::stoll(NumStr);
 					LastChar = GetChar();
 					break;
 				case 'U':
 					if (isfloat)
 						throw TokenizerError(line, pos, "Should not have \'U\' after a float literal");
-					NumVal.type = const_ulong;
+					NumVal.type = tok_ulong;
 					NumVal.v_ulong = std::stoull(NumStr);
 					LastChar = GetChar();
 					break;
 				case 'u':
 					if (isfloat)
 						throw TokenizerError(line, pos, "Should not have \'u\' after a float literal");
-					NumVal.type = const_uint;
+					NumVal.type = tok_uint;
 					NumVal.v_uint = std::stoul(NumStr);
 					LastChar = GetChar();
 					break;
 				case 'f':
-					NumVal.type = const_float;
+					NumVal.type = tok_float;
 					NumVal.v_double = std::stof(NumStr);
 					LastChar = GetChar();
 					break;
 				case 'd':
-					NumVal.type = const_double;
+					NumVal.type = tok_double;
 					NumVal.v_double = std::stod(NumStr);
 					LastChar = GetChar();
 					break;
 				default:
 					if (isfloat)
 					{
-						NumVal.type = const_float;
+						NumVal.type = tok_float;
 						NumVal.v_double = std::stod(NumStr);
 					}
 					else
 					{
-						NumVal.type = const_int;
+						NumVal.type = tok_int;
 						NumVal.v_int = std::stoi(NumStr);
 					}
 				}

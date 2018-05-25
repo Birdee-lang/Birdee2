@@ -73,16 +73,42 @@ namespace Birdee {
 	};
 
 	class ClassAST;
-
+	extern const string& GetClassASTName(ClassAST*);
 	class ResolvedType {
 		void ResolveType(Type& _type, SourcePos pos);
 	public:
 		Token type;
-		int index_level = 0;
+		int index_level;
 		ClassAST* class_ast;
 		ResolvedType(Type& _type,SourcePos pos) :type(_type.type),index_level(_type.index_level)
 		{
 			ResolveType(_type,pos); 
+		}
+		ResolvedType():type(tok_error),index_level(0), class_ast(nullptr)
+		{
+
+		}
+		bool isNumber() const
+		{
+			return 	index_level == 0 && type == tok_int
+				|| type == tok_long
+				|| type == tok_ulong
+				|| type == tok_uint
+				|| type == tok_float
+				|| type == tok_double;
+		}
+		string GetString()
+		{
+			if (isNumber())
+				return GetTokenString(type);
+			if (type == tok_identifier)
+				return GetClassASTName(class_ast);
+			return "(Error type)";
+		}
+		bool operator == (ResolvedType& other) const
+		{
+			Token t = other.type;
+			return  type == other.type && other.index_level == index_level && other.class_ast == class_ast;
 		}
 	};
 
@@ -90,6 +116,7 @@ namespace Birdee {
 	class StatementAST {
 	public:
 		SourcePos Pos=GetCurrentSourcePos();
+		virtual void Phase1() = 0;
 		virtual ~StatementAST() = default;
 		virtual void print(int level) {
 			for (int i = 0; i < level; i++)
@@ -99,7 +126,7 @@ namespace Birdee {
 
 	class ExprAST : public StatementAST {
 	public:
-		ResolvedType * resolved_type=nullptr;
+		ResolvedType resolved_type;
 		virtual ~ExprAST() = default;
 	};
 
@@ -122,37 +149,41 @@ namespace Birdee {
 	class NumberExprAST : public ExprAST {
 		NumberLiteral Val;
 	public:
+		virtual void Phase1();
 		NumberExprAST(const NumberLiteral& Val) : Val(Val) {}
 		void print(int level) {
 			ExprAST::print(level);
 			switch (Val.type)
 			{
-			case const_int:
+			case tok_int:
 				std::cout << "const int " << Val.v_int << "\n";
 				break;
-			case const_long:
+			case tok_long:
 				std::cout << "const long " << Val.v_long << "\n";
 				break;
-			case const_uint:
+			case tok_uint:
 				std::cout << "const uint " << Val.v_uint << "\n";
 				break;
-			case const_ulong:
+			case tok_ulong:
 				std::cout << "const ulong " << Val.v_ulong << "\n";
 				break;
-			case const_float:
+			case tok_float:
 				std::cout << "const float " << Val.v_double << "\n";
 				break;
-			case const_double:
+			case tok_double:
 				std::cout << "const double " << Val.v_double << "\n";
 				break;
 			}
 		}
 	};
 
+	class PrototypeAST;
 	class ReturnAST : public StatementAST {
 		std::unique_ptr<ExprAST> Val;
+		PrototypeAST* proto;
 	public:
-		ReturnAST(std::unique_ptr<ExprAST>&& val, SourcePos pos) : Val(std::move(val)) { Pos = pos; };
+		virtual void Phase1();
+		ReturnAST(std::unique_ptr<ExprAST>&& val, PrototypeAST* proto, SourcePos pos) : Val(std::move(val)), proto(proto){ Pos = pos; };
 		void print(int level) {
 			StatementAST::print(level); std::cout << "Return\n";
 			Val->print(level + 1);
@@ -162,6 +193,7 @@ namespace Birdee {
 	class StringLiteralAST : public ExprAST {
 		std::string Val;
 	public:
+		virtual void Phase1();
 		StringLiteralAST(const std::string& Val) : Val(Val) {}
 		void print(int level) { ExprAST::print(level); std::cout << "\"" << Val << "\"\n"; }
 	};
@@ -351,6 +383,8 @@ namespace Birdee {
 		std::unique_ptr<Type> RetType;
 
 	public:
+		ResolvedType resolved_type;
+
 		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType)
 			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)) {}
 
