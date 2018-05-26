@@ -142,7 +142,10 @@ namespace Birdee
 			assert(ty && "Type should be a IdentifierType");
 			this->type = tok_class;
 			this->class_ast = GetItemByName(cu.classmap,ty->name,pos);
+			//fix-me: should find function proto
 		}
+		assert(type.type != tok_auto && "Should not resolve auto type here");
+
 	}
 
 	void CompileUnit::Phase0()

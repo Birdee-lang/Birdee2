@@ -362,6 +362,15 @@ namespace Birdee {
 			func(dynamic_unique_ptr_cast<VariableSingleDefAST, VariableDefAST>(std::move(current)));
 		}
 		std::string name;
+
+		//just resolve the type of the variable
+		void Phase0()
+		{
+			if (resolved_type.isResolved())
+				return;
+			resolved_type = ResolvedType(*type,Pos);
+		}
+
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val) : name(_name), type(std::move(_type)), val(std::move(_val)) {}
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val, SourcePos Pos) : name(_name), type(std::move(_type)), val(std::move(_val)) {
 			this->Pos = Pos;
@@ -411,13 +420,16 @@ namespace Birdee {
 	public:
 		friend bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
+
+		//Put the definitions of arguments into a vector
+		//resolve the types in the arguments and the returned value 
 		void Phase0(SourcePos pos)
 		{
-			if (resolved_type.type != tok_error) //if we have already resolved this
+			if (resolved_type.isResolved()) //if we have already resolved the type
 				return;
 			vector<unique_ptr<VariableSingleDefAST>>& resolved_args = this->resolved_args;
 			Args->move(std::move(Args), [&resolved_args](unique_ptr<VariableSingleDefAST>&& arg) {
-				arg->Phase1();
+				arg->Phase0();
 				resolved_args.push_back(std::move(arg));
 			});
 			resolved_type = ResolvedType(*RetType,pos);
@@ -456,8 +468,15 @@ namespace Birdee {
 			Pos = pos;
 		}
 
+		//resolve the types of the argument and the returned value
+		//put a phase0 because we may reference a function before we parse the function in phase1
 		void Phase0()
 		{
+			if (resolved_type.isResolved())
+				return;
+			resolved_type.type = tok_func;
+			resolved_type.index_level = 0;
+			resolved_type.proto_ast = Proto.get();
 			Proto->Phase0(Pos);
 		}
 
@@ -535,6 +554,7 @@ namespace Birdee {
 			Pos = pos;
 		}
 
+		//run phase0 in all member functions
 		void Phase0()
 		{
 			for (auto& funcdef : funcs)
