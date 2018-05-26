@@ -10,6 +10,13 @@ using std::reference_wrapper;
 
 using namespace Birdee;
 
+class ScopeManager
+{
+	vector<ClassAST*> class_stack;
+	vector<FunctionAST*> func_stack;
+	vector < unordered_map<reference_wrapper<const string>, VariableSingleDefAST*>> basic_blocks;
+};
+
 template <typename T>
 T* GetItemByName(const unordered_map<reference_wrapper<const string>, reference_wrapper<T>>& M,
 	const string& name, SourcePos pos)
@@ -133,6 +140,7 @@ namespace Birdee
 		{
 			IdentifierType* ty = dynamic_cast<IdentifierType*>(&type);
 			assert(ty && "Type should be a IdentifierType");
+			this->type = tok_class;
 			this->class_ast = GetItemByName(cu.classmap,ty->name,pos);
 		}
 	}
@@ -147,6 +155,27 @@ namespace Birdee
 		{
 			node.second.get().Phase0();
 		}
+	}
+
+	bool operator==(const PrototypeAST& ths, const PrototypeAST& other) 
+	{
+		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
+		if (!(ths.resolved_type == other.resolved_type))
+			return false;
+		if (ths.resolved_args.size() != other.resolved_args.size())
+			return false;
+		auto itr1 = ths.resolved_args.begin();
+		auto itr2 = other.resolved_args.begin();
+		for (; itr1 != ths.resolved_args.end(); itr1++, itr2++)
+		{
+			ResolvedType& t1 = (*itr1)->resolved_type;
+			ResolvedType& t2 = (*itr2)->resolved_type;
+			assert(t1.isResolved() && t2.isResolved());
+			if (!(t1 == t2))
+				return false;
+		}
+		return true;
+
 	}
 
 	void NumberExprAST::Phase1()

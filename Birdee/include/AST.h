@@ -73,13 +73,18 @@ namespace Birdee {
 	};
 
 	class ClassAST;
+	class PrototypeAST;
 	extern const string& GetClassASTName(ClassAST*);
+	extern bool operator ==(const PrototypeAST& ,const PrototypeAST& );
 	class ResolvedType {
 		void ResolveType(Type& _type, SourcePos pos);
 	public:
 		Token type;
 		int index_level;
-		ClassAST* class_ast;
+		union {
+			ClassAST* class_ast;
+			PrototypeAST * proto_ast;
+		};
 		ResolvedType(Type& _type,SourcePos pos) :type(_type.type),index_level(_type.index_level)
 		{
 			ResolveType(_type,pos); 
@@ -97,18 +102,30 @@ namespace Birdee {
 				|| type == tok_float
 				|| type == tok_double;
 		}
+		bool isResolved() const
+		{
+			return type!=tok_error;
+		}
 		string GetString()
 		{
 			if (isNumber())
 				return GetTokenString(type);
-			if (type == tok_identifier)
+			if (type == tok_class)
 				return GetClassASTName(class_ast);
 			return "(Error type)";
 		}
-		bool operator == (ResolvedType& other) const
+		bool operator == (const ResolvedType& other) const
 		{
-			Token t = other.type;
-			return  type == other.type && other.index_level == index_level && other.class_ast == class_ast;
+			if (type == other.type && other.index_level == index_level)
+			{
+				if (type == tok_class)
+					return other.class_ast == class_ast;
+				else if (type == tok_func)
+					return *proto_ast == *other.proto_ast;
+				else
+					return true;
+			}
+			return false;
 		}
 	};
 
@@ -338,6 +355,7 @@ namespace Birdee {
 		std::unique_ptr<Type> type;
 		std::unique_ptr<ExprAST> val;
 	public:
+		ResolvedType resolved_type;
 		void move(unique_ptr<VariableDefAST>&& current,
 			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
 		{
@@ -391,6 +409,7 @@ namespace Birdee {
 		std::unique_ptr<Type> RetType;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 	public:
+		friend bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
 		void Phase0(SourcePos pos)
 		{
@@ -403,7 +422,7 @@ namespace Birdee {
 			});
 			resolved_type = ResolvedType(*RetType,pos);
 		}
-
+		
 		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType)
 			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)) {}
 
