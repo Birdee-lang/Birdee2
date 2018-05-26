@@ -9,6 +9,11 @@ namespace Birdee
 		unique_ptr<ExprAST> expr;
 	public:
 		void Phase1() override {};
+		void print(int level)
+		{
+			ExprAST::print(level); std::cout << "Cast " << GetTokenString(typefrom) << " -> " << GetTokenString(typeto) << "\n";
+			expr->print(level + 1);
+		}
 		CastNumberExpr(unique_ptr<ExprAST>&& _expr):expr(std::move(_expr))
 		{
 			this->resolved_type.type = typeto;

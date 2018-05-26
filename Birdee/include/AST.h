@@ -128,6 +128,9 @@ namespace Birdee {
 	public:
 		ResolvedType resolved_type;
 		virtual ~ExprAST() = default;
+		void print(int level) {
+			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString();
+		}
 	};
 
 	class ClassAST;
@@ -141,6 +144,7 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
+		void Phase0();
 
 	};
 	extern  CompileUnit cu;
@@ -211,6 +215,7 @@ namespace Birdee {
 		std::vector<std::unique_ptr<StatementAST>> iftrue;
 		std::vector<std::unique_ptr<StatementAST>> iffalse;
 	public:
+		void Phase1();
 		IfBlockAST(std::unique_ptr<ExprAST>&& cond,
 			std::vector<std::unique_ptr<StatementAST>>&& iftrue,
 			std::vector<std::unique_ptr<StatementAST>>&& iffalse,
@@ -244,6 +249,9 @@ namespace Birdee {
 			: Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {
 			Pos = pos;
 		}
+
+		void Phase1();
+
 		void print(int level) {
 			ExprAST::print(level);
 			std::cout << "OP:" << GetTokenString(Op) << "\n";
@@ -381,9 +389,20 @@ namespace Birdee {
 		std::string Name;
 		std::unique_ptr<VariableDefAST> Args;
 		std::unique_ptr<Type> RetType;
-
+		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 	public:
 		ResolvedType resolved_type;
+		void Phase0(SourcePos pos)
+		{
+			if (resolved_type.type != tok_error) //if we have already resolved this
+				return;
+			vector<unique_ptr<VariableSingleDefAST>>& resolved_args = this->resolved_args;
+			Args->move(std::move(Args), [&resolved_args](unique_ptr<VariableSingleDefAST>&& arg) {
+				arg->Phase1();
+				resolved_args.push_back(std::move(arg));
+			});
+			resolved_type = ResolvedType(*RetType,pos);
+		}
 
 		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType)
 			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)) {}
@@ -416,6 +435,11 @@ namespace Birdee {
 			std::vector<std::unique_ptr<StatementAST>>&& Body, SourcePos pos)
 			: Proto(std::move(Proto)), Body(std::move(Body)) {
 			Pos = pos;
+		}
+
+		void Phase0()
+		{
+			Proto->Phase0(Pos);
 		}
 
 		const string& GetName()
@@ -491,6 +515,15 @@ namespace Birdee {
 			fieldmap(std::move(fieldmap)), funcmap(std::move(funcmap)) {
 			Pos = pos;
 		}
+
+		void Phase0()
+		{
+			for (auto& funcdef : funcs)
+			{
+				funcdef.decl->Phase0();
+			}
+		}
+
 		void print(int level)
 		{
 			StatementAST::print(level);

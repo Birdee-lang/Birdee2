@@ -92,6 +92,34 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	return nullptr;
 }
 
+
+Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2, SourcePos pos)
+{
+	static unordered_map<Token, int> promotion_map = {
+	{tok_int,0},
+	{tok_ulong,1},
+	{tok_long,2},
+	{tok_ulong,3},
+	{tok_float,4},
+	{tok_double,5},
+	};
+	int p1 = promotion_map[v1->resolved_type.type];
+	int p2 = promotion_map[v2->resolved_type.type];
+	if (p1 == p2)
+		return v1->resolved_type.type;
+	else if (p1 > p2)
+	{
+		v2 = FixTypeForAssignment(v1->resolved_type, std::move(v2), pos);
+		return v1->resolved_type.type;
+	}
+	else
+	{
+		v1 = FixTypeForAssignment(v2->resolved_type, std::move(v1), pos);
+		return v2->resolved_type.type;
+	}
+
+}
+
 //fix-me: should first resolve all the funtion's prototypes
 namespace Birdee
 {
@@ -106,6 +134,18 @@ namespace Birdee
 			IdentifierType* ty = dynamic_cast<IdentifierType*>(&type);
 			assert(ty && "Type should be a IdentifierType");
 			this->class_ast = GetItemByName(cu.classmap,ty->name,pos);
+		}
+	}
+
+	void CompileUnit::Phase0()
+	{
+		for (auto& node : funcmap)
+		{
+			node.second.get().Phase0();
+		}
+		for (auto& node : classmap)
+		{
+			node.second.get().Phase0();
 		}
 	}
 
@@ -128,5 +168,28 @@ namespace Birdee
 		static ClassAST& string_cls=cu.classmap.find(name)->second;
 		resolved_type.type = tok_identifier;
 		resolved_type.class_ast = &string_cls;	
+	}
+
+	void IfBlockAST::Phase1()
+	{
+		cond->Phase1();
+		for (auto&& s : iftrue)
+			s->Phase1();
+		for (auto&& s : iffalse)
+			s->Phase1();
+	}
+
+	void BinaryExprAST::Phase1()
+	{
+		LHS->Phase1();
+		RHS->Phase1();
+		if (Op == tok_assign)
+		{
+			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
+			resolved_type.type = tok_void;
+			return;
+		}
+		CompileAssert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber(), Pos, "Currently only binary expressions of Numbers are supported");
+		resolved_type.type = PromoteNumberExpression(LHS, RHS, Pos);
 	}
 }
