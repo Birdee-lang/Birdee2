@@ -322,6 +322,7 @@ namespace Birdee
 
 	void ThisExprAST::Phase1()
 	{
+		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"this\" outside of a class");
 		resolved_type.type = tok_class;
 		resolved_type.class_ast = scope_mgr.class_stack.back();
 	}
