@@ -254,6 +254,22 @@ namespace Birdee
 		}
 	}
 
+	void IndexExprAST::Phase1()
+	{
+		Expr->Phase1();
+		CompileAssert(Expr->resolved_type.index_level > 0, Pos, "The indexed expression should be indexable");
+		Index->Phase1();
+		CompileAssert(Index->resolved_type.isInteger(), Pos, "The index should be an integer");
+		resolved_type = Expr->resolved_type;
+		resolved_type.index_level--;		
+	}
+
+	void IdentifierExprAST::Phase1()
+	{
+		impl = scope_mgr.ResolveName(Name, Pos);
+		resolved_type = impl->resolved_type;
+	}
+
 	bool operator==(const PrototypeAST& ths, const PrototypeAST& other) 
 	{
 		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());

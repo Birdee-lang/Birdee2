@@ -93,6 +93,13 @@ namespace Birdee {
 		{
 
 		}
+		bool isInteger()
+		{
+			return 	index_level == 0 && type == tok_int
+				|| type == tok_long
+				|| type == tok_ulong
+				|| type == tok_uint;
+		}
 		bool isNumber() const
 		{
 			return 	index_level == 0 && type == tok_int
@@ -306,6 +313,7 @@ namespace Birdee {
 	class IndexExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> Expr, Index;
 	public:
+		void Phase1();
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
 			std::unique_ptr<ExprAST>&& Index, SourcePos Pos)
 			: Expr(std::move(Expr)), Index(std::move(Index)) {
