@@ -174,6 +174,7 @@ namespace Birdee
 		{"private",tok_private},
 		{"public",tok_public},
 		{"if",tok_if},
+		{"this",tok_this},
 		{"then",tok_then},
 		{"else",tok_else},
 		{"return",tok_return},

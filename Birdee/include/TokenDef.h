@@ -33,6 +33,7 @@ namespace Birdee
 		tok_else,
 		tok_return,
 		tok_for,
+		tok_this,
 
 		//type
 		tok_int,

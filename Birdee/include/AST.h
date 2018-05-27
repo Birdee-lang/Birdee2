@@ -222,10 +222,35 @@ namespace Birdee {
 	/// IdentifierExprAST - Expression class for referencing a variable, like "a".
 	class IdentifierExprAST : public ExprAST {
 		std::string Name;
+		unique_ptr<ExprAST> impl;
 	public:
+		void Phase1();
 		IdentifierExprAST(const std::string &Name) : Name(Name) {}
 		void print(int level) { ExprAST::print(level); std::cout << "Identifier:" << Name << "\n"; }
 	};
+
+	class LocalVarExprAST : public ExprAST {
+		VariableSingleDefAST* def;
+	public:
+		LocalVarExprAST(VariableSingleDefAST* def) :def(def) { Phase1(); }
+		void Phase1();
+	};
+
+	class ResolvedFuncExprAST : public ExprAST {
+		FunctionAST* def;
+	public:
+		ResolvedFuncExprAST(FunctionAST* def) :def(def) { Phase1(); }
+		void Phase1();
+	};
+
+	class ThisExprAST : public ExprAST {
+	public:
+		void Phase1();
+		ThisExprAST()   {}
+		ThisExprAST(ClassAST* cls) { resolved_type.type = tok_class; resolved_type.class_ast = cls; }
+		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
+	};
+
 	/// IfBlockAST - Expression class for If block.
 	class IfBlockAST : public StatementAST {
 		std::unique_ptr<ExprAST> cond;
@@ -318,25 +343,7 @@ namespace Birdee {
 			: Callee(std::move(Callee)), Args(std::move(Args)) {}
 	};
 
-	/// MemberExprAST - Expression class for function calls.
-	class MemberExprAST : public ExprAST {
-		std::unique_ptr<ExprAST> Obj;
-		std::string member;
 
-	public:
-
-		void print(int level)
-		{
-			ExprAST::print(level); std::cout << "Member\n";
-			Obj->print(level + 1);
-			formatprint(level + 1); std::cout << "---------\n";
-			formatprint(level + 1); std::cout << member << "\n";
-
-		}
-		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
-			const std::string& member)
-			: Obj(std::move(Obj)), member(member) {}
-	};
 
 
 
@@ -539,10 +546,11 @@ namespace Birdee {
 
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
-		unordered_map<reference_wrapper<const string>, reference_wrapper<FieldDef>> fieldmap;
-		unordered_map<reference_wrapper<const string>, reference_wrapper<MemberFunctionDef>> funcmap;
 	public:
 		std::string name;
+
+		unordered_map<reference_wrapper<const string>, reference_wrapper<FieldDef>> fieldmap;
+		unordered_map<reference_wrapper<const string>, reference_wrapper<MemberFunctionDef>> funcmap;
 
 		ClassAST(const std::string& name,
 			std::vector<FieldDef>&& fields, std::vector<MemberFunctionDef>&& funcs,
@@ -560,6 +568,10 @@ namespace Birdee {
 			for (auto& funcdef : funcs)
 			{
 				funcdef.decl->Phase0();
+			}
+			for (auto& fielddef : fields)
+			{
+				fielddef.decl->Phase0();
 			}
 		}
 
@@ -579,6 +591,45 @@ namespace Birdee {
 	};
 
 
+	/// MemberExprAST - Expression class for function calls.
+	class MemberExprAST : public ExprAST {
+		std::unique_ptr<ExprAST> Obj;
+		std::string member;
+		union
+		{
+			MemberFunctionDef* func;
+			FieldDef* field;
+		};
+	public:
+		enum
+		{
+			member_error,
+			member_field,
+			member_function,
+		}kind;
+		void Phase1();
+		void print(int level)
+		{
+			ExprAST::print(level); std::cout << "Member\n";
+			Obj->print(level + 1);
+			formatprint(level + 1); std::cout << "---------\n";
+			formatprint(level + 1); std::cout << member << "\n";
 
+		}
+		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
+			const std::string& member)
+			: Obj(std::move(Obj)), member(member), kind(member_error), func(nullptr) {}
+		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
+			MemberFunctionDef* member)
+			: Obj(std::move(Obj)), func(member), kind(member_function) {
+			resolved_type = func->decl->resolved_type;
+		}
+		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
+			FieldDef* member)
+			: Obj(std::move(Obj)), field(member), kind(member_field) {
+			resolved_type = field->decl->resolved_type;
+		}
+
+	};
 
 }

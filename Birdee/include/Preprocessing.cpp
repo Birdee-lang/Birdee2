@@ -12,10 +12,104 @@ using namespace Birdee;
 
 class ScopeManager
 {
+public:
+	typedef unordered_map<reference_wrapper<const string>, VariableSingleDefAST*> BasicBlock;
 	vector<ClassAST*> class_stack;
-	vector<FunctionAST*> func_stack;
-	vector < unordered_map<reference_wrapper<const string>, VariableSingleDefAST*>> basic_blocks;
-};
+	vector <BasicBlock> basic_blocks;
+
+	inline bool IsCurrentClass(ClassAST* cls)
+	{
+		return class_stack.size() > 0 && class_stack.back() == cls;
+	}
+
+	FieldDef* FindFieldInClass(const string& name)
+	{
+		if (class_stack.size() > 0)
+		{
+			auto cls_field = class_stack.back()->fieldmap.find(name);
+			if (cls_field != class_stack.back()->fieldmap.end())
+			{
+				return &(cls_field->second.get());
+			}
+		}
+		return nullptr;
+	}
+
+	MemberFunctionDef* FindFuncInClass(const string& name)
+	{
+		if (class_stack.size() > 0)
+		{
+			auto func_field = class_stack.back()->funcmap.find(name);
+			if (func_field != class_stack.back()->funcmap.end())
+			{
+				return &(func_field->second.get());
+			}
+		}
+		return nullptr;
+	}
+
+	VariableSingleDefAST* FindLocalVar(const string& name)
+	{
+		if (basic_blocks.size() > 0)
+		{
+			auto var = basic_blocks.back().find(name);
+			if (var != basic_blocks.back().end())
+			{
+				return var->second;
+			}
+		}
+		return nullptr;
+	}
+
+	void PushBasicBlock()
+	{
+		basic_blocks.push_back(BasicBlock());
+	}
+	void PopBasicBlock()
+	{
+		basic_blocks.pop_back();
+	}
+	void PushClass(ClassAST* cls)
+	{
+		class_stack.push_back(cls);
+	}
+	void PopClass()
+	{
+		class_stack.pop_back();
+	}
+
+	unique_ptr<ExprAST> ResolveName(const string& name,SourcePos pos)
+	{
+		auto bb = FindLocalVar(name);
+		if (bb)
+		{
+			return make_unique<LocalVarExprAST>(bb);
+		}
+		auto cls_field = FindFieldInClass(name);
+		if (cls_field)
+		{
+			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back()), cls_field);
+		}
+		auto func_field = FindFuncInClass(name);
+		if (func_field)
+		{
+			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back()), func_field);
+		}
+		auto global_dim = cu.dimmap.find(name);
+		if (global_dim != cu.dimmap.end())
+		{
+			return make_unique<LocalVarExprAST>(&(global_dim->second.get()));
+		}
+		auto func = cu.funcmap.find(name);
+		if (func != cu.funcmap.end())
+		{
+			return make_unique<ResolvedFuncExprAST>(&(func->second.get()));
+		}
+		throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
+		return nullptr;
+	}
+
+}scope_mgr;
 
 template <typename T>
 T* GetItemByName(const unordered_map<reference_wrapper<const string>, reference_wrapper<T>>& M,
@@ -127,7 +221,7 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2, 
 
 }
 
-//fix-me: should first resolve all the funtion's prototypes
+
 namespace Birdee
 {
 	const string& GetClassASTName(ClassAST* cls)
@@ -181,6 +275,53 @@ namespace Birdee
 
 	}
 
+
+	void MemberExprAST::Phase1()
+	{
+		if (resolved_type.isResolved())
+			return;
+		Obj->Phase1();
+		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
+		ClassAST* cls = Obj->resolved_type.class_ast;
+		auto field = cls->fieldmap.find(member);
+		if (field != cls->fieldmap.end())
+		{
+			if (field->second.get().access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
+				throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
+			kind = member_field;
+			this->field = &(field->second.get());
+			resolved_type = this->field->decl->resolved_type;
+			return;
+		}
+		auto func = cls->funcmap.find(member);
+		if (func != cls->funcmap.end())
+		{
+			kind = member_function;
+			this->func = &(func->second.get());
+			resolved_type = this->func->decl->resolved_type;
+			return;
+		}
+		throw CompileError(Pos.line, Pos.pos, "");
+	}
+
+	void ThisExprAST::Phase1()
+	{
+		resolved_type.type = tok_class;
+		resolved_type.class_ast = scope_mgr.class_stack.back();
+	}
+
+	void ResolvedFuncExprAST::Phase1()
+	{
+		def->Phase0(); //fix-me: maybe don't need to call phase0?
+		resolved_type = def->resolved_type;
+	}
+
+	void LocalVarExprAST::Phase1()
+	{
+		def->Phase0();
+		resolved_type = def->resolved_type;
+	}
+
 	void NumberExprAST::Phase1()
 	{
 		resolved_type.type = Val.type;
@@ -224,4 +365,6 @@ namespace Birdee
 		CompileAssert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber(), Pos, "Currently only binary expressions of Numbers are supported");
 		resolved_type.type = PromoteNumberExpression(LHS, RHS, Pos);
 	}
+
+
 }
