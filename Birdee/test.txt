@@ -26,6 +26,8 @@ a=3
 #---------------------------------
 ##
 
+declare function puts (str as pointer) as int
+
 class string
 	private buf as int[]
 	private len as int
@@ -35,6 +37,9 @@ class string
 	public function add(other as string) as string
 		len=len+other.len
 		return this
+	end
+	public function GetRaw() as pointer
+		return addressof(buf)
 	end
 end class
 
@@ -57,3 +62,4 @@ ic=id
 
 dim str = "12312"
 str.length()
+puts(str.GetRaw())

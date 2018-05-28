@@ -10,6 +10,7 @@ namespace Birdee
 		tok_def,
 		tok_extern,
 		tok_func,
+		tok_declare,
 
 		// primary
 		tok_identifier,
@@ -35,6 +36,7 @@ namespace Birdee
 		tok_for,
 		tok_this,
 		tok_null,
+		tok_address_of,
 
 		//type
 		tok_int,
@@ -46,6 +48,7 @@ namespace Birdee
 		tok_auto,
 		tok_void,
 		tok_boolean,
+		tok_pointer,
 	
 		tok_add,
 		tok_minus,
@@ -98,6 +101,7 @@ namespace Birdee
 		case tok_float:
 		case tok_double:
 		case tok_boolean:
+		case tok_pointer:
 			return true;
 		}
 		return false;

@@ -85,7 +85,7 @@ namespace Birdee {
 			ClassAST* class_ast;
 			PrototypeAST * proto_ast;
 		};
-		ResolvedType(Type& _type,SourcePos pos) :type(_type.type),index_level(_type.index_level)
+		ResolvedType(Type& _type,SourcePos pos) :type(_type.type),index_level(_type.index_level), class_ast(nullptr)
 		{
 			ResolveType(_type,pos); 
 		}
@@ -93,7 +93,7 @@ namespace Birdee {
 		{
 
 		}
-		bool isReferencce()
+		bool isReference()
 		{
 			return 	index_level >0 || type == tok_class || type==tok_null;
 		}
@@ -354,6 +354,22 @@ namespace Birdee {
 			Index->print(level + 1);
 		}
 	};
+
+	class AddressOfExprAST : public ExprAST {
+		std::unique_ptr<ExprAST> expr;
+	public:
+		void Phase1();
+		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, SourcePos Pos)
+			: expr(std::move(Expr)){
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "AddressOf\n";
+			expr->print(level + 1);
+			
+		}
+	};
 	/// CallExprAST - Expression class for function calls.
 	class CallExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> Callee;
@@ -511,17 +527,20 @@ namespace Birdee {
 	class FunctionAST : public ExprAST {
 		std::unique_ptr<PrototypeAST> Proto;
 		ASTBasicBlock Body;
-
+		bool isDeclare;
 	public:
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
 			ASTBasicBlock&& Body)
-			: Proto(std::move(Proto)), Body(std::move(Body)) {}
+			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
 			ASTBasicBlock&& Body, SourcePos pos)
-			: Proto(std::move(Proto)), Body(std::move(Body)) {
+			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false) {
 			Pos = pos;
 		}
-
+		FunctionAST(std::unique_ptr<PrototypeAST> Proto, SourcePos pos)
+			: Proto(std::move(Proto)), isDeclare(true) {
+			Pos = pos;
+		}
 		//resolve the types of the argument and the returned value
 		//put a phase0 because we may reference a function before we parse the function in phase1
 		void Phase0()
@@ -542,6 +561,8 @@ namespace Birdee {
 		void print(int level)
 		{
 			ExprAST::print(level);
+			if (isDeclare)
+				std::cout << "extern ";
 			std::cout << "Function def\n";
 			Proto->print(level + 1);
 			Body.print(level + 1);

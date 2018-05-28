@@ -316,6 +316,12 @@ namespace Birdee
 
 	}
 
+	void AddressOfExprAST::Phase1()
+	{
+		expr->Phase1();
+		CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in addressof should be a reference type");
+		resolved_type.type = tok_pointer;
+	}
 
 	void IndexExprAST::Phase1()
 	{
@@ -529,9 +535,9 @@ namespace Birdee
 		{
 			if (LHS->resolved_type == RHS->resolved_type)
 				resolved_type.type = tok_boolean;
-			else if(LHS->resolved_type.isNull() && RHS->resolved_type.isReferencce())
+			else if(LHS->resolved_type.isNull() && RHS->resolved_type.isReference())
 				resolved_type.type = tok_boolean;
-			else if (RHS->resolved_type.isNull() && LHS->resolved_type.isReferencce())
+			else if (RHS->resolved_type.isNull() && LHS->resolved_type.isReference())
 				resolved_type.type = tok_boolean;
 			else
 				resolved_type.type=PromoteNumberExpression(LHS, RHS, true, Pos);
