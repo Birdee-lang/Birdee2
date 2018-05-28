@@ -93,6 +93,15 @@ namespace Birdee {
 		{
 
 		}
+		bool isReferencce()
+		{
+			return 	index_level >0 || type == tok_class || type==tok_null;
+		}
+
+		bool isNull()
+		{
+			return 	index_level == 0 && type == tok_null;
+		}
 		bool isInteger()
 		{
 			return 	index_level == 0 && type == tok_int
@@ -113,14 +122,7 @@ namespace Birdee {
 		{
 			return type!=tok_error;
 		}
-		string GetString()
-		{
-			if (isNumber())
-				return GetTokenString(type);
-			if (type == tok_class)
-				return GetClassASTName(class_ast);
-			return "(Error type)";
-		}
+		string GetString();
 		bool operator == (const ResolvedType& other) const
 		{
 			if (type == other.type && other.index_level == index_level)
@@ -153,7 +155,7 @@ namespace Birdee {
 		ResolvedType resolved_type;
 		virtual ~ExprAST() = default;
 		void print(int level) {
-			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString();
+			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
 		}
 	};
 
@@ -169,7 +171,7 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
 		void Phase0();
-
+		void Phase1();
 	};
 	extern  CompileUnit cu;
 
@@ -226,26 +228,32 @@ namespace Birdee {
 		void print(int level) { ExprAST::print(level); std::cout << "\"" << Val << "\"\n"; }
 	};
 
+	class ResolvedIdentifierExprAST : public ExprAST {
+	public:
+		virtual bool isMutable()=0;
+	};
 	/// IdentifierExprAST - Expression class for referencing a variable, like "a".
 	class IdentifierExprAST : public ExprAST {
 		std::string Name;
-		unique_ptr<ExprAST> impl;
 	public:
+		unique_ptr<ResolvedIdentifierExprAST> impl;
 		void Phase1();
 		IdentifierExprAST(const std::string &Name) : Name(Name) {}
 		void print(int level) { ExprAST::print(level); std::cout << "Identifier:" << Name << "\n"; }
 	};
 
-	class LocalVarExprAST : public ExprAST {
+	class LocalVarExprAST : public ResolvedIdentifierExprAST {
 		VariableSingleDefAST* def;
 	public:
+		bool isMutable() { return true; }
 		LocalVarExprAST(VariableSingleDefAST* def) :def(def) { Phase1(); }
 		void Phase1();
 	};
 
-	class ResolvedFuncExprAST : public ExprAST {
+	class ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
 		FunctionAST* def;
 	public:
+		bool isMutable() { return false; }
 		ResolvedFuncExprAST(FunctionAST* def) :def(def) { Phase1(); }
 		void Phase1();
 	};
@@ -257,17 +265,35 @@ namespace Birdee {
 		ThisExprAST(ClassAST* cls) { resolved_type.type = tok_class; resolved_type.class_ast = cls; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
 	};
+	class NullExprAST : public ExprAST {
+	public:
+		void Phase1() {};
+		NullExprAST() { resolved_type.type = tok_null; }
+		void print(int level) { ExprAST::print(level); std::cout << "null" << "\n"; }
+	};
+	class ASTBasicBlock
+	{
+	public:
+		std::vector<std::unique_ptr<StatementAST>> body;
+		void Phase1();
+		void Phase1(PrototypeAST* proto);
+		void print(int level)
+		{
+			for (auto&& s : body)
+				s->print(level);
+		}
+	};
 
 	/// IfBlockAST - Expression class for If block.
 	class IfBlockAST : public StatementAST {
 		std::unique_ptr<ExprAST> cond;
-		std::vector<std::unique_ptr<StatementAST>> iftrue;
-		std::vector<std::unique_ptr<StatementAST>> iffalse;
+		ASTBasicBlock iftrue;
+		ASTBasicBlock iffalse;
 	public:
 		void Phase1();
 		IfBlockAST(std::unique_ptr<ExprAST>&& cond,
-			std::vector<std::unique_ptr<StatementAST>>&& iftrue,
-			std::vector<std::unique_ptr<StatementAST>>&& iffalse,
+			ASTBasicBlock&& iftrue,
+			ASTBasicBlock&& iffalse,
 			SourcePos pos)
 			: cond(std::move(cond)), iftrue(std::move(iftrue)), iffalse(std::move(iffalse)) {
 			Pos = pos;
@@ -277,11 +303,9 @@ namespace Birdee {
 			StatementAST::print(level);	std::cout << "If" << "\n";
 			cond->print(level + 1);
 			StatementAST::print(level + 1);	std::cout << "Then" << "\n";
-			for (auto&& s : iftrue)
-				s->print(level + 2);
+			iftrue.print(level + 2);
 			StatementAST::print(level + 1);	std::cout << "Else" << "\n";
-			for (auto&& s : iffalse)
-				s->print(level + 2);
+			iffalse.print(level + 2);
 		}
 	};
 
@@ -305,7 +329,7 @@ namespace Birdee {
 			ExprAST::print(level);
 			std::cout << "OP:" << GetTokenString(Op) << "\n";
 			LHS->print(level + 1);
-			ExprAST::print(level + 1); std::cout << "----------------\n";
+			formatprint(level + 1); std::cout << "----------------\n";
 			RHS->print(level + 1);
 		}
 	};
@@ -336,7 +360,7 @@ namespace Birdee {
 		std::vector<std::unique_ptr<ExprAST>> Args;
 
 	public:
-
+		void Phase1();
 		void print(int level)
 		{
 			ExprAST::print(level); std::cout << "Call\n";
@@ -371,6 +395,9 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> val;
 	public:
 		ResolvedType resolved_type;
+		void Phase1();
+		//parse the varible as a member of a class, will not add to the basic block environment
+		void Phase1InClass();
 		void move(unique_ptr<VariableDefAST>&& current,
 			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
 		{
@@ -392,9 +419,7 @@ namespace Birdee {
 		}
 		void print(int level) {
 			VariableDefAST::print(level);
-			std::cout << "Variable:" << name << " ";
-			type->print(0);
-			std::cout << "\n";
+			std::cout << "Variable:" << name << " Type: "<< resolved_type.GetString()<< "\n";
 			if (val)
 				val->print(level + 1);
 		}
@@ -403,6 +428,11 @@ namespace Birdee {
 	class VariableMultiDefAST : public VariableDefAST {
 
 	public:
+		void Phase1()
+		{
+			for (auto& a : lst)
+				a->Phase1();
+		}
 		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
@@ -431,54 +461,63 @@ namespace Birdee {
 		std::string Name;
 		std::unique_ptr<VariableDefAST> Args;
 		std::unique_ptr<Type> RetType;
-		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
+		SourcePos pos;
 	public:
 		friend bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
-
+		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 		//Put the definitions of arguments into a vector
 		//resolve the types in the arguments and the returned value 
-		void Phase0(SourcePos pos)
+		void Phase0()
 		{
 			if (resolved_type.isResolved()) //if we have already resolved the type
 				return;
-			vector<unique_ptr<VariableSingleDefAST>>& resolved_args = this->resolved_args;
-			Args->move(std::move(Args), [&resolved_args](unique_ptr<VariableSingleDefAST>&& arg) {
-				arg->Phase0();
-				resolved_args.push_back(std::move(arg));
-			});
+			auto args = Args.get();
+			if (args)
+			{
+				vector<unique_ptr<VariableSingleDefAST>>& resolved_args = this->resolved_args;
+				args->move(std::move(Args), [&resolved_args](unique_ptr<VariableSingleDefAST>&& arg) {
+					arg->Phase0();
+					resolved_args.push_back(std::move(arg));
+				});
+			}
 			resolved_type = ResolvedType(*RetType,pos);
 		}
-		
-		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType)
-			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)) {}
+		void Phase1()
+		{
+			Phase0();
+			for (auto&& dim : resolved_args)
+			{
+				dim->Phase1();
+			}
+		}
+		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,SourcePos pos)
+			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos) {}
 
 		const std::string &GetName() const { return Name; }
 		void print(int level)
 		{
 			formatprint(level);
 			std::cout << "Function Proto: " << Name << std::endl;
-			if (Args)
-				Args->print(level + 1);
-			else
+			for (auto& arg : resolved_args)
 			{
-				formatprint(level + 1); std::cout << "No arg\n";
+				arg->print(level + 1);
 			}
-			RetType->print(level + 1); std::cout << "\n";
+			formatprint(level + 1); std::cout << "Return type: "<<resolved_type.GetString()<< "\n";
 		}
 	};
 
 	/// FunctionAST - This class represents a function definition itself.
 	class FunctionAST : public ExprAST {
 		std::unique_ptr<PrototypeAST> Proto;
-		std::vector<std::unique_ptr<StatementAST>> Body;
+		ASTBasicBlock Body;
 
 	public:
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			std::vector<std::unique_ptr<StatementAST>>&& Body)
+			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)) {}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			std::vector<std::unique_ptr<StatementAST>>&& Body, SourcePos pos)
+			ASTBasicBlock&& Body, SourcePos pos)
 			: Proto(std::move(Proto)), Body(std::move(Body)) {
 			Pos = pos;
 		}
@@ -492,8 +531,9 @@ namespace Birdee {
 			resolved_type.type = tok_func;
 			resolved_type.index_level = 0;
 			resolved_type.proto_ast = Proto.get();
-			Proto->Phase0(Pos);
+			Proto->Phase0();
 		}
+		void Phase1();
 
 		const string& GetName()
 		{
@@ -504,10 +544,7 @@ namespace Birdee {
 			ExprAST::print(level);
 			std::cout << "Function def\n";
 			Proto->print(level + 1);
-			for (auto&& node : Body)
-			{
-				node->print(level + 1);
-			}
+			Body.print(level + 1);
 		}
 	};
 
@@ -551,26 +588,24 @@ namespace Birdee {
 		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl) :access(access), decl(std::move(decl)) {}
 	};
 	class ClassAST : public StatementAST {
-
-		std::vector<FieldDef> fields;
-		std::vector<MemberFunctionDef> funcs;
 	public:
 		std::string name;
-
-		unordered_map<reference_wrapper<const string>, reference_wrapper<FieldDef>> fieldmap;
-		unordered_map<reference_wrapper<const string>, reference_wrapper<MemberFunctionDef>> funcmap;
+		std::vector<FieldDef> fields;
+		std::vector<MemberFunctionDef> funcs;
+		unordered_map<reference_wrapper<const string>, int> fieldmap;
+		unordered_map<reference_wrapper<const string>, int> funcmap;
 
 		ClassAST(const std::string& name,
 			std::vector<FieldDef>&& fields, std::vector<MemberFunctionDef>&& funcs,
-			unordered_map<reference_wrapper<const string>, reference_wrapper<FieldDef>> fieldmap,
-			unordered_map<reference_wrapper<const string>, reference_wrapper<MemberFunctionDef>> funcmap,
+			unordered_map<reference_wrapper<const string>, int> fieldmap,
+			unordered_map<reference_wrapper<const string>, int> funcmap,
 			SourcePos pos)
 			: name(name), fields(std::move(fields)), funcs(std::move(funcs)),
 			fieldmap(std::move(fieldmap)), funcmap(std::move(funcmap)) {
 			Pos = pos;
 		}
 
-		//run phase0 in all member functions
+		//run phase0 in all members
 		void Phase0()
 		{
 			for (auto& funcdef : funcs)
@@ -582,6 +617,7 @@ namespace Birdee {
 				fielddef.decl->Phase0();
 			}
 		}
+		void Phase1();
 
 		void print(int level)
 		{
@@ -600,7 +636,7 @@ namespace Birdee {
 
 
 	/// MemberExprAST - Expression class for function calls.
-	class MemberExprAST : public ExprAST {
+	class MemberExprAST : public ResolvedIdentifierExprAST {
 		std::unique_ptr<ExprAST> Obj;
 		std::string member;
 		union
@@ -616,6 +652,9 @@ namespace Birdee {
 			member_function,
 		}kind;
 		void Phase1();
+		bool isMutable() {
+			return kind == member_field;
+		}
 		void print(int level)
 		{
 			ExprAST::print(level); std::cout << "Member\n";

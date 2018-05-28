@@ -19,5 +19,12 @@ namespace Birdee
 		}
 		return std::unique_ptr<Derived>(nullptr);
 	}
-
+	template<typename Derived, typename Base>
+	bool instance_of(Base* p)
+	{
+		if (Derived *result = dynamic_cast<Derived *>(base)) {
+			return true;
+		}
+		return false;
+	}
 }

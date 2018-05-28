@@ -50,7 +50,7 @@
     <ClCompile Include="Birdee.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="include\Preprocessing.cpp">
+    <ClCompile Include="Preprocessing.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

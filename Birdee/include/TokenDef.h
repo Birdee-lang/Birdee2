@@ -34,6 +34,7 @@ namespace Birdee
 		tok_return,
 		tok_for,
 		tok_this,
+		tok_null,
 
 		//type
 		tok_int,
@@ -44,7 +45,8 @@ namespace Birdee
 		tok_double,
 		tok_auto,
 		tok_void,
-
+		tok_boolean,
+	
 		tok_add,
 		tok_minus,
 		tok_mul,
@@ -84,4 +86,40 @@ namespace Birdee
 		};
 		Token type;
 	};
+
+	inline bool isTypeToken(Token t)
+	{
+		switch (t)
+		{
+		case tok_int:
+		case tok_long:
+		case tok_ulong:
+		case tok_uint:
+		case tok_float:
+		case tok_double:
+		case tok_boolean:
+			return true;
+		}
+		return false;
+	}
+	inline bool isBooleanToken(Token t)
+	{
+		switch (t)
+		{
+		case tok_equal:
+		case tok_ne:
+		case tok_cmp_equal:
+		case tok_ge:
+		case tok_le:
+		case tok_logic_and:
+		case tok_logic_or:
+		case tok_gt:
+		case tok_lt:
+		case tok_and:
+		case tok_or:
+		case tok_not:
+			return true;
+		}
+		return false;
+	}
 }

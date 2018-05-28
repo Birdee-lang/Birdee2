@@ -3,7 +3,7 @@
 #include "SourcePos.h"
 #include <cassert>
 #include "CastAST.h"
-
+#include <sstream>
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
@@ -26,10 +26,11 @@ public:
 	{
 		if (class_stack.size() > 0)
 		{
-			auto cls_field = class_stack.back()->fieldmap.find(name);
-			if (cls_field != class_stack.back()->fieldmap.end())
+			ClassAST* cls = class_stack.back();
+			auto cls_field = cls->fieldmap.find(name);
+			if (cls_field != cls->fieldmap.end())
 			{
-				return &(cls_field->second.get());
+				return &(cls->fields[cls_field->second]);
 			}
 		}
 		return nullptr;
@@ -39,10 +40,11 @@ public:
 	{
 		if (class_stack.size() > 0)
 		{
-			auto func_field = class_stack.back()->funcmap.find(name);
-			if (func_field != class_stack.back()->funcmap.end())
+			ClassAST* cls = class_stack.back();
+			auto func_field = cls ->funcmap.find(name);
+			if (func_field != cls->funcmap.end())
 			{
-				return &(func_field->second.get());
+				return &(cls->funcs[func_field->second]);
 			}
 		}
 		return nullptr;
@@ -52,10 +54,13 @@ public:
 	{
 		if (basic_blocks.size() > 0)
 		{
-			auto var = basic_blocks.back().find(name);
-			if (var != basic_blocks.back().end())
+			for (auto itr = basic_blocks.rbegin(); itr != basic_blocks.rend(); itr++)
 			{
-				return var->second;
+				auto var = itr->find(name);
+				if (var != itr->end())
+				{
+					return var->second;
+				}
 			}
 		}
 		return nullptr;
@@ -78,7 +83,7 @@ public:
 		class_stack.pop_back();
 	}
 
-	unique_ptr<ExprAST> ResolveName(const string& name,SourcePos pos)
+	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name,SourcePos pos)
 	{
 		auto bb = FindLocalVar(name);
 		if (bb)
@@ -95,11 +100,14 @@ public:
 		{
 			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back()), func_field);
 		}
-		auto global_dim = cu.dimmap.find(name);
-		if (global_dim != cu.dimmap.end())
+		/*if (basic_blocks.size() != 1) // top-level variable finding disabled
 		{
-			return make_unique<LocalVarExprAST>(&(global_dim->second.get()));
-		}
+			auto global_dim = cu.dimmap.find(name);
+			if (global_dim != cu.dimmap.end())
+			{
+				return make_unique<LocalVarExprAST>(&(global_dim->second.get()));
+			}
+		}*/
 		auto func = cu.funcmap.find(name);
 		if (func != cu.funcmap.end())
 		{
@@ -168,6 +176,10 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	{
 		return std::move(val);
 	}
+	if (target.type == tok_class && val->resolved_type.type == tok_null)
+	{
+		return std::move(val);
+	}
 #define fix_type(typeto) FixTypeForAssignment2<typeto>(target,std::move(val),pos)
 	else if (target.isNumber() && val->resolved_type.index_level==0)
 	{
@@ -194,7 +206,7 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 }
 
 
-Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2, SourcePos pos)
+Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,bool isBool, SourcePos pos)
 {
 	static unordered_map<Token, int> promotion_map = {
 	{tok_int,0},
@@ -207,16 +219,16 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2, 
 	int p1 = promotion_map[v1->resolved_type.type];
 	int p2 = promotion_map[v2->resolved_type.type];
 	if (p1 == p2)
-		return v1->resolved_type.type;
+		return isBool ? tok_boolean: v1->resolved_type.type;
 	else if (p1 > p2)
 	{
 		v2 = FixTypeForAssignment(v1->resolved_type, std::move(v2), pos);
-		return v1->resolved_type.type;
+		return isBool ? tok_boolean : v1->resolved_type.type;
 	}
 	else
 	{
 		v1 = FixTypeForAssignment(v2->resolved_type, std::move(v1), pos);
-		return v2->resolved_type.type;
+		return isBool ? tok_boolean : v2->resolved_type.type;
 	}
 
 }
@@ -238,7 +250,6 @@ namespace Birdee
 			this->class_ast = GetItemByName(cu.classmap,ty->name,pos);
 			//fix-me: should find function proto
 		}
-		assert(type.type != tok_auto && "Should not resolve auto type here");
 
 	}
 
@@ -254,22 +265,36 @@ namespace Birdee
 		}
 	}
 
-	void IndexExprAST::Phase1()
+	void CompileUnit::Phase1()
 	{
-		Expr->Phase1();
-		CompileAssert(Expr->resolved_type.index_level > 0, Pos, "The indexed expression should be indexable");
-		Index->Phase1();
-		CompileAssert(Index->resolved_type.isInteger(), Pos, "The index should be an integer");
-		resolved_type = Expr->resolved_type;
-		resolved_type.index_level--;		
+		scope_mgr.PushBasicBlock();
+		for (auto& stmt : toplevel)
+		{
+			stmt->Phase1();
+		}
+		scope_mgr.PopBasicBlock();
 	}
-
-	void IdentifierExprAST::Phase1()
+	string ResolvedType::GetString()
 	{
-		impl = scope_mgr.ResolveName(Name, Pos);
-		resolved_type = impl->resolved_type;
+		if (type == tok_class)
+			return GetClassASTName(class_ast);
+		if (type == tok_null)
+			return "null_t";
+		if (type == tok_func)
+			return "func";
+		if (type == tok_void)
+			return "void";
+		if (isTypeToken(type))
+		{
+			std::stringstream buf;
+			buf << GetTokenString(type);
+			for(int i=0;i<index_level;i++)
+				buf<<"[]";
+			return buf.str();
+		}
+		else
+			return "(Error type)";
 	}
-
 	bool operator==(const PrototypeAST& ths, const PrototypeAST& other) 
 	{
 		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
@@ -292,6 +317,100 @@ namespace Birdee
 	}
 
 
+	void IndexExprAST::Phase1()
+	{
+		Expr->Phase1();
+		CompileAssert(Expr->resolved_type.index_level > 0, Pos, "The indexed expression should be indexable");
+		Index->Phase1();
+		CompileAssert(Index->resolved_type.isInteger(), Pos, "The index should be an integer");
+		resolved_type = Expr->resolved_type;
+		resolved_type.index_level--;
+	}
+
+	void IdentifierExprAST::Phase1()
+	{
+		impl = scope_mgr.ResolveName(Name, Pos);
+		resolved_type = impl->resolved_type;
+	}
+
+	void ASTBasicBlock::Phase1()
+	{
+		scope_mgr.PushBasicBlock();
+		for (auto&& node : body)
+		{
+			node->Phase1();
+		}
+		scope_mgr.PopBasicBlock();
+	}
+
+	void ASTBasicBlock::Phase1(PrototypeAST* proto)
+	{
+		scope_mgr.PushBasicBlock();
+		proto->Phase1();
+		for (auto&& node : body)
+		{
+			node->Phase1();
+		}
+		scope_mgr.PopBasicBlock();
+	}
+
+	void VariableSingleDefAST::Phase1()
+	{
+		Phase0();
+		if (resolved_type.type == tok_auto)
+		{
+			CompileAssert(val.get(), Pos, "dim with no type must have an initializer");
+			val->Phase1();
+			resolved_type = val->resolved_type;
+		}
+		else
+		{
+			if (val.get())
+			{
+				val->Phase1();
+				val = FixTypeForAssignment(resolved_type, std::move(val), Pos);
+			}
+		}
+		scope_mgr.basic_blocks.back()[name] = this;
+	}
+
+	void FunctionAST::Phase1()
+	{
+		Phase0();
+		Body.Phase1(Proto.get());
+	}
+
+	void VariableSingleDefAST::Phase1InClass()
+	{
+		Phase0();
+		if (resolved_type.type == tok_auto)
+		{
+			throw CompileError(Pos.line, Pos.pos, "Member field of class must be defined with a type");
+		}
+		else
+		{
+			if (val.get())
+			{
+				val->Phase1();
+				val = FixTypeForAssignment(resolved_type, std::move(val), Pos);
+			}
+		}
+	}
+
+	void ClassAST::Phase1()
+	{
+		Phase0();
+		scope_mgr.PushClass(this);
+		for (auto& fielddef : fields)
+		{
+			fielddef.decl->Phase1InClass();
+		}
+		for (auto& funcdef : funcs)
+		{
+			funcdef.decl->Phase1();
+		}
+		scope_mgr.PopClass();
+	}
 	void MemberExprAST::Phase1()
 	{
 		if (resolved_type.isResolved())
@@ -302,10 +421,10 @@ namespace Birdee
 		auto field = cls->fieldmap.find(member);
 		if (field != cls->fieldmap.end())
 		{
-			if (field->second.get().access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
+			if (cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
 				throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
 			kind = member_field;
-			this->field = &(field->second.get());
+			this->field = &(cls->fields[field->second]);
 			resolved_type = this->field->decl->resolved_type;
 			return;
 		}
@@ -313,11 +432,32 @@ namespace Birdee
 		if (func != cls->funcmap.end())
 		{
 			kind = member_function;
-			this->func = &(func->second.get());
+			this->func = &(cls->funcs[func->second]);
+			if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
+				throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
 			resolved_type = this->func->decl->resolved_type;
 			return;
 		}
 		throw CompileError(Pos.line, Pos.pos, "");
+	}
+
+	void CallExprAST::Phase1()
+	{
+		Callee->Phase1();
+		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
+		auto proto = Callee->resolved_type.proto_ast;
+		std::stringstream buf;
+		buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << "are given";
+		CompileAssert(proto->resolved_args.size() == Args.size(), Pos, buf.str());
+		int i = 0;
+		for (auto& arg : Args)
+		{
+			arg->Phase1();
+			SourcePos pos = arg->Pos;
+			arg = FixTypeForAssignment(proto->resolved_args[i]->resolved_type, std::move(arg), pos);
+			i++;
+		}
+		resolved_type = proto->resolved_type;
 	}
 
 	void ThisExprAST::Phase1()
@@ -356,17 +496,17 @@ namespace Birdee
 		//fix-me: use the system package name of string
 		static string name("string");
 		static ClassAST& string_cls=cu.classmap.find(name)->second;
-		resolved_type.type = tok_identifier;
+		resolved_type.type = tok_class;
 		resolved_type.class_ast = &string_cls;	
 	}
 
 	void IfBlockAST::Phase1()
 	{
 		cond->Phase1();
-		for (auto&& s : iftrue)
-			s->Phase1();
-		for (auto&& s : iffalse)
-			s->Phase1();
+		CompileAssert(cond->resolved_type.type == tok_boolean && cond->resolved_type.index_level == 0,
+			Pos, "The condition of \"if\" expects a boolean expression");
+		iftrue.Phase1();
+		iffalse.Phase1();
 	}
 
 	void BinaryExprAST::Phase1()
@@ -375,12 +515,33 @@ namespace Birdee
 		RHS->Phase1();
 		if (Op == tok_assign)
 		{
+			if (IdentifierExprAST* idexpr = dynamic_cast<IdentifierExprAST*>(LHS.get()))
+				CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
+			else if (MemberExprAST* memexpr = dynamic_cast<MemberExprAST*>(LHS.get()))
+				CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
+			else
+				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;
 			return;
 		}
-		CompileAssert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber(), Pos, "Currently only binary expressions of Numbers are supported");
-		resolved_type.type = PromoteNumberExpression(LHS, RHS, Pos);
+		if (Op == tok_equal)
+		{
+			if (LHS->resolved_type == RHS->resolved_type)
+				resolved_type.type = tok_boolean;
+			else if(LHS->resolved_type.isNull() && RHS->resolved_type.isReferencce())
+				resolved_type.type = tok_boolean;
+			else if (RHS->resolved_type.isNull() && LHS->resolved_type.isReferencce())
+				resolved_type.type = tok_boolean;
+			else
+				resolved_type.type=PromoteNumberExpression(LHS, RHS, true, Pos);
+		}
+		else
+		{
+			CompileAssert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber(), Pos, "Currently only binary expressions of Numbers are supported");
+			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
+		}
+
 	}
 
 
