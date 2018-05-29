@@ -29,7 +29,10 @@ namespace std
 		}
 	};
 }
-
+namespace llvm
+{
+	class Value;
+}
 namespace Birdee {
 	using std::string;
 	using std::make_unique;
@@ -37,6 +40,7 @@ namespace Birdee {
 	using std::vector;
 	using std::unordered_map;
 	using std::reference_wrapper;
+	using ::llvm::Value;
 	inline void formatprint(int level) {
 		for (int i = 0; i < level; i++)
 			std::cout << "\t";
@@ -141,6 +145,7 @@ namespace Birdee {
 	/// StatementAST - Base class for all expression nodes.
 	class StatementAST {
 	public:
+		virtual Value* Generate()=0;
 		SourcePos Pos=GetCurrentSourcePos();
 		virtual void Phase1() = 0;
 		virtual ~StatementAST() = default;
@@ -165,6 +170,7 @@ namespace Birdee {
 	class CompileUnit
 	{
 	public:
+		string filename;
 		string name;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
@@ -172,6 +178,7 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
 		void Phase0();
 		void Phase1();
+		void InitForGenerate();
 	};
 	extern  CompileUnit cu;
 
@@ -179,6 +186,7 @@ namespace Birdee {
 	class NumberExprAST : public ExprAST {
 		NumberLiteral Val;
 	public:
+		Value* Generate();
 		virtual void Phase1();
 		NumberExprAST(const NumberLiteral& Val) : Val(Val) {}
 		void print(int level) {
@@ -212,6 +220,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Val;
 		PrototypeAST* proto;
 	public:
+		Value* Generate();
 		virtual void Phase1();
 		ReturnAST(std::unique_ptr<ExprAST>&& val, PrototypeAST* proto, SourcePos pos) : Val(std::move(val)), proto(proto){ Pos = pos; };
 		void print(int level) {

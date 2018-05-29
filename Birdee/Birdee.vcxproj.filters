@@ -53,6 +53,9 @@
     <ClCompile Include="Preprocessing.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="CodeGen.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="test.txt">
