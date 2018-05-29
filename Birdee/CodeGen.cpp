@@ -13,6 +13,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/ADT/Triple.h"
 
 #include "CompileError.h"
 #include "AST.h"
@@ -174,7 +175,7 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 			true);
 	llvm_value = v;
 	
-	v->setMetadata(LLVMContext::MD_dbg, D); //fix-me: check if this works
+	v->addDebugInfo(D); //fix-me: check if this works
 	//should look like https://releases.llvm.org/2.7/docs/SourceLevelDebugging.html#ccxx_global_variable
 }
 
@@ -197,6 +198,7 @@ void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int 
 
 llvm::Value* Birdee::VariableSingleDefAST::Generate()
 {
+	dinfo.emitLocation(this);
 	if (!llvm_value)
 	{
 		DIType* ty;
@@ -213,7 +215,6 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	if (val)
 	{
 		builder.CreateStore(val->Generate(), llvm_value);
-		dinfo.emitLocation(this);
 	}
 }
 
@@ -242,6 +243,14 @@ void Birdee::CompileUnit::InitForGenerate()
 	InitializeNativeTargetAsmParser();
 
 	module= new Module(name, context);
+
+	// Add the current debug info version into the module.
+	module->addModuleFlag(Module::Warning, "Debug Info Version",
+		DEBUG_METADATA_VERSION);
+
+	// Darwin only supports dwarf2.
+	if (Triple(sys::getProcessTriple()).isOSDarwin())
+		module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
 
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
