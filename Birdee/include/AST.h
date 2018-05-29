@@ -425,8 +425,14 @@ namespace Birdee {
 
 		std::unique_ptr<Type> type;
 		std::unique_ptr<ExprAST> val;
+		llvm::Value* llvm_value=nullptr;
 	public:
 		ResolvedType resolved_type;
+		llvm::Value* Generate();
+
+		void PreGenerateForGlobal();
+		void PreGenerateForArgument(llvm::Value* init,int argno);
+
 		void Phase1();
 		//parse the varible as a member of a class, will not add to the basic block environment
 		void Phase1InClass();

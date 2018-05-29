@@ -12,6 +12,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DIBuilder.h"
+#include "llvm/Support/TargetSelect.h"
 
 #include "CompileError.h"
 #include "AST.h"
@@ -56,8 +57,14 @@ namespace std
 typedef DIType* PDIType;
 llvm::Type* GenerateType(Birdee::ResolvedType& type, PDIType&, llvm::Type* &);
 struct LLVMHelper {
+	Function* curfunc = nullptr;
 	unordered_map<Birdee::ResolvedType, llvm::Type*> typemap;
 	unordered_map<Birdee::ResolvedType, DIType *> dtypemap;
+	llvm::Type* GetType(const Birdee::ResolvedType& ty)
+	{
+		PDIType dtype;
+		return  GetType(ty, dtype);
+	}
 	llvm::Type* GetType(const Birdee::ResolvedType& ty, PDIType& dtype)
 	{
 		auto itr = typemap.find(ty);
@@ -126,6 +133,10 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		base = type.proto_ast->GenerateFunctionType();
 		dtype = type.proto_ast->GenerateDebugType();
 		break;
+	case tok_void:
+		base = llvm::Type::getVoidTy(context);
+		dtype = DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address);
+		break;
 	case tok_class:
 		if (!type.class_ast->llvm_type)
 		{
@@ -154,8 +165,82 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 }
 
 
+void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
+{
+	DIType* ty;
+	GlobalVariable* v = new GlobalVariable(*module,helper.GetType(resolved_type,ty),false,GlobalValue::CommonLinkage,nullptr,cu.symbol_prefix+name);
+	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
+			dinfo.cu, cu.symbol_prefix + name, cu.symbol_prefix + name, dinfo.cu->getFile(), Pos.line, ty,
+			true);
+	llvm_value = v;
+	
+	v->setMetadata(LLVMContext::MD_dbg, D); //fix-me: check if this works
+	//should look like https://releases.llvm.org/2.7/docs/SourceLevelDebugging.html#ccxx_global_variable
+}
+
+void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int argno)
+{
+	DIType* ty;
+	llvm_value = builder.CreateAlloca(helper.GetType(resolved_type, ty), nullptr, name);
+	
+	// Create a debug descriptor for the variable.
+	DILocalVariable *D = DBuilder->createParameterVariable(
+		dinfo.LexicalBlocks.back(), name, argno, dinfo.cu->getFile(), Pos.line, ty,
+		true);
+	
+	DBuilder->insertDeclare(llvm_value, D, DBuilder->createExpression(),
+		DebugLoc::get(Pos.line, Pos.pos, dinfo.LexicalBlocks.back()),
+		builder.GetInsertBlock());
+
+	builder.CreateStore(init, llvm_value);
+}
+
+llvm::Value* Birdee::VariableSingleDefAST::Generate()
+{
+	if (!llvm_value)
+	{
+		DIType* ty;
+		llvm_value = builder.CreateAlloca(helper.GetType(resolved_type, ty), nullptr, name);
+
+		// Create a debug descriptor for the variable.
+		DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), name, dinfo.cu->getFile(), Pos.line, ty,
+			true);
+
+		DBuilder->insertDeclare(llvm_value, D, DBuilder->createExpression(),
+			DebugLoc::get(Pos.line, Pos.pos, dinfo.LexicalBlocks.back()),
+			builder.GetInsertBlock());
+	}
+	if (val)
+	{
+		builder.CreateStore(val->Generate(), llvm_value);
+		dinfo.emitLocation(this);
+	}
+}
+
+DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* type,SourcePos pos)
+{
+
+	// Create a subprogram DIE for this function.
+	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
+		dinfo.cu->getDirectory());
+	DIScope *FContext = Unit;
+	unsigned LineNo = pos.line;
+	unsigned ScopeLine = LineNo;
+	DISubprogram *SP = DBuilder->createFunction(
+		FContext, TheFunction->getName(), StringRef(), Unit, LineNo,
+		type,
+		false /* external linkage */, true /* definition */, ScopeLine,
+		DINode::FlagPrototyped, false);
+	TheFunction->setSubprogram(SP);
+
+}
+
 void Birdee::CompileUnit::InitForGenerate()
 {
+	InitializeNativeTarget();
+	InitializeNativeTargetAsmPrinter();
+	InitializeNativeTargetAsmParser();
+
 	module= new Module(name, context);
 
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
@@ -181,6 +266,29 @@ void Birdee::CompileUnit::InitForGenerate()
 	{
 		func.second.get().PreGenerate();
 	}
+
+	for (auto& dim : dimmap)
+	{
+		dim.second.get().PreGenerateForGlobal();
+	}
+
+	FunctionType *FT =
+		FunctionType::get(llvm::Type::getVoidTy(context),false);
+
+	Function *F =Function::Create(FT, Function::ExternalLinkage, cu.symbol_prefix+"main", module);
+	BasicBlock *BB = BasicBlock::Create(context, "entry", F);
+	builder.SetInsertPoint(BB);
+	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
+	DISubroutineType* functy= DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
+	auto dbginfo=PrepareFunctionDebugInfo(F, functy, SourcePos(1, 1));
+
+	// Push the current scope.
+	dinfo.LexicalBlocks.push_back(dbginfo);
+	for (auto& stmt : toplevel)
+	{
+		stmt->Generate();
+	}
+	dinfo.LexicalBlocks.pop_back();
 
 	// Finalize the debug info.
 	DBuilder->finalize();
