@@ -32,6 +32,10 @@ namespace std
 namespace llvm
 {
 	class Value;
+	class Function;
+	class FunctionType;
+	class StructType;
+	class DIType;
 }
 namespace Birdee {
 	using std::string;
@@ -97,6 +101,8 @@ namespace Birdee {
 		{
 
 		}
+		ResolvedType(ClassAST* cls) :type(tok_class), index_level(0), class_ast(cls)
+		{	}
 		bool isReference()
 		{
 			return 	index_level >0 || type == tok_class || type==tok_null;
@@ -172,6 +178,7 @@ namespace Birdee {
 	public:
 		string filename;
 		string name;
+		string symbol_prefix;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
@@ -487,10 +494,14 @@ namespace Birdee {
 		std::unique_ptr<VariableDefAST> Args;
 		std::unique_ptr<Type> RetType;
 		SourcePos pos;
+		
 	public:
+		ClassAST * cls;
 		friend bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
+		llvm::FunctionType* GenerateFunctionType();
+		llvm::DIType* GenerateDebugType();
 		//Put the definitions of arguments into a vector
 		//resolve the types in the arguments and the returned value 
 		void Phase0()
@@ -516,8 +527,8 @@ namespace Birdee {
 				dim->Phase1();
 			}
 		}
-		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,SourcePos pos)
-			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos) {}
+		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos)
+			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls) {}
 
 		const std::string &GetName() const { return Name; }
 		void print(int level)
@@ -538,6 +549,8 @@ namespace Birdee {
 		ASTBasicBlock Body;
 		bool isDeclare;
 	public:
+		llvm::Function* llvm_func=nullptr;
+		void PreGenerate();
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
@@ -624,16 +637,20 @@ namespace Birdee {
 		std::vector<MemberFunctionDef> funcs;
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
-
+		llvm::StructType* llvm_type=nullptr;
+		llvm::DIType* llvm_dtype = nullptr;
 		ClassAST(const std::string& name,
-			std::vector<FieldDef>&& fields, std::vector<MemberFunctionDef>&& funcs,
-			unordered_map<reference_wrapper<const string>, int> fieldmap,
-			unordered_map<reference_wrapper<const string>, int> funcmap,
 			SourcePos pos)
-			: name(name), fields(std::move(fields)), funcs(std::move(funcs)),
-			fieldmap(std::move(fieldmap)), funcmap(std::move(funcmap)) {
+			: name(name) {
 			Pos = pos;
 		}
+
+		const string& GetUniqueName()
+		{
+			return cu.symbol_prefix + name;
+		}
+		void PreGenerate();
+		void PreGenerateFuncs();
 
 		//run phase0 in all members
 		void Phase0()
