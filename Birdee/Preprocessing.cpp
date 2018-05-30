@@ -397,8 +397,9 @@ namespace Birdee
 		{
 			if (val.get())
 			{
-				val->Phase1();
-				val = FixTypeForAssignment(resolved_type, std::move(val), Pos);
+				throw CompileError(Pos.line, Pos.pos, "Member field of class cannot have initializer");
+				//val->Phase1();
+				//val = FixTypeForAssignment(resolved_type, std::move(val), Pos);
 			}
 		}
 	}

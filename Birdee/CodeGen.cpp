@@ -56,9 +56,11 @@ namespace std
 }
 
 typedef DIType* PDIType;
-llvm::Type* GenerateType(Birdee::ResolvedType& type, PDIType&, llvm::Type* &);
+bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base);
 struct LLVMHelper {
-	Function* curfunc = nullptr;
+	Function* cur_llvm_func = nullptr;
+	ClassAST* cur_class_ast = nullptr;
+
 	unordered_map<Birdee::ResolvedType, llvm::Type*> typemap;
 	unordered_map<Birdee::ResolvedType, DIType *> dtypemap;
 	llvm::Type* GetType(const Birdee::ResolvedType& ty)
@@ -127,7 +129,7 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		dtype =DBuilder->createBasicType("double", 64, dwarf::DW_ATE_float);
 		break;
 	case tok_pointer:
-		base = llvm::Type::getInt8Ty(context);
+		base = llvm::Type::getInt8PtrTy(context);
 		dtype = DBuilder->createBasicType("pointer", 64, dwarf::DW_ATE_address);
 		break;
 	case tok_func:
@@ -214,7 +216,11 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	}
 	if (val)
 	{
-		builder.CreateStore(val->Generate(), llvm_value);
+		return builder.CreateStore(val->Generate(), llvm_value);
+	}
+	else
+	{
+		return builder.CreateStore(Constant::getNullValue(llvm_value->getType()->getPointerElementType()), llvm_value);
 	}
 }
 
@@ -233,7 +239,7 @@ DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* 
 		false /* external linkage */, true /* definition */, ScopeLine,
 		DINode::FlagPrototyped, false);
 	TheFunction->setSubprogram(SP);
-
+	return SP;
 }
 
 void Birdee::CompileUnit::InitForGenerate()
@@ -363,15 +369,131 @@ void Birdee::ClassAST::PreGenerateFuncs()
 		func.decl->PreGenerate();
 	}
 }
-void Birdee::FunctionAST::PreGenerate()
+DIType* Birdee::FunctionAST::PreGenerate()
 {
 	if (llvm_func)
-		return;
+		return helper.dtypemap[resolved_type];
 	string prefix = cu.symbol_prefix;
 	if (Proto->cls)
 		prefix += "." + Proto->cls->name + ".";
 	llvm_func = Function::Create(Proto->GenerateFunctionType(), Function::ExternalLinkage, prefix + Proto->GetName(), module);
-	helper.dtypemap[resolved_type] = Proto->GenerateDebugType();
+	DIType* ret = Proto->GenerateDebugType();
+	helper.dtypemap[resolved_type] = ret;
+	return ret;
+}
+
+void Birdee::ASTBasicBlock::Generate()
+{
+	for (auto& stmt : body)
+	{
+		stmt->Generate();
+	}
+}
+
+llvm::Value * Birdee::ThisExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	return helper.cur_llvm_func->args().begin();
+}
+
+llvm::Value * Birdee::FunctionAST::Generate()
+{
+	DISubroutineType* functy=(DISubroutineType*)PreGenerate();
+
+	auto dbginfo = PrepareFunctionDebugInfo(llvm_func, functy, Pos);
+
+	if (!isDeclare)
+	{
+		auto IP = builder.saveIP();
+		auto func_backup = helper.cur_llvm_func;
+		BasicBlock *BB = BasicBlock::Create(context, "entry", llvm_func);
+		builder.SetInsertPoint(BB);
+
+		dinfo.emitLocation(this);
+		int i = 0;
+		auto itr = llvm_func->args().begin();
+		if (Proto->cls)
+			itr++;
+		for (;itr!= llvm_func->args().end();itr++)
+		{
+			Proto->resolved_args[i]->PreGenerateForArgument(itr, i+1);
+			i++;
+		}
+
+		dinfo.LexicalBlocks.push_back(dbginfo);
+		Body.Generate();
+		dinfo.LexicalBlocks.pop_back();
+		builder.restoreIP(IP);
+		helper.cur_llvm_func=func_backup;
+	}
+	return llvm_func;
+}
+
+llvm::Value * Birdee::IdentifierExprAST::Generate()
+{
+	return impl->Generate();
+}
+
+llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	return def->llvm_func;
+}
+
+StructType* GetStringType()
+{
+	static StructType* cls_string = nullptr;
+	if (cls_string)
+		return cls_string;
+	string str = "string";
+	return cu.classmap.find(str)->second.get().llvm_type;
+}
+
+llvm::Value * Birdee::StringLiteralAST::Generate()
+{
+	static unordered_map<reference_wrapper<const string>, GlobalVariable*> stringpool;
+	dinfo.emitLocation(this);
+	auto itr = stringpool.find(Val);
+	if (itr != stringpool.end())
+	{
+		return itr->second;
+	}
+	Constant * str = ConstantDataArray::getString(context, Val);
+	GlobalVariable* vstr = new GlobalVariable(str->getType(), true, GlobalValue::PrivateLinkage, str);
+	vstr->setAlignment(1);
+
+	std::vector<Constant*> const_ptr_5_indices;
+	ConstantInt* const_int64_6 = ConstantInt::get(context, APInt(64, 0));
+	const_ptr_5_indices.push_back(const_int64_6);
+	const_ptr_5_indices.push_back(const_int64_6);
+	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(llvm::Type::getInt8PtrTy(context),vstr, const_ptr_5_indices);
+
+
+	Constant * obj= llvm::ConstantStruct::get(GetStringType(),{
+		const_ptr_5,
+		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length(),true))
+		});
+	GlobalVariable* vobj = new GlobalVariable(GetStringType(), true, GlobalValue::PrivateLinkage, obj);
+	stringpool[Val] = vobj;
+	return vobj;
+}
+
+llvm::Value * Birdee::LocalVarExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	return builder.CreateLoad(def->llvm_value);
+}
+
+llvm::Value * Birdee::AddressOfExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
+}
+
+llvm::Value * Birdee::VariableMultiDefAST::Generate()
+{
+	assert(0 && "Encounter VariableMultiDefAST generation");
+	return nullptr;
 }
 
 Value * Birdee::NumberExprAST::Generate()

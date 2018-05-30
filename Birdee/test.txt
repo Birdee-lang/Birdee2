@@ -29,7 +29,7 @@ a=3
 declare function puts (str as pointer) as int
 
 class string
-	private buf as int[]
+	private buf as pointer
 	private len as int
 	public function length() as int
 		return len

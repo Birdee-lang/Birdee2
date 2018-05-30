@@ -240,6 +240,7 @@ namespace Birdee {
 		std::string Val;
 	public:
 		virtual void Phase1();
+		llvm::Value* Generate();
 		StringLiteralAST(const std::string& Val) : Val(Val) {}
 		void print(int level) { ExprAST::print(level); std::cout << "\"" << Val << "\"\n"; }
 	};
@@ -254,6 +255,7 @@ namespace Birdee {
 	public:
 		unique_ptr<ResolvedIdentifierExprAST> impl;
 		void Phase1();
+		llvm::Value* Generate();
 		IdentifierExprAST(const std::string &Name) : Name(Name) {}
 		void print(int level) { ExprAST::print(level); std::cout << "Identifier:" << Name << "\n"; }
 	};
@@ -264,6 +266,7 @@ namespace Birdee {
 		bool isMutable() { return true; }
 		LocalVarExprAST(VariableSingleDefAST* def) :def(def) { Phase1(); }
 		void Phase1();
+		llvm::Value* Generate();
 	};
 
 	class ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
@@ -272,11 +275,13 @@ namespace Birdee {
 		bool isMutable() { return false; }
 		ResolvedFuncExprAST(FunctionAST* def) :def(def) { Phase1(); }
 		void Phase1();
+		llvm::Value* Generate();
 	};
 
 	class ThisExprAST : public ExprAST {
 	public:
 		void Phase1();
+		llvm::Value* Generate();
 		ThisExprAST()   {}
 		ThisExprAST(ClassAST* cls) { resolved_type.type = tok_class; resolved_type.class_ast = cls; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
@@ -293,6 +298,7 @@ namespace Birdee {
 		std::vector<std::unique_ptr<StatementAST>> body;
 		void Phase1();
 		void Phase1(PrototypeAST* proto);
+		void Generate();
 		void print(int level)
 		{
 			for (auto&& s : body)
@@ -375,6 +381,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> expr;
 	public:
 		void Phase1();
+		llvm::Value* Generate();
 		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, SourcePos Pos)
 			: expr(std::move(Expr)){
 			this->Pos = Pos;
@@ -425,8 +432,9 @@ namespace Birdee {
 
 		std::unique_ptr<Type> type;
 		std::unique_ptr<ExprAST> val;
-		llvm::Value* llvm_value=nullptr;
+		
 	public:
+		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
 		llvm::Value* Generate();
 
@@ -471,6 +479,7 @@ namespace Birdee {
 			for (auto& a : lst)
 				a->Phase1();
 		}
+		llvm::Value* Generate();
 		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
@@ -556,7 +565,8 @@ namespace Birdee {
 		bool isDeclare;
 	public:
 		llvm::Function* llvm_func=nullptr;
-		void PreGenerate();
+		llvm::DIType* PreGenerate();
+		llvm::Value* Generate();
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
@@ -651,7 +661,7 @@ namespace Birdee {
 			Pos = pos;
 		}
 
-		const string& GetUniqueName()
+		string GetUniqueName()
 		{
 			return cu.symbol_prefix + name;
 		}
