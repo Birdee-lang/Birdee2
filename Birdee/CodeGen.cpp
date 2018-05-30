@@ -171,7 +171,9 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 {
 	DIType* ty;
-	GlobalVariable* v = new GlobalVariable(*module,helper.GetType(resolved_type,ty),false,GlobalValue::CommonLinkage,nullptr,cu.symbol_prefix+name);
+	auto type=helper.GetType(resolved_type, ty);
+	GlobalVariable* v = new GlobalVariable(*module, type,false,GlobalValue::CommonLinkage,
+		Constant::getNullValue(type),cu.symbol_prefix+name);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
 			dinfo.cu, cu.symbol_prefix + name, cu.symbol_prefix + name, dinfo.cu->getFile(), Pos.line, ty,
 			true);
@@ -456,7 +458,7 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 	auto itr = stringpool.find(Val);
 	if (itr != stringpool.end())
 	{
-		return itr->second;
+		return builder.CreateLoad(itr->second);
 	}
 	Constant * str = ConstantDataArray::getString(context, Val);
 	GlobalVariable* vstr = new GlobalVariable(str->getType(), true, GlobalValue::PrivateLinkage, str);
@@ -475,7 +477,7 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 		});
 	GlobalVariable* vobj = new GlobalVariable(GetStringType(), true, GlobalValue::PrivateLinkage, obj);
 	stringpool[Val] = vobj;
-	return vobj;
+	return builder.CreateLoad(vobj);
 }
 
 llvm::Value * Birdee::LocalVarExprAST::Generate()

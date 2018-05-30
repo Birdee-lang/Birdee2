@@ -170,14 +170,22 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 	return nullptr;
 }
 
+void FixNull(ExprAST* v, ResolvedType& target)
+{
+	NullExprAST* expr = dynamic_cast<NullExprAST*>(v);
+	assert(expr);
+	expr->resolved_type = target;
+}
+
 unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAST>&& val,SourcePos pos)
 {
 	if (target == val->resolved_type)
 	{
 		return std::move(val);
 	}
-	if (target.type == tok_class && val->resolved_type.type == tok_null)
+	if ( target.isReference() && val->resolved_type.isNull())
 	{
+		FixNull(val.get(), target);
 		return std::move(val);
 	}
 #define fix_type(typeto) FixTypeForAssignment2<typeto>(target,std::move(val),pos)
@@ -532,14 +540,20 @@ namespace Birdee
 			resolved_type.type = tok_void;
 			return;
 		}
-		if (Op == tok_equal)
+		if (Op == tok_equal || Op == tok_ne)
 		{
 			if (LHS->resolved_type == RHS->resolved_type)
 				resolved_type.type = tok_boolean;
-			else if(LHS->resolved_type.isNull() && RHS->resolved_type.isReference())
+			else if (LHS->resolved_type.isNull() && RHS->resolved_type.isReference())
+			{
+				FixNull(LHS.get(), RHS->resolved_type);
 				resolved_type.type = tok_boolean;
+			}
 			else if (RHS->resolved_type.isNull() && LHS->resolved_type.isReference())
+			{
+				FixNull(RHS.get(), LHS->resolved_type);
 				resolved_type.type = tok_boolean;
+			}
 			else
 				resolved_type.type=PromoteNumberExpression(LHS, RHS, true, Pos);
 		}
