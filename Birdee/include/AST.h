@@ -119,6 +119,11 @@ namespace Birdee {
 				|| type == tok_ulong
 				|| type == tok_uint;
 		}
+		bool isSigned()
+		{
+			return 	index_level == 0 && type == tok_int
+				|| type == tok_long;
+		}
 		bool isNumber() const
 		{
 			return 	index_level == 0 && type == tok_int
@@ -164,6 +169,7 @@ namespace Birdee {
 	class ExprAST : public StatementAST {
 	public:
 		ResolvedType resolved_type;
+		virtual llvm::Value* GetLValue() { return nullptr; };
 		virtual ~ExprAST() = default;
 		void print(int level) {
 			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
@@ -255,18 +261,10 @@ namespace Birdee {
 	public:
 		unique_ptr<ResolvedIdentifierExprAST> impl;
 		void Phase1();
+		llvm::Value * GetLValue() override { return impl->GetLValue(); };
 		llvm::Value* Generate();
 		IdentifierExprAST(const std::string &Name) : Name(Name) {}
 		void print(int level) { ExprAST::print(level); std::cout << "Identifier:" << Name << "\n"; }
-	};
-
-	class LocalVarExprAST : public ResolvedIdentifierExprAST {
-		VariableSingleDefAST* def;
-	public:
-		bool isMutable() { return true; }
-		LocalVarExprAST(VariableSingleDefAST* def) :def(def) { Phase1(); }
-		void Phase1();
-		llvm::Value* Generate();
 	};
 
 	class ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
@@ -289,6 +287,7 @@ namespace Birdee {
 	class NullExprAST : public ExprAST {
 	public:
 		void Phase1() {};
+		llvm::Value* Generate();
 		NullExprAST() { resolved_type.type = tok_null; }
 		void print(int level) { ExprAST::print(level); std::cout << "null" << "\n"; }
 	};
@@ -298,7 +297,7 @@ namespace Birdee {
 		std::vector<std::unique_ptr<StatementAST>> body;
 		void Phase1();
 		void Phase1(PrototypeAST* proto);
-		void Generate();
+		bool Generate();
 		void print(int level)
 		{
 			for (auto&& s : body)
@@ -313,6 +312,7 @@ namespace Birdee {
 		ASTBasicBlock iffalse;
 	public:
 		void Phase1();
+		llvm::Value* Generate();
 		IfBlockAST(std::unique_ptr<ExprAST>&& cond,
 			ASTBasicBlock&& iftrue,
 			ASTBasicBlock&& iffalse,
@@ -346,7 +346,7 @@ namespace Birdee {
 		}
 
 		void Phase1();
-
+		llvm::Value* Generate();
 		void print(int level) {
 			ExprAST::print(level);
 			std::cout << "OP:" << GetTokenString(Op) << "\n";
@@ -360,6 +360,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Expr, Index;
 	public:
 		void Phase1();
+		llvm::Value* Generate();
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
 			std::unique_ptr<ExprAST>&& Index, SourcePos Pos)
 			: Expr(std::move(Expr)), Index(std::move(Index)) {
@@ -400,6 +401,7 @@ namespace Birdee {
 
 	public:
 		void Phase1();
+		llvm::Value* Generate();
 		void print(int level)
 		{
 			ExprAST::print(level); std::cout << "Call\n";
@@ -437,7 +439,6 @@ namespace Birdee {
 		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
 		llvm::Value* Generate();
-
 		void PreGenerateForGlobal();
 		void PreGenerateForArgument(llvm::Value* init,int argno);
 
@@ -499,6 +500,15 @@ namespace Birdee {
 		}
 	};
 
+	class LocalVarExprAST : public ResolvedIdentifierExprAST {
+		VariableSingleDefAST* def;
+	public:
+		bool isMutable() { return true; }
+		LocalVarExprAST(VariableSingleDefAST* def) :def(def) { Phase1(); }
+		void Phase1();
+		llvm::Value* Generate();
+		llvm::Value* GetLValue() override { return def->llvm_value; };
+	};
 
 	/// PrototypeAST - This class represents the "prototype" for a function,
 	/// which captures its name, and its argument names (thus implicitly the number
@@ -615,6 +625,7 @@ namespace Birdee {
 	class FieldDef
 	{
 	public:
+		int index;
 		AccessModifier access;
 		std::unique_ptr<VariableSingleDefAST> decl;
 		void print(int level)
@@ -627,7 +638,7 @@ namespace Birdee {
 				std::cout << "public variable";
 			decl->print(level);
 		}
-		FieldDef(AccessModifier access, std::unique_ptr<VariableSingleDefAST>&& decl) :access(access), decl(std::move(decl)) {}
+		FieldDef(AccessModifier access, std::unique_ptr<VariableSingleDefAST>&& decl,int index) :access(access), decl(std::move(decl)),index(index) {}
 	};
 	class MemberFunctionDef
 	{
@@ -648,6 +659,7 @@ namespace Birdee {
 	};
 	class ClassAST : public StatementAST {
 	public:
+		llvm::Value* Generate();
 		std::string name;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
@@ -708,6 +720,9 @@ namespace Birdee {
 			FieldDef* field;
 		};
 	public:
+		llvm::Value* llvm_obj = nullptr;
+		llvm::Value* Generate();
+		llvm::Value* GetLValue() override;
 		enum
 		{
 			member_error,

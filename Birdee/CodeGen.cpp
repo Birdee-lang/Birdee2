@@ -12,12 +12,19 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DIBuilder.h"
+#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Target/TargetOptions.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/IR/Verifier.h"
 
 #include "CompileError.h"
 #include "AST.h"
 #include <cassert>
+#include "CastAST.h"
 
 using namespace llvm;
 using Birdee::CompileError;
@@ -36,9 +43,17 @@ static llvm::Type* ty_long = IntegerType::getInt64Ty(context);
 struct DebugInfo {
 	DICompileUnit *cu;
 	std::vector<DIScope *> LexicalBlocks;
-
+	DIBasicType* GetIntType()
+	{
+		DIBasicType* ret = nullptr;
+		if (ret)
+			return ret;
+		ret = DBuilder->createBasicType("uint", 32, dwarf::DW_ATE_unsigned);
+		return ret;
+	}
 	void emitLocation(Birdee::StatementAST *AST);
 } dinfo;
+
 
 namespace std
 {
@@ -53,6 +68,15 @@ namespace std
 			return has(v);
 		}
 	};
+}
+
+template<typename T>
+void Print(T* v)
+{
+	std::string type_str;
+	llvm::raw_string_ostream rso(type_str);
+	v->print(rso);
+	std::cout << rso.str();
 }
 
 typedef DIType* PDIType;
@@ -72,7 +96,10 @@ struct LLVMHelper {
 	{
 		auto itr = typemap.find(ty);
 		if (itr != typemap.end())
+		{
+			dtype = dtypemap[ty];
 			return itr->second;
+		}
 		llvm::Type* ret;
 		bool resolved = GenerateType(ty, dtype,ret);
 		if (resolved)
@@ -94,6 +121,30 @@ struct LLVMHelper {
 
 } helper;
 
+void DebugInfo::emitLocation(Birdee::StatementAST *AST) {
+	DIScope *Scope;
+	if (LexicalBlocks.empty())
+		Scope = this->cu;
+	else
+		Scope = LexicalBlocks.back();
+	assert(helper.cur_llvm_func->getSubprogram() == Scope);
+	builder.SetCurrentDebugLocation(
+		DebugLoc::get(AST->Pos.line, AST->Pos.pos, Scope));
+}
+
+
+llvm::Type* BuildArrayType(llvm::Type* ty, DIType* & dty,string& name,DIType* & outdtype)
+{
+	vector<llvm::Type*> types{llvm::Type::getInt32Ty(context),ArrayType::get(ty,0)};
+	SmallVector<Metadata *, 8> dtypes{ dinfo.GetIntType(),DBuilder->createArrayType(0, 0, dty,{}) }; //fix-me: what is the last parameter for???
+
+	name +="[]";
+	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
+		dinfo.cu->getDirectory());
+	outdtype = DBuilder->createStructType(dinfo.cu, name, Unit, 0, 128, 64, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+	return  StructType::create(context, types, name);
+
+}
 
 bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base)
 {
@@ -158,10 +209,10 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	}
 	if (type.index_level > 0)
 	{
+		string name = base->getStructName();
 		for (int i = 0; i < type.index_level; i++)
 		{
-			dtype=DBuilder->createPointerType(dtype, 64);
-			base = base->getPointerTo();
+			base=BuildArrayType(base, dtype, name, dtype);
 		}	
 	}
 	return resolved;
@@ -218,7 +269,8 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	}
 	if (val)
 	{
-		return builder.CreateStore(val->Generate(), llvm_value);
+		auto v = val->Generate();
+		return builder.CreateStore(v, llvm_value);
 	}
 	else
 	{
@@ -246,11 +298,15 @@ DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* 
 
 void Birdee::CompileUnit::InitForGenerate()
 {
+	//InitializeNativeTargetInfo();
 	InitializeNativeTarget();
-	InitializeNativeTargetAsmPrinter();
+	//InitializeNativeTargetMC();
 	InitializeNativeTargetAsmParser();
+	InitializeNativeTargetAsmPrinter();
 
 	module= new Module(name, context);
+	auto TargetTriple = sys::getDefaultTargetTriple();
+	module->setTargetTriple(TargetTriple);
 
 	// Add the current debug info version into the module.
 	module->addModuleFlag(Module::Warning, "Debug Info Version",
@@ -298,12 +354,17 @@ void Birdee::CompileUnit::InitForGenerate()
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
 	DISubroutineType* functy= DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
 	auto dbginfo=PrepareFunctionDebugInfo(F, functy, SourcePos(1, 1));
-
+	helper.cur_llvm_func = F;
 	// Push the current scope.
 	dinfo.LexicalBlocks.push_back(dbginfo);
 	for (auto& stmt : toplevel)
 	{
 		stmt->Generate();
+	}
+	if (toplevel.empty() || !instance_of<ReturnAST>(toplevel.back().get()))
+	{
+		dinfo.emitLocation(toplevel.back().get());
+		builder.CreateRetVoid();
 	}
 	dinfo.LexicalBlocks.pop_back();
 
@@ -312,6 +373,58 @@ void Birdee::CompileUnit::InitForGenerate()
 
 	// Print out all of the generated code.
 	module->print(errs(), nullptr);
+
+	verifyModule(*module);
+
+	for (Function& f : module->functions())
+	{
+		std::cout<<&f<<" "<<string(f.getName())<<"\n";
+	}
+
+	std::string Error;
+	auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
+
+	// Print an error and exit if we couldn't find the requested target.
+	// This generally occurs if we've forgotten to initialise the
+	// TargetRegistry or we have a bogus target triple.
+	if (!Target) {
+		errs() << Error;
+		return ;
+	}
+
+	auto CPU = "generic";
+	auto Features = "";
+
+	TargetOptions opt;
+	auto RM = Optional<Reloc::Model>();
+	auto TheTargetMachine =
+		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+
+	module->setDataLayout(TheTargetMachine->createDataLayout());
+
+	auto Filename = "output.obj";
+	std::error_code EC;
+	raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
+
+	if (EC) {
+		errs() << "Could not open file: " << EC.message();
+		return ;
+	}
+
+	legacy::PassManager pass;
+	auto FileType = TargetMachine::CGFT_ObjectFile;
+
+	if (TheTargetMachine->addPassesToEmitFile(pass, dest,  FileType)) {
+		errs() << "TheTargetMachine can't emit a file of this type";
+		return ;
+	}
+
+	pass.run(*module);
+	dest.flush();
+
+	outs() << "Wrote " << Filename << "\n";
+	dest.flush();
+
 }
 
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
@@ -348,6 +461,8 @@ DIType * Birdee::PrototypeAST::GenerateDebugType()
 
 void Birdee::ClassAST::PreGenerate()
 {
+	if (llvm_type)
+		return;
 	vector<llvm::Type*> types;
 	SmallVector<Metadata *, 8> dtypes;
 
@@ -377,19 +492,24 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return helper.dtypemap[resolved_type];
 	string prefix = cu.symbol_prefix;
 	if (Proto->cls)
-		prefix += "." + Proto->cls->name + ".";
+		prefix += Proto->cls->name + ".";
 	llvm_func = Function::Create(Proto->GenerateFunctionType(), Function::ExternalLinkage, prefix + Proto->GetName(), module);
 	DIType* ret = Proto->GenerateDebugType();
 	helper.dtypemap[resolved_type] = ret;
 	return ret;
 }
 
-void Birdee::ASTBasicBlock::Generate()
+bool Birdee::ASTBasicBlock::Generate()
 {
 	for (auto& stmt : body)
 	{
 		stmt->Generate();
 	}
+	if (!body.empty() && instance_of<ReturnAST>(body.back().get()))
+	{
+		return true;
+	}
+	return false;
 }
 
 llvm::Value * Birdee::ThisExprAST::Generate()
@@ -406,8 +526,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 	if (!isDeclare)
 	{
+		dinfo.LexicalBlocks.push_back(dbginfo);
 		auto IP = builder.saveIP();
 		auto func_backup = helper.cur_llvm_func;
+		helper.cur_llvm_func = llvm_func;
 		BasicBlock *BB = BasicBlock::Create(context, "entry", llvm_func);
 		builder.SetInsertPoint(BB);
 
@@ -422,8 +544,15 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			i++;
 		}
 
-		dinfo.LexicalBlocks.push_back(dbginfo);
-		Body.Generate();
+		
+		bool hasret=Body.Generate();
+		if (!hasret)
+		{
+			if (resolved_type.proto_ast->resolved_type.type == tok_void)
+				builder.CreateRetVoid();
+			else
+				builder.CreateRet(Constant::getNullValue(llvm_func->getReturnType()));
+		}			
 		dinfo.LexicalBlocks.pop_back();
 		builder.restoreIP(IP);
 		helper.cur_llvm_func=func_backup;
@@ -458,26 +587,29 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 	auto itr = stringpool.find(Val);
 	if (itr != stringpool.end())
 	{
-		return builder.CreateLoad(itr->second);
+		return itr->second;
 	}
+	
 	Constant * str = ConstantDataArray::getString(context, Val);
-	GlobalVariable* vstr = new GlobalVariable(str->getType(), true, GlobalValue::PrivateLinkage, str);
+	GlobalVariable* vstr = new GlobalVariable(*module,str->getType(), true, GlobalValue::PrivateLinkage, nullptr);
 	vstr->setAlignment(1);
-
+	vstr->setInitializer(str);
+	//vstr->print(errs(), true);
 	std::vector<Constant*> const_ptr_5_indices;
 	ConstantInt* const_int64_6 = ConstantInt::get(context, APInt(64, 0));
 	const_ptr_5_indices.push_back(const_int64_6);
 	const_ptr_5_indices.push_back(const_int64_6);
-	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(llvm::Type::getInt8PtrTy(context),vstr, const_ptr_5_indices);
-
+	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr,vstr, const_ptr_5_indices);
+	//const_ptr_5->print(errs(), true);
 
 	Constant * obj= llvm::ConstantStruct::get(GetStringType(),{
 		const_ptr_5,
 		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length(),true))
 		});
-	GlobalVariable* vobj = new GlobalVariable(GetStringType(), true, GlobalValue::PrivateLinkage, obj);
+	GlobalVariable* vobj = new GlobalVariable(*module, GetStringType(), true, GlobalValue::PrivateLinkage, nullptr);
+	vobj->setInitializer(obj);
 	stringpool[Val] = vobj;
-	return builder.CreateLoad(vobj);
+	return vobj;
 }
 
 llvm::Value * Birdee::LocalVarExprAST::Generate()
@@ -494,7 +626,8 @@ llvm::Value * Birdee::AddressOfExprAST::Generate()
 
 llvm::Value * Birdee::VariableMultiDefAST::Generate()
 {
-	assert(0 && "Encounter VariableMultiDefAST generation");
+	for (auto& v : lst)
+		v->Generate();
 	return nullptr;
 }
 
@@ -534,3 +667,291 @@ Value * Birdee::ReturnAST::Generate()
 	Value* ret = Val->Generate();
 	return builder.CreateRet(ret);
 }
+
+llvm::Value * Birdee::NullExprAST::Generate()
+{
+	return Constant::getNullValue(helper.GetType(resolved_type));
+}
+
+llvm::Value * Birdee::IndexExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	Value* arr = Expr->Generate();
+	Value* index = Index->Generate();
+	auto ptr=builder.CreateGEP(arr, {builder.getInt32(0),builder.getInt32(1),builder.getInt32(0) });
+	return builder.CreateLoad(builder.CreateGEP(ptr, index));
+}
+
+llvm::Value * Birdee::CallExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	auto func=Callee->Generate();
+	assert(Callee->resolved_type.type == tok_func);
+	vector<Value*> args;
+	if (Callee->resolved_type.proto_ast->cls)
+	{
+		auto pobj = dynamic_cast<MemberExprAST*>(Callee.get());
+		assert(pobj);
+		args.push_back(pobj->llvm_obj);
+	}
+	for (auto& vargs : Args)
+	{
+		args.push_back(vargs->Generate());
+	}
+	return builder.CreateCall(func, args);
+}
+
+llvm::Value * Birdee::MemberExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	llvm_obj = Obj->Generate();
+	if (kind == member_field)
+	{
+		return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
+	}
+	else if (kind == member_function)
+	{
+		return func->decl->llvm_func;
+	}
+	else
+	{
+		assert(0 && "Error kind of expression");
+	}
+	return nullptr;
+}
+
+void SafeBr( BasicBlock* cont)
+{
+	if (builder.GetInsertBlock()->getInstList().empty() || !builder.GetInsertBlock()->getInstList().back().isTerminator())
+		builder.CreateBr(cont);
+}
+
+llvm::Value * Birdee::IfBlockAST::Generate()
+{
+	dinfo.emitLocation(this);
+	
+	auto bt = BasicBlock::Create(context, "if_t", helper.cur_llvm_func);
+	auto bf = BasicBlock::Create(context, "if_f", helper.cur_llvm_func);
+	auto cont = BasicBlock::Create(context, "cont", helper.cur_llvm_func);
+
+	auto condv = cond->Generate();
+
+	builder.CreateCondBr(condv,bt,bf);
+	builder.SetInsertPoint(bt);
+	bool hasret=iftrue.Generate();
+	if(!hasret)
+		SafeBr(cont);
+
+	if (!iffalse.body.empty())
+	{
+		builder.SetInsertPoint(bf);
+		hasret=iffalse.Generate();
+		if (!hasret)
+			SafeBr(cont);
+	}
+	builder.SetInsertPoint(cont);
+	return nullptr;
+}
+
+llvm::Value * Birdee::ClassAST::Generate()
+{
+	PreGenerate();
+	for (auto& func : funcs)
+	{
+		func.decl->Generate();
+	}
+	return nullptr;
+}
+
+llvm::Value * Birdee::MemberExprAST::GetLValue()
+{
+	dinfo.emitLocation(this);
+	llvm_obj = Obj->Generate();
+	if(kind==member_field)
+		return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) });
+	return nullptr;
+}
+
+llvm::Value * BinaryGenerateFloat(Token op,Value* lv,Value* rv)
+{
+	switch (op)
+	{
+	case tok_add:
+		return builder.CreateFAdd(lv, rv);
+	case tok_equal:
+		return builder.CreateFCmpOEQ(lv, rv);
+	case tok_ne:
+		return builder.CreateFCmpONE(lv, rv);
+	case tok_ge:
+		return builder.CreateFCmpOGE(lv, rv);
+	case tok_le:
+		return builder.CreateFCmpOLE(lv, rv);
+	case tok_gt:
+		return builder.CreateFCmpOGT(lv, rv);
+	case tok_lt:
+		return builder.CreateFCmpOLT(lv, rv);
+	default:
+		assert(0 && "Operator not supported");
+		/*			tok_minus,
+		tok_mul,
+		tok_div,
+		tok_mod,
+		tok_assign,
+		tok_equal,
+		tok_ne,
+		tok_cmp_equal,
+		tok_ge,
+		tok_le,
+		tok_logic_and,
+		tok_logic_or,
+		tok_gt,
+		tok_lt,
+		tok_and,
+		tok_or,
+		tok_not,
+		tok_xor,*/
+	}
+	return nullptr;
+}
+
+
+llvm::Value * BinaryGenerateInt(Token op, Value* lv, Value* rv,bool issigned)
+{
+	switch (op)
+	{
+	case tok_add:
+		return builder.CreateAdd(lv, rv);
+	case tok_equal:
+		return builder.CreateICmpEQ(lv, rv);
+	case tok_ne:
+		return builder.CreateICmpNE(lv, rv);
+	case tok_ge:
+		return issigned ? builder.CreateICmpSGE(lv, rv): builder.CreateICmpUGE(lv, rv);
+	case tok_le:
+		return issigned ? builder.CreateICmpSLE(lv, rv) : builder.CreateICmpULE(lv, rv);
+	case tok_gt:
+		return issigned ? builder.CreateICmpSGT(lv, rv) : builder.CreateICmpUGT(lv, rv);
+	case tok_lt:
+		return issigned ? builder.CreateICmpSLT(lv, rv) : builder.CreateICmpULT(lv, rv);
+	default:
+		assert(0 && "Operator not supported");
+		/*			tok_minus,
+		tok_mul,
+		tok_div,
+		tok_mod,
+		tok_assign,
+		tok_equal,
+		tok_ne,
+		tok_cmp_equal,
+		tok_ge,
+		tok_le,
+		tok_logic_and,
+		tok_logic_or,
+		tok_gt,
+		tok_lt,
+		tok_and,
+		tok_or,
+		tok_not,
+		tok_xor,*/
+	}
+	return nullptr;
+}
+
+
+llvm::Value * Birdee::BinaryExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	if (Op == tok_assign)
+	{
+		Value* lv = LHS->GetLValue();
+		assert(lv);
+		builder.CreateStore(RHS->Generate(), lv);
+		return nullptr;
+	}
+	assert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber());
+	if (LHS->resolved_type.isInteger())
+	{
+		return BinaryGenerateInt(Op, LHS->Generate(), RHS->Generate(), LHS->resolved_type.isSigned());
+	}
+	else
+	{
+		return BinaryGenerateFloat(Op, LHS->Generate(), RHS->Generate());
+	}
+	return nullptr;
+}
+
+template<Token typefrom, Token typeto>
+Value* NumberCast(Value* v)
+{
+	builder.CreateSExtOrTrunc;
+	builder.CreateZExtOrTrunc; builder.CreateFPCast;
+	return nullptr;
+}
+
+template<Token typefrom, Token typeto>
+llvm::Value * Birdee::CastNumberExpr<typefrom, typeto>::Generate()
+{
+	return NumberCast<typefrom, typeto>(expr->Generate());
+}
+
+
+#define GenerateCastSame(from,to) template<> \
+Value* NumberCast<from,to>(Value* v)\
+{\
+	return v;\
+}\
+template class Birdee::CastNumberExpr<from, to>;
+
+#define GenerateCastFP2I(from,to,method,toty) template<> \
+Value* NumberCast<from,to>(Value* v)\
+{\
+	return builder.method(v, builder.toty());\
+}\
+template class Birdee::CastNumberExpr<from, to>;
+
+GenerateCastFP2I(tok_int, tok_float, CreateSIToFP, getFloatTy);
+GenerateCastFP2I(tok_long, tok_float, CreateSIToFP, getFloatTy);
+GenerateCastFP2I(tok_int, tok_double, CreateSIToFP, getDoubleTy);
+GenerateCastFP2I(tok_long, tok_double, CreateSIToFP, getDoubleTy);
+
+GenerateCastFP2I(tok_uint, tok_float, CreateUIToFP, getFloatTy);
+GenerateCastFP2I(tok_ulong, tok_float, CreateUIToFP, getFloatTy);
+GenerateCastFP2I(tok_uint, tok_double, CreateUIToFP, getDoubleTy);
+GenerateCastFP2I(tok_ulong, tok_double, CreateUIToFP, getDoubleTy);
+
+GenerateCastFP2I(tok_double, tok_int, CreateFPToSI, getInt32Ty);
+GenerateCastFP2I(tok_double, tok_long, CreateFPToSI, getInt64Ty);
+GenerateCastFP2I(tok_float, tok_int, CreateFPToSI, getInt32Ty);
+GenerateCastFP2I(tok_float, tok_long, CreateFPToSI, getInt64Ty);
+
+GenerateCastFP2I(tok_double, tok_uint, CreateFPToUI, getInt32Ty);
+GenerateCastFP2I(tok_double, tok_ulong, CreateFPToUI, getInt64Ty);
+GenerateCastFP2I(tok_float, tok_uint, CreateFPToUI, getInt32Ty);
+GenerateCastFP2I(tok_float, tok_ulong, CreateFPToUI, getInt64Ty);
+
+GenerateCastFP2I(tok_float, tok_double, CreateFPCast, getDoubleTy);
+GenerateCastFP2I(tok_double, tok_float, CreateFPCast, getFloatTy);
+
+GenerateCastSame(tok_int, tok_uint);
+GenerateCastSame(tok_long, tok_ulong);
+
+GenerateCastSame(tok_uint, tok_int);
+GenerateCastSame(tok_ulong, tok_long);
+
+GenerateCastSame(tok_ulong, tok_ulong);
+GenerateCastSame(tok_long, tok_long);
+GenerateCastSame(tok_uint, tok_uint);
+GenerateCastSame(tok_int, tok_int);
+GenerateCastSame(tok_float, tok_float);
+GenerateCastSame(tok_double, tok_double);
+
+GenerateCastFP2I(tok_int, tok_long, CreateSExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_int, tok_ulong, CreateZExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_uint, tok_long, CreateZExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_uint, tok_ulong, CreateZExtOrTrunc, getInt64Ty);
+
+GenerateCastFP2I(tok_long, tok_int, CreateSExtOrTrunc, getInt32Ty);
+GenerateCastFP2I(tok_long, tok_uint, CreateZExtOrTrunc, getInt32Ty);
+GenerateCastFP2I(tok_ulong, tok_int, CreateZExtOrTrunc, getInt32Ty);
+GenerateCastFP2I(tok_ulong, tok_uint, CreateZExtOrTrunc, getInt32Ty);
+

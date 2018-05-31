@@ -19,5 +19,6 @@ namespace Birdee
 			this->resolved_type.type = typeto;
 			assert(expr->resolved_type.type == typefrom && "expr->resolved_type.type==typefrom");
 		}
+		llvm::Value* Generate();
 	};
 }

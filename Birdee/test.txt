@@ -39,7 +39,7 @@ class string
 		return this
 	end
 	public function getRaw() as pointer
-		return addressof(buf)
+		return buf
 	end
 end class
 
@@ -63,3 +63,7 @@ ic=id
 dim str = "12312"
 str.length()
 puts(str.getRaw())
+
+function add(ia as int ,ib as int) as  int
+	return ia+ib
+end

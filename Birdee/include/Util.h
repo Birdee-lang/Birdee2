@@ -22,7 +22,7 @@ namespace Birdee
 	template<typename Derived, typename Base>
 	bool instance_of(Base* p)
 	{
-		if (Derived *result = dynamic_cast<Derived *>(base)) {
+		if (Derived *result = dynamic_cast<Derived *>(p)) {
 			return true;
 		}
 		return false;
