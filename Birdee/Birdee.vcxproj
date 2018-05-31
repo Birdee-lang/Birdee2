@@ -170,6 +170,7 @@
   <ItemGroup>
     <ClCompile Include="Birdee.cpp" />
     <ClCompile Include="CodeGen.cpp" />
+    <ClCompile Include="NumberCast.cpp" />
     <ClCompile Include="Preprocessing.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

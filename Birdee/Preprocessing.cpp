@@ -88,17 +88,17 @@ public:
 		auto bb = FindLocalVar(name);
 		if (bb)
 		{
-			return make_unique<LocalVarExprAST>(bb);
+			return make_unique<LocalVarExprAST>(bb,pos);
 		}
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
 		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back()), cls_field);
+			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(),pos), cls_field,pos);
 		}
 		auto func_field = FindFuncInClass(name);
 		if (func_field)
 		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back()), func_field);
+			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(),pos), func_field,pos);
 		}
 		/*if (basic_blocks.size() != 1) // top-level variable finding disabled
 		{
@@ -111,7 +111,7 @@ public:
 		auto func = cu.funcmap.find(name);
 		if (func != cu.funcmap.end())
 		{
-			return make_unique<ResolvedFuncExprAST>(&(func->second.get()));
+			return make_unique<ResolvedFuncExprAST>(&(func->second.get()),pos);
 		}
 		throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
 		return nullptr;
@@ -153,17 +153,17 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 	switch (val->resolved_type.type)
 	{
 	case tok_int:
-		return make_unique<CastNumberExpr<tok_int, typeto>>(std::move(val));
+		return make_unique<CastNumberExpr<tok_int, typeto>>(std::move(val),pos);
 	case tok_long:
-		return make_unique<CastNumberExpr<tok_long, typeto>>(std::move(val));
+		return make_unique<CastNumberExpr<tok_long, typeto>>(std::move(val),pos);
 	case tok_ulong:
-		return make_unique<CastNumberExpr<tok_ulong, typeto>>(std::move(val));
+		return make_unique<CastNumberExpr<tok_ulong, typeto>>(std::move(val),pos);
 	case tok_uint:
-		return make_unique<CastNumberExpr<tok_uint, typeto>>(std::move(val));
+		return make_unique<CastNumberExpr<tok_uint, typeto>>(std::move(val),pos);
 	case tok_float:
-		return make_unique<CastNumberExpr<tok_float, typeto>>(std::move(val));
+		return make_unique<CastNumberExpr<tok_float, typeto>>(std::move(val),pos);
 	case tok_double:
-		return make_unique<CastNumberExpr<tok_double, typeto>>(std::move(val));
+		return make_unique<CastNumberExpr<tok_double, typeto>>(std::move(val),pos);
 
 	}
 	ThrowCastError(target, val->resolved_type, pos);
@@ -534,6 +534,8 @@ namespace Birdee
 				CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
 			else if (MemberExprAST* memexpr = dynamic_cast<MemberExprAST*>(LHS.get()))
 				CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
+			else if (instance_of<IndexExprAST>(LHS.get()))
+			{}
 			else
 				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);

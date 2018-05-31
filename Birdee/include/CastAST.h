@@ -14,8 +14,9 @@ namespace Birdee
 			ExprAST::print(level); std::cout << "Cast " << GetTokenString(typefrom) << " -> " << GetTokenString(typeto) << "\n";
 			expr->print(level + 1);
 		}
-		CastNumberExpr(unique_ptr<ExprAST>&& _expr):expr(std::move(_expr))
+		CastNumberExpr(unique_ptr<ExprAST>&& _expr , SourcePos pos):expr(std::move(_expr))
 		{
+			Pos = pos;
 			this->resolved_type.type = typeto;
 			assert(expr->resolved_type.type == typefrom && "expr->resolved_type.type==typefrom");
 		}

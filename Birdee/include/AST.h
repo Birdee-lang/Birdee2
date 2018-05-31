@@ -271,7 +271,7 @@ namespace Birdee {
 		FunctionAST* def;
 	public:
 		bool isMutable() { return false; }
-		ResolvedFuncExprAST(FunctionAST* def) :def(def) { Phase1(); }
+		ResolvedFuncExprAST(FunctionAST* def, SourcePos pos) :def(def) { Phase1(); Pos = pos; }
 		void Phase1();
 		llvm::Value* Generate();
 	};
@@ -281,7 +281,7 @@ namespace Birdee {
 		void Phase1();
 		llvm::Value* Generate();
 		ThisExprAST()   {}
-		ThisExprAST(ClassAST* cls) { resolved_type.type = tok_class; resolved_type.class_ast = cls; }
+		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
 	};
 	class NullExprAST : public ExprAST {
@@ -361,6 +361,7 @@ namespace Birdee {
 	public:
 		void Phase1();
 		llvm::Value* Generate();
+		llvm::Value* GetLValue() override;
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
 			std::unique_ptr<ExprAST>&& Index, SourcePos Pos)
 			: Expr(std::move(Expr)), Index(std::move(Index)) {
@@ -504,7 +505,7 @@ namespace Birdee {
 		VariableSingleDefAST* def;
 	public:
 		bool isMutable() { return true; }
-		LocalVarExprAST(VariableSingleDefAST* def) :def(def) { Phase1(); }
+		LocalVarExprAST(VariableSingleDefAST* def, SourcePos pos) :def(def) { Pos = pos; Phase1(); }
 		void Phase1();
 		llvm::Value* Generate();
 		llvm::Value* GetLValue() override { return def->llvm_value; };
@@ -745,14 +746,16 @@ namespace Birdee {
 			const std::string& member)
 			: Obj(std::move(Obj)), member(member), kind(member_error), func(nullptr) {}
 		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
-			MemberFunctionDef* member)
+			MemberFunctionDef* member,SourcePos pos)
 			: Obj(std::move(Obj)), func(member), kind(member_function) {
 			resolved_type = func->decl->resolved_type;
+			Pos = pos;
 		}
 		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
-			FieldDef* member)
+			FieldDef* member, SourcePos pos)
 			: Obj(std::move(Obj)), field(member), kind(member_field) {
 			resolved_type = field->decl->resolved_type;
+			Pos = pos;
 		}
 
 	};
