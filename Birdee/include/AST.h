@@ -53,11 +53,11 @@ namespace Birdee {
 	using std::unordered_map;
 	using std::reference_wrapper;
 	using ::llvm::Value;
-
-	template<typename T, typename... Args>
+	using std::make_unique;
+	/*template<typename T, typename... Args>
 	std::unique_ptr<T> make_unique(Args&&... args) {
 		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-	}
+	}*/
 
 	inline void formatprint(int level) {
 		for (int i = 0; i < level; i++)

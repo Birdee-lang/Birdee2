@@ -169,7 +169,7 @@ std::unique_ptr<VariableSingleDefAST> ParseSingleDim()
 		tokenizer.GetNextToken();
 		val = ParseExpressionUnknown();
 	}
-	
+
 	return make_unique<VariableSingleDefAST>(identifier, std::move(type), std::move(val),pos);
 }
 
