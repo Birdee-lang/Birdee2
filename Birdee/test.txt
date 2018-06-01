@@ -61,8 +61,8 @@ ic=id
 #---------------------------------
 
 dim str = "12312"
-dim arr as int[]=null
-arr[3]=ia
+#dim arr as int[]=null
+#arr[3]=ia
 str.length()
 puts(str.getRaw())
 

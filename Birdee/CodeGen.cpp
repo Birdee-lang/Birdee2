@@ -309,18 +309,21 @@ void Birdee::CompileUnit::InitForGenerate()
 	auto TargetTriple = sys::getDefaultTargetTriple();
 	module->setTargetTriple(TargetTriple);
 
+	module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+	/*
 	// Add the current debug info version into the module.
 	module->addModuleFlag(Module::Warning, "Debug Info Version",
 		DEBUG_METADATA_VERSION);
 
 	// Darwin only supports dwarf2.
 	if (Triple(sys::getProcessTriple()).isOSDarwin())
-		module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
+		module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);*/
 
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
-		dwarf::DW_LANG_C, DBuilder->createFile(filename, "."),
+		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
 		"Birdee Compiler", 0, "", 0);
+	
 
 	//first generate the classes, as the functions may reference them
 	//this will generate the LLVM types for the classes
@@ -349,7 +352,7 @@ void Birdee::CompileUnit::InitForGenerate()
 	FunctionType *FT =
 		FunctionType::get(llvm::Type::getVoidTy(context),false);
 
-	Function *F =Function::Create(FT, Function::ExternalLinkage, cu.symbol_prefix+"main", module);
+	Function *F =Function::Create(FT, Function::ExternalLinkage, cu.expose_main? "main":cu.symbol_prefix+"main", module);
 	BasicBlock *BB = BasicBlock::Create(context, "entry", F);
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
@@ -373,9 +376,9 @@ void Birdee::CompileUnit::InitForGenerate()
 	DBuilder->finalize();
 
 	// Print out all of the generated code.
-	module->print(errs(), nullptr);
+	//module->print(errs(), nullptr);
 
-	verifyModule(*module);
+	//verifyModule(*module);
 
 	std::string Error;
 	auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
@@ -397,6 +400,8 @@ void Birdee::CompileUnit::InitForGenerate()
 		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
 
 	module->setDataLayout(TheTargetMachine->createDataLayout());
+
+	module->print(errs(), nullptr);
 
 	auto Filename = "output.obj";
 	std::error_code EC;
@@ -420,6 +425,7 @@ void Birdee::CompileUnit::InitForGenerate()
 
 	outs() << "Wrote " << Filename << "\n";
 	dest.flush();
+	//module->print(errs(), nullptr);
 
 }
 
@@ -534,25 +540,27 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		auto itr = llvm_func->args().begin();
 		if (Proto->cls)
 			itr++;
-		for (;itr!= llvm_func->args().end();itr++)
+		for (; itr != llvm_func->args().end(); itr++)
 		{
-			Proto->resolved_args[i]->PreGenerateForArgument(itr, i+1);
+			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1);
 			i++;
 		}
 
-		
-		bool hasret=Body.Generate();
+
+		bool hasret = Body.Generate();
 		if (!hasret)
 		{
 			if (resolved_type.proto_ast->resolved_type.type == tok_void)
 				builder.CreateRetVoid();
 			else
 				builder.CreateRet(Constant::getNullValue(llvm_func->getReturnType()));
-		}			
+		}
 		dinfo.LexicalBlocks.pop_back();
 		builder.restoreIP(IP);
-		helper.cur_llvm_func=func_backup;
+		helper.cur_llvm_func = func_backup;
 	}
+	else
+		llvm_func->setName(Proto->GetName());
 	return llvm_func;
 }
 

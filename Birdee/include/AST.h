@@ -183,8 +183,10 @@ namespace Birdee {
 	{
 	public:
 		string filename;
+		string directory;
 		string name;
 		string symbol_prefix;
+		bool expose_main = false;;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
