@@ -231,8 +231,7 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 			true);
 	llvm_value = v;
 	
-	v->addDebugInfo(D); //fix-me: check if this works
-	//should look like https://releases.llvm.org/2.7/docs/SourceLevelDebugging.html#ccxx_global_variable
+	v->addDebugInfo(D); 
 }
 
 void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int argno)
@@ -310,6 +309,29 @@ void Birdee::CompileUnit::InitForGenerate()
 	module->setTargetTriple(TargetTriple);
 
 	module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+
+
+	std::string Error;
+	auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
+
+	// Print an error and exit if we couldn't find the requested target.
+	// This generally occurs if we've forgotten to initialise the
+	// TargetRegistry or we have a bogus target triple.
+	if (!Target) {
+		errs() << Error;
+		return;
+	}
+
+	auto CPU = "generic";
+	auto Features = "";
+
+	TargetOptions opt;
+	auto RM = Optional<Reloc::Model>();
+	auto TheTargetMachine =
+		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
+
+	module->setDataLayout(TheTargetMachine->createDataLayout());
+
 	/*
 	// Add the current debug info version into the module.
 	module->addModuleFlag(Module::Warning, "Debug Info Version",
@@ -380,26 +402,6 @@ void Birdee::CompileUnit::InitForGenerate()
 
 	//verifyModule(*module);
 
-	std::string Error;
-	auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
-
-	// Print an error and exit if we couldn't find the requested target.
-	// This generally occurs if we've forgotten to initialise the
-	// TargetRegistry or we have a bogus target triple.
-	if (!Target) {
-		errs() << Error;
-		return ;
-	}
-
-	auto CPU = "generic";
-	auto Features = "";
-
-	TargetOptions opt;
-	auto RM = Optional<Reloc::Model>();
-	auto TheTargetMachine =
-		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
-
-	module->setDataLayout(TheTargetMachine->createDataLayout());
 
 	module->print(errs(), nullptr);
 
@@ -477,8 +479,10 @@ void Birdee::ClassAST::PreGenerate()
 	llvm_type = StructType::create(context, types, GetUniqueName());
 	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
 		dinfo.cu->getDirectory());
-	llvm_dtype=DBuilder->createStructType(dinfo.cu, GetUniqueName(), Unit, Pos.line, 64, 64, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
-	//fix-me: the align and the size
+	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
+	auto align = module->getDataLayout().getPrefTypeAlignment(llvm_type);
+	llvm_dtype=DBuilder->createStructType(dinfo.cu, GetUniqueName(), Unit, Pos.line, size, align*8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+	//fix-me: now the debug info is not portable
 }
 
 void Birdee::ClassAST::PreGenerateFuncs()
