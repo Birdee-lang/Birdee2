@@ -19,8 +19,9 @@ namespace Birdee
 	template<typename T>
 	T CompileExpectNotNull(T&& p, const std::string& msg)
 	{
+		SourcePos pos = GetCurrentSourcePos();
 		if (!p)
-			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), msg);
+			throw CompileError(pos.line, pos.pos, msg);
 		return std::move(p);
 	}
 }

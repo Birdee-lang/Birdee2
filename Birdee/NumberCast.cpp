@@ -8,8 +8,6 @@ extern IRBuilder<> builder;
 template<Token typefrom, Token typeto>
 Value* NumberCast(Value* v)
 {
-	builder.CreateSExtOrTrunc;
-	builder.CreateZExtOrTrunc; builder.CreateFPCast;
 	return nullptr;
 }
 
