@@ -296,6 +296,13 @@ DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* 
 	return SP;
 }
 
+//https://stackoverflow.com/a/2072890/4790873
+inline bool ends_with(std::string const & value, std::string const & ending)
+{
+	if (ending.size() > value.size()) return false;
+	return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
 void Birdee::CompileUnit::InitForGenerate()
 {
 	//InitializeNativeTargetInfo();
@@ -307,9 +314,6 @@ void Birdee::CompileUnit::InitForGenerate()
 	module= new Module(name, context);
 	auto TargetTriple = sys::getDefaultTargetTriple();
 	module->setTargetTriple(TargetTriple);
-
-	module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
-
 
 	std::string Error;
 	auto Target = TargetRegistry::lookupTarget(TargetTriple, Error);
@@ -332,19 +336,28 @@ void Birdee::CompileUnit::InitForGenerate()
 
 	module->setDataLayout(TheTargetMachine->createDataLayout());
 
-	/*
-	// Add the current debug info version into the module.
-	module->addModuleFlag(Module::Warning, "Debug Info Version",
-		DEBUG_METADATA_VERSION);
+	if (ends_with(cu.targetpath, ".o"))
+	{
+		// Add the current debug info version into the module.
+		module->addModuleFlag(Module::Warning, "Debug Info Version",
+			DEBUG_METADATA_VERSION);
 
-	// Darwin only supports dwarf2.
-	if (Triple(sys::getProcessTriple()).isOSDarwin())
-		module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);*/
+		// Darwin only supports dwarf2.
+		if (Triple(sys::getProcessTriple()).isOSDarwin())
+			module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2); 
+	}
+	else if(ends_with(cu.targetpath, ".obj"))
+	{
+		module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+	}
 
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
 		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
 		"Birdee Compiler", 0, "", 0);
+
+
+
 	
 
 	//first generate the classes, as the functions may reference them
@@ -405,7 +418,7 @@ void Birdee::CompileUnit::InitForGenerate()
 
 	module->print(errs(), nullptr);
 
-	auto Filename = "output.obj";
+	auto Filename = cu.targetpath;
 	std::error_code EC;
 	raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
 

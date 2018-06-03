@@ -9,7 +9,7 @@ INC_DIR=$(PWD_DIR)/Birdee/include
 BIN_DIR=$(PWD_DIR)/bin
 
 CXX ?= g++
-CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -O3 -ffast-math -march=native
+CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -ffast-math -march=native
 LIBS ?= -pthread
 
 ##

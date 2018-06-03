@@ -199,7 +199,8 @@ namespace Birdee
 
 		/// gettok - Return the next token from standard input.
 		Token gettok() {
-
+			if (!f)
+				return tok_error;
 			// Skip any whitespace.
 			while (isspace(LastChar)&& LastChar!='\n')
 				LastChar = GetChar();
