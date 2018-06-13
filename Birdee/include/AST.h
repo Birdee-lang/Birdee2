@@ -200,6 +200,7 @@ namespace Birdee {
 		string filename;
 		string directory;
 		string name;
+		string targetmetapath;
 		string symbol_prefix;
 		bool expose_main = false;
 		vector<unique_ptr<StatementAST>> toplevel;
@@ -588,10 +589,10 @@ namespace Birdee {
 
 	/// FunctionAST - This class represents a function definition itself.
 	class FunctionAST : public ExprAST {
-		std::unique_ptr<PrototypeAST> Proto;
 		ASTBasicBlock Body;
 		bool isDeclare;
 	public:
+		std::unique_ptr<PrototypeAST> Proto;
 		llvm::Function* llvm_func=nullptr;
 		llvm::DIType* PreGenerate();
 		llvm::Value* Generate();

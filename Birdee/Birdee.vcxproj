@@ -76,7 +76,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\Menooker\lib\llvm-build\include;D:\Menooker\lib\llvm-6.0.0.src\include;$(ProjectDir)include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Menooker\lib\llvm-build\include;D:\Menooker\lib\llvm-6.0.0.src\include;$(SolutionDir)dependency\include;$(ProjectDir)include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -170,6 +170,7 @@
   <ItemGroup>
     <ClCompile Include="Birdee.cpp" />
     <ClCompile Include="CodeGen.cpp" />
+    <ClCompile Include="MetadataSerializer.cpp" />
     <ClCompile Include="NumberCast.cpp" />
     <ClCompile Include="Parser.cpp" />
     <ClCompile Include="Preprocessing.cpp" />

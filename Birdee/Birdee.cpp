@@ -2,9 +2,11 @@
 #include "Tokenizer.h"
 #include "AST.h"
 #include "CompileError.h"
+#include <fstream>
 using namespace Birdee;
 
 extern int ParseTopLevel();
+extern void SeralizeMetadata(std::ostream& out);
 
 namespace Birdee
 {
@@ -78,7 +80,7 @@ void ParseParameters(int argc, char** argv)
 	//cut the source path into filename & dir path
 	size_t found;
 	found = source.find_last_of("/\\");
-	if (found != string::npos)
+	if (found == string::npos)
 	{
 		cu.directory = ".";
 		cu.filename = source;
@@ -87,6 +89,15 @@ void ParseParameters(int argc, char** argv)
 	{
 		cu.directory = source.substr(0, found);
 		cu.filename = source.substr(found + 1);
+	}
+	found = target.find_last_of('.');
+	if (found != string::npos)
+	{
+		cu.targetmetapath = target.substr(0,found)+".bmm";
+	}
+	else
+	{
+		cu.targetmetapath = target + ".bmm";
 	}
 	cu.targetpath = target;
 	FILE* f;
@@ -106,6 +117,7 @@ fail:
 int main(int argc,char** argv)
 {
 	ParseParameters(argc, argv);
+	std::ofstream metaf(cu.targetmetapath, std::ios::out);
 	try {
 		ParseTopLevel();
 		cu.Phase0();
@@ -126,6 +138,7 @@ int main(int argc,char** argv)
 		node->print(0);
 	}*/
 	cu.InitForGenerate();
+	SeralizeMetadata(metaf);
     return 0;
 }
 

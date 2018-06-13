@@ -6,10 +6,11 @@ MKDIR_P = mkdir -p
 PWD_DIR=$(shell pwd)
 COMPILER_DIR=$(PWD_DIR)/Birdee
 INC_DIR=$(PWD_DIR)/Birdee/include
+INC_DIR2=$(PWD_DIR)/dependency/include
 BIN_DIR=$(PWD_DIR)/bin
 
 CXX ?= g++
-CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -ffast-math -march=native
+CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2)
 LIBS ?= -pthread
 
 ##
