@@ -8,6 +8,11 @@ using namespace Birdee;
 
 #define META_DATA_VERSION 0.1
 
+//fix-me: export: remember to include imported classes that is referenced by exported var/class/func
+//fix-me: import: first check if the DEFINED class has already been imported in CompileModule::orphan_classes
+//fix-me: import: first check if the IMPORTED class has already been imported in imported_package.find(..).class[...], then no need to add to orphan
+//fix-me: import: deserialize into ImportedModule & CompileModule::orphan_classes
+
 static unordered_map<ClassAST*, int> class_idx_map;
 json ConvertTypeToIndex(ResolvedType& type)
 {
@@ -119,6 +124,8 @@ json BuildClassJson()
 		json json_funcs=json::array();
 		for (auto& func : cls.funcs)
 		{
+			if (func.decl->isDeclare)
+				continue;
 			json json_func;
 			json_func["access"] = GetAccessModifierName(func.access);
 			json_func["def"] = BuildFunctionJson(func.decl.get());

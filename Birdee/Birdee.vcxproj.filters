@@ -70,5 +70,11 @@
     <Text Include="test.txt">
       <Filter>资源文件</Filter>
     </Text>
+    <Text Include="llvm.txt">
+      <Filter>资源文件</Filter>
+    </Text>
+    <Text Include="birdee.txt">
+      <Filter>资源文件</Filter>
+    </Text>
   </ItemGroup>
 </Project>

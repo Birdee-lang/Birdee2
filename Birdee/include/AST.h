@@ -67,6 +67,26 @@ namespace Birdee {
 	extern SourcePos GetCurrentSourcePos();
 	extern string GetTokenString(Token tok);
 
+	struct ImportedModule
+	{
+		unordered_map<string, unique_ptr<ClassAST>> classmap;
+		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
+		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
+	};
+
+	//a quick structure to find & store names of imported packages
+	class ImportTree
+	{
+		unordered_map<string, unique_ptr<ImportTree>> map;
+		unique_ptr<ImportedModule> mod;
+	public:
+		//if the current node has the name, will not search the next levels
+		ImportTree* FindName(const string& name) const;
+		//search the path along the path
+		bool Contains(const vector<string>& package,int level=0) const;
+		//create the tree nodes along the path
+		void Insert(const vector<string>& package, int level=0);
+	};
 
 	class Type {
 
@@ -207,6 +227,24 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
+
+		//maps from short names ("import a.b:c" => "c") to the imported AST
+		unordered_map<string, ClassAST*> imported_classmap; 
+		unordered_map<string, FunctionAST*> imported_funcmap;
+		unordered_map<string, VariableSingleDefAST*> imported_dimmap;
+
+		/*
+		The classes that are referenced by an imported class, but the packages of the 
+		referenced classes are not yet imported. The mapping from qualified names of classes to AST
+		*/
+		unordered_map<string, unique_ptr<ClassAST>> orphan_class;
+
+		vector<string> imported_module_names;
+		/*
+			for quick module name-looking. We need this because we need to quickly distinguish in "AAA.BBB",
+			whether AAA is a variable name or a package name.
+		*/
+		ImportTree imported_packages;
 		void Phase0();
 		void Phase1();
 		void InitForGenerate();
@@ -590,8 +628,8 @@ namespace Birdee {
 	/// FunctionAST - This class represents a function definition itself.
 	class FunctionAST : public ExprAST {
 		ASTBasicBlock Body;
-		bool isDeclare;
 	public:
+		bool isDeclare;
 		std::unique_ptr<PrototypeAST> Proto;
 		llvm::Function* llvm_func=nullptr;
 		llvm::DIType* PreGenerate();

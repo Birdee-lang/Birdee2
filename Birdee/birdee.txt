@@ -1,0 +1,22 @@
+declare function puts (str as pointer) as int
+
+class string
+	private buf as pointer
+	private len as int
+	public function length() as int
+		return len
+	end
+	public function add(other as string) as string
+		len=len+other.len
+		return this
+	end
+	public function getRaw() as pointer
+		return buf
+	end
+end class
+
+
+function println(str as string)
+	puts(str)
+	puts("\n")
+end

@@ -11,6 +11,8 @@ namespace Birdee
 		tok_extern,
 		tok_func,
 		tok_declare,
+		tok_import,
+		tok_package,
 
 		// primary
 		tok_identifier,
@@ -23,6 +25,7 @@ namespace Birdee
 		tok_dim,
 		tok_as,
 		tok_comma,
+		tok_colon,
 		tok_dot,
 		tok_end,
 		tok_class,

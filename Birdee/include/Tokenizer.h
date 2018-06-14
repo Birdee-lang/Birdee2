@@ -158,6 +158,7 @@ namespace Birdee
 		{'\n',tok_newline},
 		{ ',',tok_comma },
 		{'.',tok_dot},
+		{':',tok_colon },
 		};
 
 		std::map < std::string , Token > token_map = {
@@ -169,6 +170,8 @@ namespace Birdee
 		{ "uint",tok_uint},
 		{ "float",tok_float},
 		{ "double",tok_double},
+		{"package",tok_package},
+		{"import",tok_import},
 		{"boolean",tok_boolean},
 		{"function",tok_func},
 		{"declare",tok_declare},

@@ -656,11 +656,170 @@ done:
 	return std::move(ret);
 }
 
+vector<string> ParsePackageName()
+{
+	vector<string> ret;
+	CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
+	ret.push_back(tokenizer.IdentifierStr);
+	tokenizer.GetNextToken();
+	while (tokenizer.CurTok==tok_dot)
+	{
+		tokenizer.GetNextToken();
+		CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
+		ret.push_back(tokenizer.IdentifierStr);
+		tokenizer.GetNextToken();
+	}
+
+	return ret;
+}
+
+void ParsePackage()
+{
+	if (tokenizer.CurTok == tok_package)
+	{
+		tokenizer.GetNextToken();
+		vector<string> package = ParsePackageName();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after package name");
+		cu.symbol_prefix = "";
+		for (auto& str : package)
+		{
+			cu.symbol_prefix += str;
+			cu.symbol_prefix += '.';
+		}
+		size_t found;
+		found = cu.filename.find_last_of('.');
+		if (found == string::npos)
+		{
+			cu.symbol_prefix += cu.filename;
+		}
+		else
+		{
+			cu.symbol_prefix += cu.filename.substr(0, found);
+		}
+		cu.symbol_prefix += '.';
+	}
+}
+
+ImportTree * Birdee::ImportTree::FindName(const string & name) const
+{
+	auto itr = map.find(name);
+	if (itr != map.end())
+		return itr->second.get();
+	return nullptr;
+}
+
+bool Birdee::ImportTree::Contains(const vector<string>& package,int level) const
+{
+	if (map.empty() && level == package.size())
+		return true;
+	auto ptr = FindName(package[level]);
+	if (ptr)
+		ptr->Contains(package, level + 1);
+	return false;
+}
+
+void Birdee::ImportTree::Insert(const vector<string>& package, int level)
+{
+	if (map.empty() && level == package.size())
+		return;
+	auto ptr = FindName(package[level]);
+	if (ptr)
+		ptr->Insert(package, level + 1);
+	else
+	{
+		auto nptr= std::make_unique<Birdee::ImportTree>();
+		nptr->Insert(package, level + 1);
+		map[package[level]] = std::move(nptr);
+	}
+}
+
+static string GetModuleNameByArray(const vector<string>& package)
+{
+	string ret=package[0];
+	for (int i = 1; i < package.size(); i++)
+	{
+		ret += '.';
+		ret += package[i];
+	}
+	return ret;
+}
+
+void DoImportPackage(const vector<string>& package)
+{
+	if (cu.imported_packages.Contains(package))
+		return;
+	cu.imported_packages.Insert(package);
+	cu.imported_module_names.push_back(GetModuleNameByArray(package));
+
+}
+
+void DoImportPackageAll(const vector<string>& package)
+{
+	
+}
+
+void DoImportName(const vector<string>& package, const string& name)
+{
+
+}
+
+void AddAutoImport()
+{
+	DoImportPackageAll({"birdee"});
+}
+
+void ParseImports()
+{
+	for (;;)
+	{
+		if (tokenizer.CurTok == tok_newline)
+		{
+			tokenizer.GetNextToken();
+			continue;
+		}
+		else if (tokenizer.CurTok == tok_import)
+		{
+			tokenizer.GetNextToken();
+			vector<string> package = ParsePackageName();
+			if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
+			{
+				DoImportPackage(package);
+				tokenizer.GetNextToken();
+			}
+			else if (tokenizer.CurTok == tok_colon)
+			{
+				tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_identifier)
+				{
+					string name = tokenizer.IdentifierStr;
+					tokenizer.GetNextToken();
+					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
+					DoImportName(package, name);
+				}
+				else if (tokenizer.CurTok == tok_mul)
+				{
+					tokenizer.GetNextToken();
+					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
+					DoImportPackageAll(package);
+				}
+			}
+		}
+		else
+			break;
+	}
+}
+
 int ParseTopLevel()
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
 	std::unique_ptr<ExprAST> firstexpr;
 	tokenizer.GetNextToken();
+	while (tokenizer.CurTok == tok_newline)
+		tokenizer.GetNextToken();
+	
+	ParsePackage();
+	ParseImports();
+	AddAutoImport();
 
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
 	{
