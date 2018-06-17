@@ -1,9 +1,13 @@
-#include <nlohmann/json.hpp>
 #include <AST.h>
+#include <nlohmann/json.hpp>
+#include <nlohmann/fifo_map.hpp>
+
 #include <ostream>
 #include <assert.h>
 using std::unordered_map;
-using json = nlohmann::json;
+template<class K, class V, class dummy_compare, class A>
+using my_workaround_fifo_map = nlohmann::fifo_map<K, V, nlohmann::fifo_map_compare<K>, A>;
+using json = nlohmann::basic_json<my_workaround_fifo_map>;
 using namespace Birdee;
 
 #define META_DATA_VERSION 0.1
@@ -124,8 +128,6 @@ json BuildClassJson()
 		json json_funcs=json::array();
 		for (auto& func : cls.funcs)
 		{
-			if (func.decl->isDeclare)
-				continue;
 			json json_func;
 			json_func["access"] = GetAccessModifierName(func.access);
 			json_func["def"] = BuildFunctionJson(func.decl.get());
@@ -153,6 +155,8 @@ json BuildGlobalFuncJson()
 	json arr = json::array();
 	for (auto itr : cu.funcmap)
 	{
+		if (itr.second.get().isDeclare)
+			continue;
 		arr.push_back(BuildFunctionJson(&itr.second.get()));
 	}
 	return arr;

@@ -59,6 +59,10 @@ namespace Birdee {
 		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 	}*/
 
+	class ClassAST;
+	class FunctionAST;
+	class VariableSingleDefAST;
+
 	inline void formatprint(int level) {
 		for (int i = 0; i < level; i++)
 			std::cout << "\t";
@@ -210,9 +214,7 @@ namespace Birdee {
 		}
 	};
 
-	class ClassAST;
-	class FunctionAST;
-	class VariableSingleDefAST;
+
 	class CompileUnit
 	{
 	public:
