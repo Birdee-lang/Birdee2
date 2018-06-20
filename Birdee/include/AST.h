@@ -59,6 +59,8 @@ namespace Birdee {
 		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
 	}*/
 
+	
+
 	class ClassAST;
 	class FunctionAST;
 	class VariableSingleDefAST;
@@ -76,6 +78,7 @@ namespace Birdee {
 		unordered_map<string, unique_ptr<ClassAST>> classmap;
 		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
 		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
+		void Init(vector<string>& package);
 	};
 
 	//a quick structure to find & store names of imported packages
@@ -724,6 +727,10 @@ namespace Birdee {
 		std::vector<MemberFunctionDef> funcs;
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
+		//if the class is imported from other package, this field will be the index in cu.imported_module_names
+		//if the class is defined in the current package, this field will be -1
+		//if the class is an orphan class, this field will be -2
+		int package_name_idx=-1;
 		llvm::StructType* llvm_type=nullptr;
 		llvm::DIType* llvm_dtype = nullptr;
 		ClassAST(const std::string& name,
@@ -734,7 +741,12 @@ namespace Birdee {
 
 		string GetUniqueName()
 		{
-			return cu.symbol_prefix + name;
+			if (package_name_idx == -1)
+				return cu.symbol_prefix + name;
+			else if (package_name_idx == -2)
+				return name;
+			else
+				return cu.imported_module_names[package_name_idx] + '.' + name;
 		}
 		void PreGenerate();
 		void PreGenerateFuncs();

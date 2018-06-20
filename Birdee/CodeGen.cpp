@@ -509,9 +509,11 @@ DIType* Birdee::FunctionAST::PreGenerate()
 {
 	if (llvm_func)
 		return helper.dtypemap[resolved_type];
-	string prefix = cu.symbol_prefix;
+	string prefix;
 	if (Proto->cls)
-		prefix += Proto->cls->name + ".";
+		prefix += Proto->cls->GetUniqueName() + ".";
+	else
+		prefix = cu.symbol_prefix;
 	llvm_func = Function::Create(Proto->GenerateFunctionType(), Function::ExternalLinkage, prefix + Proto->GetName(), module);
 	DIType* ret = Proto->GenerateDebugType();
 	helper.dtypemap[resolved_type] = ret;

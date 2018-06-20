@@ -161,6 +161,7 @@
     <ClInclude Include="include\AST.h" />
     <ClInclude Include="include\CastAST.h" />
     <ClInclude Include="include\CompileError.h" />
+    <ClInclude Include="include\Metadata.h" />
     <ClInclude Include="include\SourcePos.h" />
     <ClInclude Include="include\TokenDef.h" />
     <ClInclude Include="include\Tokenizer.h" />
@@ -171,6 +172,7 @@
   <ItemGroup>
     <ClCompile Include="Birdee.cpp" />
     <ClCompile Include="CodeGen.cpp" />
+    <ClCompile Include="MetadataDeserializer.cpp" />
     <ClCompile Include="MetadataSerializer.cpp" />
     <ClCompile Include="NumberCast.cpp" />
     <ClCompile Include="Parser.cpp" />
