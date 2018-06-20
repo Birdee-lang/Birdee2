@@ -19,6 +19,7 @@ using namespace Birdee;
 //fix-me: import: first check if the DEFINED class has already been imported in CompileModule::orphan_classes
 //fix-me: import: first check if the IMPORTED class has already been imported in imported_package.find(..).class[...], then no need to add to orphan
 //fix-me: import: deserialize into ImportedModule & CompileModule::orphan_classes
+//fix-me: generate: pre-generate extern for var/class/func
 
 static unordered_map<ClassAST*, int> class_idx_map;
 static json imported_class;
@@ -202,6 +203,7 @@ void SeralizeMetadata(std::ostream& out)
 {
 	json json;
 	imported_class.clear();
+	class_idx_map.clear();
 	json["Type"] = "Birdee Module Metadata";
 	json["Version"] = META_DATA_VERSION;
 	json["Classes"] = BuildClassJson();

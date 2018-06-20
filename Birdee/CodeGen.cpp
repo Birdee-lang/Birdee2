@@ -220,6 +220,21 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 }
 
 
+void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& package_name)
+{
+	DIType* ty;
+	auto type = helper.GetType(resolved_type, ty);
+	string resolved_name = package_name + '.' + name;
+	GlobalVariable* v = new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage,
+		nullptr, resolved_name);
+	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
+		dinfo.cu, resolved_name, resolved_name, dinfo.cu->getFile(), 0, ty,
+		true);
+	llvm_value = v;
+
+	v->addDebugInfo(D);
+}
+
 void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 {
 	DIType* ty;
@@ -511,7 +526,7 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return helper.dtypemap[resolved_type];
 	string prefix;
 	if (Proto->cls)
-		prefix += Proto->cls->GetUniqueName() + ".";
+		prefix = Proto->cls->GetUniqueName() + ".";
 	else
 		prefix = cu.symbol_prefix;
 	llvm_func = Function::Create(Proto->GenerateFunctionType(), Function::ExternalLinkage, prefix + Proto->GetName(), module);
@@ -578,7 +593,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		builder.restoreIP(IP);
 		helper.cur_llvm_func = func_backup;
 	}
-	else
+	else if(!isImported) //if is declaration and is a c-style extern function
 		llvm_func->setName(Proto->GetName());
 	return llvm_func;
 }

@@ -502,6 +502,7 @@ namespace Birdee {
 		ResolvedType resolved_type;
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
+		void PreGenerateExternForGlobal(const string& package_name);
 		void PreGenerateForArgument(llvm::Value* init,int argno);
 
 		void Phase1();
@@ -635,6 +636,7 @@ namespace Birdee {
 		ASTBasicBlock Body;
 	public:
 		bool isDeclare;
+		bool isImported=false;
 		std::unique_ptr<PrototypeAST> Proto;
 		llvm::Function* llvm_func=nullptr;
 		llvm::DIType* PreGenerate();
