@@ -23,6 +23,7 @@ using namespace Birdee;
 
 static unordered_map<ClassAST*, int> class_idx_map;
 static json imported_class;
+static long NextImportedIndex = MAX_CLASS_DEF_COUNT;
 
 static const char* GetAccessModifierName(AccessModifier acc)
 {
@@ -42,7 +43,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name);
 json ConvertTypeToIndex(ResolvedType& type)
 {
 	json ret;
-	static long NextImportedIndex = MAX_CLASS_DEF_COUNT;
+	
 	switch (type.type)
 	{
 	case tok_boolean:
@@ -91,11 +92,11 @@ json ConvertTypeToIndex(ResolvedType& type)
 				abort();
 			}
 			NextImportedIndex++;
+			class_idx_map[type.class_ast] = current_idx;
 			auto json = BuildSingleClassJson(*type.class_ast,true);
 			BirdeeAssert(type.class_ast->package_name_idx!=-1 , "package_name_idx!=-1 of class should not be null");
 			imported_class.push_back(std::move(json));
-			ret["base"] = current_idx;
-			class_idx_map[type.class_ast] = current_idx;
+			ret["base"] = current_idx;		
 		}
 		
 		break;
@@ -203,8 +204,11 @@ void SeralizeMetadata(std::ostream& out)
 	json json;
 	imported_class.clear();
 	class_idx_map.clear();
+	imported_class = json::array();
+	NextImportedIndex = MAX_CLASS_DEF_COUNT;
 	json["Type"] = "Birdee Module Metadata";
 	json["Version"] = META_DATA_VERSION;
+	json["Package"] = cu.symbol_prefix.substr(0, cu.symbol_prefix.size() - 1);
 	json["Classes"] = BuildClassJson();
 	json["Variables"] = BuildGlobalVaribleJson();
 	json["Functions"] = BuildGlobalFuncJson();

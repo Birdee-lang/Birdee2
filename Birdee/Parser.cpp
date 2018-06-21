@@ -13,6 +13,7 @@
 #include "CompileError.h"
 #include <assert.h>
 #include <unordered_set>
+#include <iostream>
 using namespace Birdee;
 
 //===----------------------------------------------------------------------===//
@@ -66,6 +67,12 @@ namespace Birdee
 	
 }
 
+inline int DoWarn(const string& str)
+{
+	std::cerr << "Warning: " << str;
+	return 0;
+}
+#define WarnAssert(_b,_msg) (_b?0:DoWarn(_msg));
 
 inline void CompileExpect(Token expected_tok, const std::string& msg)
 {
@@ -686,18 +693,19 @@ void ParsePackage()
 			cu.symbol_prefix += str;
 			cu.symbol_prefix += '.';
 		}
-		size_t found;
-		found = cu.filename.find_last_of('.');
-		if (found == string::npos)
-		{
-			cu.symbol_prefix += cu.filename;
-		}
-		else
-		{
-			cu.symbol_prefix += cu.filename.substr(0, found);
-		}
-		cu.symbol_prefix += '.';
 	}
+	size_t found;
+	found = cu.filename.find_last_of('.');
+	if (found == string::npos)
+	{
+		cu.symbol_prefix += cu.filename;
+	}
+	else
+	{
+		cu.symbol_prefix += cu.filename.substr(0, found);
+	}
+	cu.symbol_prefix += '.';
+
 }
 
 ImportTree * Birdee::ImportTree::FindName(const string & name) const
@@ -708,28 +716,53 @@ ImportTree * Birdee::ImportTree::FindName(const string & name) const
 	return nullptr;
 }
 
-bool Birdee::ImportTree::Contains(const vector<string>& package,int level) const
+ImportTree* Birdee::ImportTree::Contains(const string& package, int sz, int level)
 {
-	if (map.empty() && level == package.size())
-		return true;
-	auto ptr = FindName(package[level]);
+	if (level >= sz)
+	{
+		if (map.empty())
+			return this;
+		else
+			return nullptr;
+	}
+	auto idx = package.find('.', level);
+	if (idx == string::npos)
+		idx = sz;
+	auto ptr = FindName(package.substr(level,idx-level));
 	if (ptr)
-		ptr->Contains(package, level + 1);
-	return false;
+		return ptr->Contains(package, sz, idx +1);
+	return nullptr;
 }
 
-void Birdee::ImportTree::Insert(const vector<string>& package, int level)
+ImportTree* Birdee::ImportTree::Contains(const vector<string>& package,int level)
 {
-	if (map.empty() && level == package.size())
-		return;
+	if (level == package.size())
+	{
+		if(map.empty())
+			return this;
+		return nullptr;
+	}		
 	auto ptr = FindName(package[level]);
 	if (ptr)
-		ptr->Insert(package, level + 1);
+		return ptr->Contains(package, level + 1);
+	return nullptr;
+}
+
+ImportTree* Birdee::ImportTree::Insert(const vector<string>& package, int level)
+{
+	if (level == package.size())
+	{
+		return this;
+	}
+	auto ptr = FindName(package[level]);
+	if (ptr)
+		return ptr->Insert(package, level + 1);
 	else
 	{
-		auto nptr= std::make_unique<Birdee::ImportTree>();
-		nptr->Insert(package, level + 1);
+		auto nptr = std::make_unique<Birdee::ImportTree>();
+		auto ret = nptr->Insert(package, level + 1);
 		map[package[level]] = std::move(nptr);
+		return ret;
 	}
 }
 
@@ -744,23 +777,86 @@ static string GetModuleNameByArray(const vector<string>& package)
 	return ret;
 }
 
-void DoImportPackage(const vector<string>& package)
+ImportedModule* DoImportPackage(const vector<string>& package)
 {
-	if (cu.imported_packages.Contains(package))
-		return;
-	cu.imported_packages.Insert(package);
-	cu.imported_module_names.push_back(GetModuleNameByArray(package));
-
+	auto prv = cu.imported_packages.Contains(package);
+	if(prv)
+		return prv->mod.get();
+	ImportTree* node=cu.imported_packages.Insert(package);
+	string name = GetModuleNameByArray(package);
+	cu.imported_module_names.push_back(name);
+	node->mod = make_unique<ImportedModule>();
+	node->mod->Init(package, name);
+	return node->mod.get();
 }
 
+
+using strref = std::reference_wrapper<const string>;
+void InsertName(const string& name,ClassAST* ptr)
+{
+	auto itr2 = cu.imported_classmap.find(name);
+	WarnAssert(itr2 == cu.imported_classmap.end(),
+		string("The imported class ") + ptr->GetUniqueName()
+		+ " has overwritten the previously imported class " + itr2->second->GetUniqueName());
+	if(itr2!= cu.imported_classmap.end()) cu.imported_classmap.erase(itr2);
+	cu.imported_classmap[strref(name)] = ptr;
+}
+void InsertName(const string& name, VariableSingleDefAST* ptr)
+{
+	auto itr2 = cu.imported_dimmap.find(name);
+	WarnAssert(itr2 == cu.imported_dimmap.end(),
+		string("The imported variable ") + ptr->name
+		+ " has overwritten the previously imported variable.");
+	if (itr2 != cu.imported_dimmap.end()) cu.imported_dimmap.erase(itr2);
+	cu.imported_dimmap.insert(std::make_pair(strref(name), ptr));
+}
+
+
+void InsertName(const string& name, FunctionAST* ptr)
+{
+	auto itr2 = cu.imported_funcmap.find(name);
+	WarnAssert(itr2 == cu.imported_funcmap.end(),
+		string("The imported function ") + ptr->GetName()
+		+ " has overwritten the previously imported function.");
+	if (itr2 != cu.imported_funcmap.end()) cu.imported_funcmap.erase(itr2);
+	cu.imported_funcmap.insert(std::make_pair(strref(name), ptr));
+}
 void DoImportPackageAll(const vector<string>& package)
 {
-	
+	auto mod = DoImportPackage(package);
+	for (auto& itr : mod->classmap)
+	{
+		InsertName(itr.first, itr.second.get());
+	}
+	for (auto& itr : mod->dimmap)
+	{
+		InsertName(itr.first, itr.second.get());
+	}
+	for (auto& itr : mod->funcmap)
+	{
+		InsertName(itr.first, itr.second.get());
+	}
+}
+
+template<typename T>
+bool FindAndInsertName(T& namemap, const string& name)
+{
+	auto dim = namemap.find(name);
+	if (dim != namemap.end())
+	{
+		InsertName(dim->first, dim->second.get());
+		return true;
+	}
+	return false;
 }
 
 void DoImportName(const vector<string>& package, const string& name)
 {
-
+	auto mod = DoImportPackage(package);
+	if (FindAndInsertName(mod->dimmap, name)) return;
+	if (FindAndInsertName(mod->funcmap, name)) return;
+	if (FindAndInsertName(mod->classmap, name)) return;
+	throw CompileError("Cannot find name " + name);
 }
 
 void AddAutoImport()
@@ -817,7 +913,8 @@ int ParseTopLevel()
 	while (tokenizer.CurTok == tok_newline)
 		tokenizer.GetNextToken();
 
-	AddAutoImport();
+	if(!cu.is_corelib)
+		AddAutoImport();
 	ParsePackage();
 	ParseImports();
 	

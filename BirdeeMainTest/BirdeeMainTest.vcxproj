@@ -94,7 +94,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>D:\Menooker\CXX\Birdee\Birdee\output.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>D:\Menooker\CXX\Birdee\Birdee\test.obj;D:\Menooker\CXX\Birdee\Birdee\test2.obj;D:\Menooker\CXX\Birdee\Birdee\blib\birdee.obj;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

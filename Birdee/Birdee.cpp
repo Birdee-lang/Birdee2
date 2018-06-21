@@ -73,6 +73,10 @@ void ParseParameters(int argc, char** argv)
 			string ret = args.Get();
 			cu.symbol_prefix = ret;
 		}
+		else if (cmd == "--corelib")
+		{
+			cu.is_corelib = true;
+		}
 		else
 			goto fail;
 	}
@@ -118,6 +122,7 @@ fail:
 int main(int argc,char** argv)
 {
 	ParseParameters(argc, argv);
+	cu.InitForGenerate();
 	char* home = std::getenv("BIRDEE_HOME");
 	if (home)
 	{
@@ -147,7 +152,7 @@ int main(int argc,char** argv)
 	{
 		node->print(0);
 	}*/
-	cu.InitForGenerate();
+	cu.Generate();
 	SeralizeMetadata(metaf);
     return 0;
 }

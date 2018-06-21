@@ -70,6 +70,11 @@ namespace std
 	};
 }
 
+
+namespace Birdee
+{
+	extern ClassAST* GetStringClass();
+}
 template<typename T>
 void Print(T* v)
 {
@@ -327,6 +332,15 @@ void Birdee::CompileUnit::InitForGenerate()
 	InitializeNativeTargetAsmPrinter();
 
 	module= new Module(name, context);
+	DBuilder = llvm::make_unique<DIBuilder>(*module);
+	dinfo.cu = DBuilder->createCompileUnit(
+		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
+		"Birdee Compiler", 0, "", 0);
+}
+
+
+void Birdee::CompileUnit::Generate()
+{
 	auto TargetTriple = sys::getDefaultTargetTriple();
 	module->setTargetTriple(TargetTriple);
 
@@ -359,21 +373,13 @@ void Birdee::CompileUnit::InitForGenerate()
 
 		// Darwin only supports dwarf2.
 		if (Triple(sys::getProcessTriple()).isOSDarwin())
-			module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2); 
+			module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
 	}
-	else if(ends_with(cu.targetpath, ".obj"))
+	else if (ends_with(cu.targetpath, ".obj"))
 	{
 		module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
 	}
 
-	DBuilder = llvm::make_unique<DIBuilder>(*module);
-	dinfo.cu = DBuilder->createCompileUnit(
-		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
-		"Birdee Compiler", 0, "", 0);
-
-
-
-	
 
 	//first generate the classes, as the functions may reference them
 	//this will generate the LLVM types for the classes
@@ -400,26 +406,52 @@ void Birdee::CompileUnit::InitForGenerate()
 	}
 
 	FunctionType *FT =
-		FunctionType::get(llvm::Type::getVoidTy(context),false);
+		FunctionType::get(llvm::Type::getVoidTy(context), false);
 
-	Function *F =Function::Create(FT, Function::ExternalLinkage, cu.expose_main? "main":cu.symbol_prefix+"main", module);
+	Function *F = Function::Create(FT, Function::ExternalLinkage, cu.expose_main ? "main" : cu.symbol_prefix + "main", module);
 	BasicBlock *BB = BasicBlock::Create(context, "entry", F);
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
-	DISubroutineType* functy= DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
-	auto dbginfo=PrepareFunctionDebugInfo(F, functy, SourcePos(1, 1));
+	DISubroutineType* functy = DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
+	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(1, 1));
+	dinfo.LexicalBlocks.push_back(dbginfo);
+
 	helper.cur_llvm_func = F;
 	// Push the current scope.
-	dinfo.LexicalBlocks.push_back(dbginfo);
-	for (auto& stmt : toplevel)
+
+	//check if I have initialized
+	GlobalVariable* check_init = new GlobalVariable(*module, builder.getInt1Ty(), false, GlobalValue::PrivateLinkage,
+		builder.getInt1(false), cu.symbol_prefix + "!init");
+
+	BasicBlock *BT = BasicBlock::Create(context, "init", F);
+	BasicBlock *BF = BasicBlock::Create(context, "no_init", F);
+	builder.CreateCondBr(builder.CreateLoad(check_init), BT, BF);
+
+	builder.SetInsertPoint(BT);
+	builder.CreateRetVoid();
+
+	builder.SetInsertPoint(BF);
+	builder.CreateStore(builder.getInt1(true), check_init);
+
+	for (auto& name : cu.imported_module_names)
 	{
-		stmt->Generate();
+		Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, name+".main", module);
+		builder.CreateCall(OtherMain);
 	}
-	if (toplevel.empty() || !instance_of<ReturnAST>(toplevel.back().get()))
+	
+	if (toplevel.size() > 0)
 	{
-		dinfo.emitLocation(toplevel.back().get());
-		builder.CreateRetVoid();
+		for (auto& stmt : toplevel)
+		{
+			stmt->Generate();
+		}
+		if (toplevel.empty() || !instance_of<ReturnAST>(toplevel.back().get()))
+		{
+			dinfo.emitLocation(toplevel.back().get());
+			builder.CreateRetVoid();
+		}
 	}
+
 	dinfo.LexicalBlocks.pop_back();
 
 	// Finalize the debug info.
@@ -439,15 +471,15 @@ void Birdee::CompileUnit::InitForGenerate()
 
 	if (EC) {
 		errs() << "Could not open file: " << EC.message();
-		return ;
+		return;
 	}
 
 	legacy::PassManager pass;
 	auto FileType = TargetMachine::CGFT_ObjectFile;
 
-	if (TheTargetMachine->addPassesToEmitFile(pass, dest,  FileType)) {
+	if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
 		errs() << "TheTargetMachine can't emit a file of this type";
-		return ;
+		return;
 	}
 
 	pass.run(*module);
@@ -456,7 +488,6 @@ void Birdee::CompileUnit::InitForGenerate()
 	outs() << "Wrote " << Filename << "\n";
 	dest.flush();
 	//module->print(errs(), nullptr);
-
 }
 
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
@@ -611,13 +642,13 @@ llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
 	return def->llvm_func;
 }
 
+
 StructType* GetStringType()
 {
 	static StructType* cls_string = nullptr;
 	if (cls_string)
 		return cls_string;
-	string str = "string";
-	return cu.classmap.find(str)->second.get().llvm_type;
+	return GetStringClass()->llvm_type;
 }
 
 llvm::Value * Birdee::StringLiteralAST::Generate()

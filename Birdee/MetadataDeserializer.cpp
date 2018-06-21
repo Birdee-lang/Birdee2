@@ -119,7 +119,11 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func,ClassAST* cls)
 		Args.push_back(BuildVariableFromJson(arg));
 	}
 	auto proto = make_unique<PrototypeAST>(name,std::move(Args),ConvertIdToType(func["return"]),cls, current_module_idx);
-	return make_unique<FunctionAST>(std::move(proto));
+	auto protoptr = proto.get();
+	auto ret= make_unique<FunctionAST>(std::move(proto));
+	ret->resolved_type.type = tok_func;
+	ret->resolved_type.proto_ast = protoptr;
+	return std::move(ret);
 }
 
 void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
@@ -133,35 +137,190 @@ void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
 	}
 }
 
-string GetModulePath(vector<string>& package)
+void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx)
 {
-	string ret = cu.homepath + "/blib";
+	ret->name = json_cls["name"].get<string>();
+	ret->package_name_idx = module_idx;
+	const json& json_fields = json_cls["fields"];
+	BirdeeAssert(json_fields.is_array(), "Expected an JSON array");
+	int idx = 0;
+	for (auto& field : json_fields)
+	{
+		AccessModifier acc= GetAccessModifier(field["access"].get<string>());
+		auto var = BuildVariableFromJson(field["def"]);
+		string& str = var->name;
+		ret->fields.push_back(FieldDef(acc, std::move(var), idx));
+		ret->fieldmap[str] = idx;
+		idx++;
+	}
+	
+	idx = 0;
+	const json& json_funcs = json_cls["funcs"];
+	BirdeeAssert(json_funcs.is_array(), "Expected an JSON array");
+	for (auto& func : json_funcs)
+	{
+		json json_func;
+		AccessModifier acc = GetAccessModifier(func["access"].get<string>());
+		auto funcdef = BuildFunctionFromJson(func["def"],ret);
+		const string& str = funcdef->Proto->GetName();
+		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef)));
+		ret->funcmap[str] = idx;
+		idx++;
+	}
+}
+
+void PreBuildClassFromJson(const json& cls, const string& module_name,ImportedModule& mod)
+{
+	BirdeeAssert(cls.is_array(), "Expeccted a JSON array");
+	for (auto& json_cls : cls)
+	{
+		string name=json_cls["name"].get<string>();
+		auto orphan = cu.orphan_class.find(module_name + '.' + name);
+		unique_ptr<ClassAST> classdef;
+		if (orphan != cu.orphan_class.end())
+		{
+			classdef = std::move(orphan->second);
+			cu.orphan_class.erase(orphan);
+		}
+		else
+		{
+			classdef = make_unique<ClassAST>(string(), SourcePos(0, 0)); //add placeholder
+		}
+		idx_to_class.push_back(classdef.get());
+		mod.classmap[name]=std::move(classdef);
+	}
+}
+
+void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
+{
+	BirdeeAssert(cls.is_array(), "Expeccted a JSON array");
+	for (auto& json_cls : cls)
+	{
+		string name = json_cls["name"].get<string>();
+		auto orphan = cu.orphan_class.find(name);
+		ClassAST* classdef;
+		if (orphan != cu.orphan_class.end())
+		{//if already imported in orphan classes
+			classdef = orphan->second.get();
+		}
+		else
+		{
+			//find if already defined by imported modules
+			auto idx=name.find_last_of('.');
+			BirdeeAssert(idx != string::npos && idx!=name.size()-1, "Invalid imported class name");
+			auto node=cu.imported_packages.Contains(name, idx);
+			if (node)
+			{//if the package is imported
+				auto itr = node->mod->classmap.find(name.substr(idx + 1));
+				BirdeeAssert(itr != node->mod->classmap.end(), "Module imported, but cannot find the class");
+				classdef=itr->second.get();
+			}
+			else
+			{
+				auto newclass = make_unique<ClassAST>(string(), SourcePos(0, 0)); //add placeholder
+				classdef = newclass.get();
+				cu.orphan_class[name]=std::move(newclass);
+			}
+		}
+		orphan_idx_to_class.push_back(classdef);
+	}
+}
+
+void BuildClassFromJson(const json& cls, ImportedModule& mod)
+{
+	BirdeeAssert(cls.is_array(), "Expeccted a JSON array");
+	auto itr = mod.classmap.begin();
+	for (auto& json_cls : cls)
+	{
+		if (itr->second->name.size() == 0) // if it is a placeholder
+		{
+			BuildSingleClassFromJson(itr->second.get(), json_cls, cu.imported_module_names.size() - 1);
+		}
+		//fix-me: check if the imported type is the same as the existing type
+		itr++;
+	}
+}
+
+void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
+{
+	BirdeeAssert(cls.is_array(), "Expeccted a JSON array");
+	auto itr = orphan_idx_to_class.begin();
+	for (auto& json_cls : cls)
+	{
+		if ((*itr)->name.size() == 0) // if it is a placeholder
+		{
+			BuildSingleClassFromJson((*itr), json_cls, -2); //orphan classes, module index=-2
+		}
+		//fix-me: check if the imported type is the same as the existing type
+		itr++;
+	}
+}
+
+string GetModulePath(const vector<string>& package)
+{
+	string ret = cu.homepath + "blib";
 	for (auto& s : package)
 	{
 		ret += '/';
 		ret += s;
 	}
 	ret += ".bmm";
+	return ret;
 }
 
-void ImportedModule::Init(vector<string>& package)
+string GetModulePathCurrentDir(const vector<string>& package)
+{
+	string ret = ".";
+	for (auto& s : package)
+	{
+		ret += '/';
+		ret += s;
+	}
+	ret += ".bmm";
+	return ret;
+}
+void ImportedModule::Init(const vector<string>& package,const string& module_name)
 {
 	json json;
-	string path = GetModulePath(package);
+	string path = GetModulePathCurrentDir(package);
 	std::ifstream in(path,std::ios::in);
 	if (!in)
 	{
-		std::cerr << "Cannot open file " << path << '\n';
-		abort();
+		in = std::ifstream(GetModulePath(package), std::ios::in);
+		if (!in)
+		{
+			std::cerr << "Cannot open file " << path << '\n';
+			std::exit(2);
+		}
 	}
 	in >> json;
-	current_package_name.clear();
+	current_package_name=module_name;
 	idx_to_class.clear();
 	orphan_idx_to_class.clear();
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
-	//json["Classes"] = BuildClassJson();
+	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");
+	//we first make place holder for each class. Because classes may reference each other
+	PreBuildClassFromJson(json["Classes"],module_name,*this);
+	PreBuildOrphanClassFromJson(json["ImportedClasses"], *this);
+	//we then create the classes
+	BuildClassFromJson(json["Classes"], *this);
+	BuildOrphanClassFromJson(json["ImportedClasses"], *this);
+
+	for (auto& cls : this->classmap)
+	{
+		cls.second->PreGenerate();//it is safe to call multiple times
+		cls.second->PreGenerateFuncs();
+		//cls.second->Generate();
+	}
+	for (auto cls : orphan_idx_to_class)
+	{
+		cls->PreGenerate();
+		cls->PreGenerateFuncs();
+		//cls->Generate();
+	}
+
+
 	BuildGlobalVaribleFromJson(json["Variables"],*this);
 	BuildGlobalFuncFromJson(json["Functions"],*this);
-	//json["ImportedClasses"] = imported_class;
 }

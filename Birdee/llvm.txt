@@ -1,3 +1,7 @@
+--corelib -i D:\Menooker\CXX\Birdee\Birdee\birdee.txt -o .\blib\birdee.obj
+-i D:\Menooker\CXX\Birdee\Birdee\test.txt -o .\test.obj
+-i D:\Menooker\CXX\Birdee\Birdee\test2.txt -o .\test2.obj -e 
+
 LLVMLTO.lib
 LLVMPasses.lib
 LLVMObjCARCOpts.lib

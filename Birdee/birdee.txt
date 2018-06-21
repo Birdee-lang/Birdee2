@@ -1,3 +1,4 @@
+
 declare function puts (str as pointer) as int
 
 class string
@@ -15,8 +16,11 @@ class string
 	end
 end class
 
+function print(str as string)
+	puts(str.getRaw())
+end
 
 function println(str as string)
-	puts(str)
-	puts("\n")
+	puts(str.getRaw())
+	puts("\n".getRaw())
 end

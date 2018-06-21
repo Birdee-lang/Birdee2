@@ -83,6 +83,16 @@ public:
 		class_stack.pop_back();
 	}
 
+	
+	template <typename T>
+	T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
+		const string& name)
+	{
+		auto itr = M.find(name);
+		if (itr == M.end())
+			return nullptr;
+		return (itr->second);
+	}
 	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name,SourcePos pos)
 	{
 		auto bb = FindLocalVar(name);
@@ -113,6 +123,14 @@ public:
 		{
 			return make_unique<ResolvedFuncExprAST>(&(func->second.get()),pos);
 		}
+
+		auto ret1 = FindImportByName(cu.imported_dimmap, name);
+		if(ret1)
+			return make_unique<LocalVarExprAST>(ret1, pos);
+		auto ret2 = FindImportByName(cu.imported_funcmap, name);
+		if (ret2)
+			return make_unique<ResolvedFuncExprAST>(ret2, pos);
+		
 		throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
 		return nullptr;
 	}
@@ -255,7 +273,11 @@ namespace Birdee
 			IdentifierType* ty = dynamic_cast<IdentifierType*>(&type);
 			assert(ty && "Type should be a IdentifierType");
 			this->type = tok_class;
-			this->class_ast = GetItemByName(cu.classmap,ty->name,pos);
+			auto itr = cu.classmap.find(ty->name);
+			if (itr == cu.classmap.end())
+				this->class_ast = GetItemByName(cu.classmap, ty->name, pos);
+			else
+				this->class_ast= &(itr->second.get());
 			//fix-me: should find function proto
 		}
 
@@ -506,11 +528,19 @@ namespace Birdee
 		Val = FixTypeForAssignment(proto->resolved_type, std::move(Val),Pos);	
 	}
 
+	ClassAST* GetStringClass()
+	{
+		string name("string");
+		if (cu.is_corelib)
+			return &(cu.classmap.find(name)->second.get());
+		else
+			return cu.imported_classmap.find(name)->second;
+	}
 	void StringLiteralAST::Phase1()
 	{
 		//fix-me: use the system package name of string
-		static string name("string");
-		static ClassAST& string_cls=cu.classmap.find(name)->second;
+		
+		static ClassAST& string_cls = *GetStringClass();
 		resolved_type.type = tok_class;
 		resolved_type.class_ast = &string_cls;	
 	}

@@ -1,0 +1,3 @@
+import test:str
+
+print(str)

@@ -78,21 +78,22 @@ namespace Birdee {
 		unordered_map<string, unique_ptr<ClassAST>> classmap;
 		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
 		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
-		void Init(vector<string>& package);
+		void Init(const vector<string>& package,const string& module_name);
 	};
 
 	//a quick structure to find & store names of imported packages
 	class ImportTree
 	{
 		unordered_map<string, unique_ptr<ImportTree>> map;
-		unique_ptr<ImportedModule> mod;
 	public:
+		unique_ptr<ImportedModule> mod;
 		//if the current node has the name, will not search the next levels
 		ImportTree* FindName(const string& name) const;
 		//search the path along the path
-		bool Contains(const vector<string>& package,int level=0) const;
+		ImportTree* Contains(const vector<string>& package,int level=0);
+		ImportTree* Contains(const string& package, int sz,int level = 0);
 		//create the tree nodes along the path
-		void Insert(const vector<string>& package, int level=0);
+		ImportTree* Insert(const vector<string>& package, int level=0);
 	};
 
 	class Type {
@@ -228,6 +229,7 @@ namespace Birdee {
 		string targetmetapath;
 		string symbol_prefix;
 		string homepath;
+		bool is_corelib=false;
 		bool expose_main = false;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
@@ -235,9 +237,9 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
 
 		//maps from short names ("import a.b:c" => "c") to the imported AST
-		unordered_map<string, ClassAST*> imported_classmap; 
-		unordered_map<string, FunctionAST*> imported_funcmap;
-		unordered_map<string, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
+		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
+		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
 
 		/*
 		The classes that are referenced by an imported class, but the packages of the 
@@ -254,6 +256,7 @@ namespace Birdee {
 		void Phase0();
 		void Phase1();
 		void InitForGenerate();
+		void Generate();
 	};
 	extern  CompileUnit cu;
 
