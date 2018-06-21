@@ -45,6 +45,9 @@
     <ClInclude Include="include\Metadata.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\abort.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

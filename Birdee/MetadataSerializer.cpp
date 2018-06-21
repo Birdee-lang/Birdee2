@@ -33,7 +33,7 @@ static const char* GetAccessModifierName(AccessModifier acc)
 	case access_public:
 		return "public";
 	}
-	assert(0 && "Bad access modifier");
+	BirdeeAssert(0 , "Bad access modifier");
 	return nullptr;
 }
 
@@ -70,7 +70,7 @@ json ConvertTypeToIndex(ResolvedType& type)
 		ret["base"] = -8;
 		break;
 	case tok_func:
-		assert(0 && "Error type");
+		BirdeeAssert(0 , "Error type");
 		break;
 	case tok_void:
 		ret["base"] = -9;
@@ -92,7 +92,7 @@ json ConvertTypeToIndex(ResolvedType& type)
 			}
 			NextImportedIndex++;
 			auto json = BuildSingleClassJson(*type.class_ast,true);
-			assert(type.class_ast->package_name_idx!=-1 && "package_name_idx!=-1 of class should not be null");
+			BirdeeAssert(type.class_ast->package_name_idx!=-1 , "package_name_idx!=-1 of class should not be null");
 			imported_class.push_back(std::move(json));
 			ret["base"] = current_idx;
 			class_idx_map[type.class_ast] = current_idx;
@@ -101,7 +101,7 @@ json ConvertTypeToIndex(ResolvedType& type)
 		break;
 	}
 	default:
-		assert(0 && "Error type");
+		BirdeeAssert(0 , "Error type");
 	}
 	ret["index"] = type.index_level;
 	return ret;
@@ -120,7 +120,6 @@ json BuildVariableJson(VariableSingleDefAST* var)
 json BuildFunctionJson(FunctionAST* func)
 {
 	std::unique_ptr<VariableDefAST> Args;
-	std::unique_ptr<Type> RetType;
 	json ret;
 	ret["name"] = func->GetName();
 	json args = json::array();

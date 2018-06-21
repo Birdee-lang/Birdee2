@@ -5,6 +5,7 @@
 #include "Metadata.h"
 #include <iostream>
 #include <ostream>
+#include <fstream>
 #include <assert.h>
 #include <stdlib.h>
 
@@ -16,25 +17,16 @@ using namespace Birdee;
 
 static std::vector<ClassAST*> idx_to_class;
 static std::vector<ClassAST*> orphan_idx_to_class;
-inline void BirdeeAssert(bool b, const char* text)
-{
-	if (!b)
-	{
-		std::cerr << text<<'\n';
-		abort();
-	}
-}
+static string current_package_name;
+static int current_module_idx;
 
-void ImportedModule::Init(vector<string>& package)
-{
-	idx_to_class.clear();
-	orphan_idx_to_class.clear();
-}
 
-ResolvedType ConvertIdToType(json& type)
+
+
+ResolvedType ConvertIdToType(const json& type)
 {
 	ResolvedType ret;
-	assert(type.type() == json::value_t::object);
+	BirdeeAssert(type.type() == json::value_t::object, "Expected an object in JSON");
 	long idtype = type["base"].get<long>();
 	switch (idtype)
 	{
@@ -95,3 +87,81 @@ static AccessModifier GetAccessModifier(const string& acc)
 	return access_public;
 }
 
+unique_ptr<VariableSingleDefAST> BuildVariableFromJson(const json& var)
+{
+	unique_ptr<VariableSingleDefAST> ret=make_unique<VariableSingleDefAST>(var["name"].get<string>(),
+		ConvertIdToType(var["type"]));
+	return std::move(ret);
+}
+
+void BuildGlobalVaribleFromJson(const json& globals,ImportedModule& mod)
+{
+	BirdeeAssert(globals.is_array(), "Expected a JSON array");
+	for (auto& itr : globals)
+	{
+		auto var=BuildVariableFromJson(itr);
+		var->PreGenerateExternForGlobal(current_package_name);
+		mod.dimmap[var->name] = std::move(var);
+	}
+}
+
+
+unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func,ClassAST* cls)
+{
+	BirdeeAssert(func.is_object(), "Expected a JSON object");
+	vector<unique_ptr<VariableSingleDefAST>> Args;
+
+	string name = func["name"];
+	const json& args = func["args"];
+	BirdeeAssert(args.is_array(), "Expected a JSON array");
+	for (auto& arg : args)
+	{
+		Args.push_back(BuildVariableFromJson(arg));
+	}
+	auto proto = make_unique<PrototypeAST>(name,std::move(Args),ConvertIdToType(func["return"]),cls, current_module_idx);
+	return make_unique<FunctionAST>(std::move(proto));
+}
+
+void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
+{
+	BirdeeAssert(globals.is_array(), "Expected a JSON array");
+	for (auto& itr : globals)
+	{
+		auto var = BuildFunctionFromJson(itr,nullptr);
+		var->PreGenerate();
+		mod.funcmap[var->Proto->GetName()] = std::move(var);
+	}
+}
+
+string GetModulePath(vector<string>& package)
+{
+	string ret = cu.homepath + "/blib";
+	for (auto& s : package)
+	{
+		ret += '/';
+		ret += s;
+	}
+	ret += ".bmm";
+}
+
+void ImportedModule::Init(vector<string>& package)
+{
+	json json;
+	string path = GetModulePath(package);
+	std::ifstream in(path,std::ios::in);
+	if (!in)
+	{
+		std::cerr << "Cannot open file " << path << '\n';
+		abort();
+	}
+	in >> json;
+	current_package_name.clear();
+	idx_to_class.clear();
+	orphan_idx_to_class.clear();
+	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
+	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
+	//json["Classes"] = BuildClassJson();
+	BuildGlobalVaribleFromJson(json["Variables"],*this);
+	BuildGlobalFuncFromJson(json["Functions"],*this);
+	//json["ImportedClasses"] = imported_class;
+}

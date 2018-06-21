@@ -816,10 +816,11 @@ int ParseTopLevel()
 	tokenizer.GetNextToken();
 	while (tokenizer.CurTok == tok_newline)
 		tokenizer.GetNextToken();
-	
+
+	AddAutoImport();
 	ParsePackage();
 	ParseImports();
-	AddAutoImport();
+	
 
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
 	{

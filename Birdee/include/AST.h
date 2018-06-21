@@ -227,6 +227,7 @@ namespace Birdee {
 		string name;
 		string targetmetapath;
 		string symbol_prefix;
+		string homepath;
 		bool expose_main = false;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
@@ -523,6 +524,7 @@ namespace Birdee {
 			resolved_type = ResolvedType(*type,Pos);
 		}
 
+		VariableSingleDefAST(const std::string& _name, const ResolvedType& _type) : name(_name), resolved_type(_type), val(nullptr) {}
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val) : name(_name), type(std::move(_type)), val(std::move(_val)) {}
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val, SourcePos Pos) : name(_name), type(std::move(_type)), val(std::move(_val)) {
 			this->Pos = Pos;
@@ -585,6 +587,9 @@ namespace Birdee {
 		
 	public:
 		ClassAST * cls;
+		//the index in CompileUnit.imported_module_names
+		//if -1, means it is not imported from other modules
+		int prefix_idx=-1;
 		friend bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
@@ -615,6 +620,8 @@ namespace Birdee {
 				dim->Phase1();
 			}
 		}
+		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx)
+			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx){}
 		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos)
 			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls) {}
 
@@ -653,6 +660,12 @@ namespace Birdee {
 			: Proto(std::move(Proto)), isDeclare(true) {
 			Pos = pos;
 		}
+
+		//imported function
+		FunctionAST(std::unique_ptr<PrototypeAST> Proto)
+			: Proto(std::move(Proto)), isDeclare(true), isImported(true) {
+		}
+
 		//resolve the types of the argument and the returned value
 		//put a phase0 because we may reference a function before we parse the function in phase1
 		void Phase0()

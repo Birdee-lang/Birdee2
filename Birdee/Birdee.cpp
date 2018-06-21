@@ -3,6 +3,7 @@
 #include "AST.h"
 #include "CompileError.h"
 #include <fstream>
+#include <cstdlib>
 using namespace Birdee;
 
 extern int ParseTopLevel();
@@ -117,6 +118,15 @@ fail:
 int main(int argc,char** argv)
 {
 	ParseParameters(argc, argv);
+	char* home = std::getenv("BIRDEE_HOME");
+	if (home)
+	{
+		cu.homepath = home;
+		if (cu.homepath.back() != '/' && cu.homepath.back() != '\\')
+			cu.homepath += '/';
+	}
+	else
+		cu.homepath = "./";
 	std::ofstream metaf(cu.targetmetapath, std::ios::out);
 	try {
 		ParseTopLevel();
