@@ -34,8 +34,10 @@ template class Birdee::CastNumberExpr<from, to>;
 
 GenerateCastFP2I(tok_int, tok_float, CreateSIToFP, getFloatTy);
 GenerateCastFP2I(tok_long, tok_float, CreateSIToFP, getFloatTy);
+GenerateCastFP2I(tok_byte, tok_float, CreateSIToFP, getFloatTy);
 GenerateCastFP2I(tok_int, tok_double, CreateSIToFP, getDoubleTy);
 GenerateCastFP2I(tok_long, tok_double, CreateSIToFP, getDoubleTy);
+GenerateCastFP2I(tok_byte, tok_double, CreateSIToFP, getFloatTy);
 
 GenerateCastFP2I(tok_uint, tok_float, CreateUIToFP, getFloatTy);
 GenerateCastFP2I(tok_ulong, tok_float, CreateUIToFP, getFloatTy);
@@ -44,8 +46,10 @@ GenerateCastFP2I(tok_ulong, tok_double, CreateUIToFP, getDoubleTy);
 
 GenerateCastFP2I(tok_double, tok_int, CreateFPToSI, getInt32Ty);
 GenerateCastFP2I(tok_double, tok_long, CreateFPToSI, getInt64Ty);
+GenerateCastFP2I(tok_double, tok_byte, CreateFPToSI, getInt8Ty);
 GenerateCastFP2I(tok_float, tok_int, CreateFPToSI, getInt32Ty);
 GenerateCastFP2I(tok_float, tok_long, CreateFPToSI, getInt64Ty);
+GenerateCastFP2I(tok_float, tok_byte, CreateFPToSI, getInt8Ty);
 
 GenerateCastFP2I(tok_double, tok_uint, CreateFPToUI, getInt32Ty);
 GenerateCastFP2I(tok_double, tok_ulong, CreateFPToUI, getInt64Ty);
@@ -63,18 +67,27 @@ GenerateCastSame(tok_ulong, tok_long);
 
 GenerateCastSame(tok_ulong, tok_ulong);
 GenerateCastSame(tok_long, tok_long);
+GenerateCastSame(tok_byte, tok_byte);
 GenerateCastSame(tok_uint, tok_uint);
 GenerateCastSame(tok_int, tok_int);
 GenerateCastSame(tok_float, tok_float);
 GenerateCastSame(tok_double, tok_double);
 
 GenerateCastFP2I(tok_int, tok_long, CreateSExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_int, tok_byte, CreateSExtOrTrunc, getInt8Ty);
 GenerateCastFP2I(tok_int, tok_ulong, CreateZExtOrTrunc, getInt64Ty);
 GenerateCastFP2I(tok_uint, tok_long, CreateZExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_uint, tok_byte, CreateZExtOrTrunc, getInt8Ty);
 GenerateCastFP2I(tok_uint, tok_ulong, CreateZExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_byte, tok_long, CreateZExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_byte, tok_ulong, CreateZExtOrTrunc, getInt64Ty);
+GenerateCastFP2I(tok_long, tok_byte, CreateSExtOrTrunc, getInt8Ty);
+GenerateCastFP2I(tok_ulong, tok_byte, CreateSExtOrTrunc, getInt8Ty);
 
+GenerateCastFP2I(tok_byte, tok_int, CreateSExtOrTrunc, getInt32Ty);
+GenerateCastFP2I(tok_byte, tok_uint, CreateZExtOrTrunc, getInt32Ty);
 GenerateCastFP2I(tok_long, tok_int, CreateSExtOrTrunc, getInt32Ty);
 GenerateCastFP2I(tok_long, tok_uint, CreateZExtOrTrunc, getInt32Ty);
-GenerateCastFP2I(tok_ulong, tok_int, CreateZExtOrTrunc, getInt32Ty);
+GenerateCastFP2I(tok_ulong, tok_int, CreateSExtOrTrunc, getInt32Ty);
 GenerateCastFP2I(tok_ulong, tok_uint, CreateZExtOrTrunc, getInt32Ty);
 

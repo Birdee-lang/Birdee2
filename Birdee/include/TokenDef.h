@@ -52,6 +52,7 @@ namespace Birdee
 		tok_void,
 		tok_boolean,
 		tok_pointer,
+		tok_byte,
 	
 		tok_add,
 		tok_minus,
@@ -97,6 +98,7 @@ namespace Birdee
 	{
 		switch (t)
 		{
+		case tok_byte:
 		case tok_int:
 		case tok_long:
 		case tok_ulong:

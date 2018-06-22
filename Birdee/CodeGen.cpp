@@ -169,6 +169,10 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		base= llvm::Type::getInt32Ty(context);
 		dtype = DBuilder->createBasicType("int", 32, dwarf::DW_ATE_signed);
 		break;
+	case tok_byte:
+		base = llvm::Type::getInt8Ty(context);
+		dtype = DBuilder->createBasicType("byte", 8, dwarf::DW_ATE_signed);
+		break;
 	case tok_long:
 		base = llvm::Type::getInt64Ty(context);
 		dtype = DBuilder->createBasicType("long", 64, dwarf::DW_ATE_signed);
@@ -662,7 +666,15 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 	{
 		return itr->second;
 	}
-	
+	static llvm::Type* byte_arr_ty = nullptr;
+	if (!byte_arr_ty)
+	{
+		ResolvedType ty;
+		ty.type = tok_byte;
+		ty.index_level = 1;
+		byte_arr_ty = helper.GetType(ty);
+	}
+	/*
 	Constant * str = ConstantDataArray::getString(context, Val);
 	GlobalVariable* vstr = new GlobalVariable(*module,str->getType(), true, GlobalValue::PrivateLinkage, nullptr);
 	vstr->setAlignment(1);
@@ -676,6 +688,31 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 	//const_ptr_5->print(errs(), true);
 
 	Constant * obj= llvm::ConstantStruct::get(GetStringType(),{
+		const_ptr_5,
+		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length(),true))
+		});*/
+	
+
+	Constant * str = ConstantDataArray::getString(context, Val);
+	vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(builder.getInt8Ty(),Val.length() + 1) };
+	auto cur_array_ty=  StructType::create(context, types);
+
+	Constant * strarr = llvm::ConstantStruct::get(cur_array_ty, {
+		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length()+1,true)),
+		str
+		});
+
+	GlobalVariable* vstr = new GlobalVariable(*module, strarr->getType(), true, GlobalValue::PrivateLinkage, nullptr);
+	vstr->setInitializer(strarr);
+	//vstr->print(errs(), true);
+	std::vector<Constant*> const_ptr_5_indices;
+	ConstantInt* const_int64_6 = ConstantInt::get(context, APInt(64, 0));
+	const_ptr_5_indices.push_back(const_int64_6);
+	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, const_ptr_5_indices);
+	const_ptr_5 = ConstantExpr::getPointerCast(const_ptr_5, byte_arr_ty);
+	//const_ptr_5->print(errs(), true);
+
+	Constant * obj = llvm::ConstantStruct::get(GetStringType(), {
 		const_ptr_5,
 		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length(),true))
 		});
@@ -694,7 +731,11 @@ llvm::Value * Birdee::LocalVarExprAST::Generate()
 llvm::Value * Birdee::AddressOfExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
+	if(expr->resolved_type.isReference())
+		return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
+	auto ret=expr->GetLValue(false);
+	assert(ret);
+	return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
 }
 
 llvm::Value * Birdee::VariableMultiDefAST::Generate()
@@ -709,6 +750,9 @@ Value * Birdee::NumberExprAST::Generate()
 	dinfo.emitLocation(this);
 	switch (Val.type)
 	{
+	case tok_byte:
+		return ConstantInt::get(context, APInt(8, (uint64_t)Val.v_int, true));
+		break;
 	case tok_int:
 		return ConstantInt::get(context, APInt(32, (uint64_t)Val.v_int, true));
 		break;
@@ -746,8 +790,10 @@ llvm::Value * Birdee::NullExprAST::Generate()
 	return Constant::getNullValue(helper.GetType(resolved_type));
 }
 
-llvm::Value * Birdee::IndexExprAST::GetLValue()
+llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 {
+	if (checkHas)
+		return (llvm::Value *)1;
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();
@@ -784,7 +830,10 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	}
 	return builder.CreateCall(func, args);
 }
-
+namespace Birdee
+{
+	extern ClassAST* GetArrayClass();
+}
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
@@ -796,6 +845,11 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 	else if (kind == member_function)
 	{
 		llvm_obj = Obj->Generate();
+		static ClassAST* array_cls = nullptr;
+		if (!array_cls)
+			array_cls = GetArrayClass();
+		if (Obj->resolved_type.index_level > 0)
+			llvm_obj = builder.CreatePointerCast(llvm_obj, array_cls->llvm_type->getPointerTo());
 		return func->decl->llvm_func;
 	}
 	else if (kind == member_imported_dim)
@@ -860,8 +914,12 @@ llvm::Value * Birdee::ClassAST::Generate()
 	return nullptr;
 }
 
-llvm::Value * Birdee::MemberExprAST::GetLValue()
+llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 {
+	if (checkHas)
+	{
+		return (llvm::Value *)1;
+	}
 	dinfo.emitLocation(this);
 	llvm_obj = Obj->Generate();
 	if(kind==member_field)
@@ -960,7 +1018,7 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 	dinfo.emitLocation(this);
 	if (Op == tok_assign)
 	{
-		Value* lv = LHS->GetLValue();
+		Value* lv = LHS->GetLValue(false);
 		assert(lv);
 		builder.CreateStore(RHS->Generate(), lv);
 		return nullptr;

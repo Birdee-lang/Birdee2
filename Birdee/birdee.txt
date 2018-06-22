@@ -1,8 +1,19 @@
 
 declare function puts (str as pointer) as int
 
+class genericarray
+	private len as int
+	private dummy as byte
+	public function length() as int
+		return len
+	end
+	public function getRaw() as pointer
+		return addressof(dummy)
+	end
+end
+
 class string
-	private buf as pointer
+	private buf as byte[]
 	private len as int
 	public function length() as int
 		return len
@@ -12,7 +23,7 @@ class string
 		return this
 	end
 	public function getRaw() as pointer
-		return buf
+		return buf.getRaw()
 	end
 end class
 

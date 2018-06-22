@@ -57,7 +57,9 @@ ResolvedType ConvertIdToType(const json& type)
 	case -9:
 		ret.type = tok_void;
 		break;
-
+	case -10:
+		ret.type = tok_byte;
+		break;
 	default:
 		BirdeeAssert(idtype >= 0 && idtype < MAX_CLASS_COUNT, "Bad type id");
 		ret.type = tok_class;
@@ -295,6 +297,7 @@ void ImportedModule::Init(const vector<string>& package,const string& module_nam
 	}
 	in >> json;
 	current_package_name=module_name;
+	current_module_idx = cu.imported_module_names.size() - 1;
 	idx_to_class.clear();
 	orphan_idx_to_class.clear();
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");

@@ -2,4 +2,5 @@ import test
 
 dim p=test.add(1,2)
 dim str as birdee.string="123"
+dim a as byte=19
 print(test.str)

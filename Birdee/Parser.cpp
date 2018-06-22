@@ -55,6 +55,7 @@ namespace Birdee
 		{ tok_assign,"=" },
 		{ tok_int, "int" },
 		{ tok_long, "long" },
+		{ tok_byte, "byte" },
 		{ tok_ulong, "ulong" },
 		{ tok_uint, "uint" },
 		{ tok_float, "float" },
@@ -138,7 +139,7 @@ PrototypeAST *current_func_proto = nullptr;
 void ParsePackageName(vector<string>& ret);
 std::unique_ptr<Type> ParseType()
 {
-	static std::unordered_set<Token> types = { tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
+	static std::unordered_set<Token> types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
 	//CompileExpect(tok_as, "Expected \'as\'");
 	if (tokenizer.CurTok != tok_as)
 		return make_unique<Type>(tok_auto);

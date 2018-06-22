@@ -166,6 +166,7 @@ namespace Birdee
 		{ "as",tok_as },
 		{ "int",tok_int },
 		{ "long",tok_long},
+		{ "byte",tok_byte },
 		{ "ulong",tok_ulong},
 		{ "uint",tok_uint},
 		{ "float",tok_float},

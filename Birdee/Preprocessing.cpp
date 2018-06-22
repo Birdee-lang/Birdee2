@@ -199,7 +199,8 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 		return make_unique<CastNumberExpr<tok_float, typeto>>(std::move(val),pos);
 	case tok_double:
 		return make_unique<CastNumberExpr<tok_double, typeto>>(std::move(val),pos);
-
+	case tok_byte:
+		return make_unique<CastNumberExpr<tok_byte, typeto>>(std::move(val), pos);
 	}
 	ThrowCastError(target, val->resolved_type, pos);
 	return nullptr;
@@ -240,7 +241,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 			return fix_type(tok_float);
 		case tok_double:
 			return fix_type(tok_double);
-
+		case tok_byte:
+			return fix_type(tok_byte);
 		}
 	}
 #undef fix_type
@@ -252,8 +254,9 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,bool isBool, SourcePos pos)
 {
 	static unordered_map<Token, int> promotion_map = {
-	{tok_int,0},
-	{tok_ulong,1},
+	{ tok_byte,-1 },
+	{ tok_int,0 },
+	{tok_uint,1},
 	{tok_long,2},
 	{tok_ulong,3},
 	{tok_float,4},
@@ -385,7 +388,7 @@ namespace Birdee
 	void AddressOfExprAST::Phase1()
 	{
 		expr->Phase1();
-		CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in addressof should be a reference type");
+		CompileAssert(expr->resolved_type.isReference() || expr->GetLValue(true), Pos, "The expression in addressof should be a reference type or be a LValue");
 		resolved_type.type = tok_pointer;
 	}
 
@@ -477,6 +480,15 @@ namespace Birdee
 		}
 	}
 
+	ClassAST* GetArrayClass()
+	{
+		string name("genericarray");
+		if (cu.is_corelib)
+			return &(cu.classmap.find(name)->second.get());
+		else
+			return cu.imported_classmap.find(name)->second;
+	}
+
 	void ClassAST::Phase1()
 	{
 		Phase0();
@@ -533,6 +545,24 @@ namespace Birdee
 			}
 			return;
 		}
+		if (Obj->resolved_type.index_level>0)
+		{
+			static ClassAST* array_cls = nullptr;
+			if (!array_cls)
+				array_cls = GetArrayClass();
+			auto func = array_cls->funcmap.find(member);
+			if (func != array_cls->funcmap.end())
+			{
+				kind = member_function;
+				this->func = &(array_cls->funcs[func->second]);
+				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(array_cls)) // if is private and we are not in the class
+					throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
+				resolved_type = this->func->decl->resolved_type;
+				return;
+			}
+			throw CompileError(Pos.line, Pos.pos, "Cannot find member " + member);
+			return;
+		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
 		ClassAST* cls = Obj->resolved_type.class_ast;
 		auto field = cls->fieldmap.find(member);
@@ -555,7 +585,7 @@ namespace Birdee
 			resolved_type = this->func->decl->resolved_type;
 			return;
 		}
-		throw CompileError(Pos.line, Pos.pos, "");
+		throw CompileError(Pos.line, Pos.pos, "Cannot find member "+member);
 	}
 
 	void CallExprAST::Phase1()
@@ -616,6 +646,9 @@ namespace Birdee
 		else
 			return cu.imported_classmap.find(name)->second;
 	}
+
+
+
 	void StringLiteralAST::Phase1()
 	{
 		//fix-me: use the system package name of string

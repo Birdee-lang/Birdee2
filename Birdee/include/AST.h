@@ -172,12 +172,13 @@ namespace Birdee {
 			return 	index_level == 0 && type == tok_int
 				|| type == tok_long
 				|| type == tok_ulong
-				|| type == tok_uint;
+				|| type == tok_uint
+				|| type == tok_byte;
 		}
 		bool isSigned()
 		{
-			return 	index_level == 0 && type == tok_int
-				|| type == tok_long;
+			return 	index_level == 0 && (type == tok_int
+				|| type == tok_long || type == tok_byte);
 		}
 		bool isNumber() const
 		{
@@ -186,7 +187,8 @@ namespace Birdee {
 				|| type == tok_ulong
 				|| type == tok_uint
 				|| type == tok_float
-				|| type == tok_double;
+				|| type == tok_double
+				|| type == tok_byte;
 		}
 		bool isResolved() const
 		{
@@ -224,7 +226,7 @@ namespace Birdee {
 	class ExprAST : public StatementAST {
 	public:
 		ResolvedType resolved_type;
-		virtual llvm::Value* GetLValue() { return nullptr; };
+		virtual llvm::Value* GetLValue(bool checkHas) { return nullptr; };
 		virtual ~ExprAST() = default;
 		void print(int level) {
 			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
@@ -284,6 +286,9 @@ namespace Birdee {
 			ExprAST::print(level);
 			switch (Val.type)
 			{
+			case tok_byte:
+				std::cout << "const byte " << Val.v_int << "\n";
+				break;
 			case tok_int:
 				std::cout << "const int " << Val.v_int << "\n";
 				break;
@@ -339,7 +344,7 @@ namespace Birdee {
 	public:
 		unique_ptr<ResolvedIdentifierExprAST> impl;
 		void Phase1();
-		llvm::Value * GetLValue() override { return impl->GetLValue(); };
+		llvm::Value * GetLValue(bool checkHas) override { return impl->GetLValue(checkHas); };
 		llvm::Value* Generate();
 		IdentifierExprAST(const std::string &Name) : Name(Name) {}
 		void print(int level) { ExprAST::print(level); std::cout << "Identifier:" << Name << "\n"; }
@@ -439,7 +444,7 @@ namespace Birdee {
 	public:
 		void Phase1();
 		llvm::Value* Generate();
-		llvm::Value* GetLValue() override;
+		llvm::Value* GetLValue(bool checkHas) override;
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
 			std::unique_ptr<ExprAST>&& Index, SourcePos Pos)
 			: Expr(std::move(Expr)), Index(std::move(Index)) {
@@ -588,7 +593,7 @@ namespace Birdee {
 		LocalVarExprAST(VariableSingleDefAST* def, SourcePos pos) :def(def) { Pos = pos; Phase1(); }
 		void Phase1();
 		llvm::Value* Generate();
-		llvm::Value* GetLValue() override { return def->llvm_value; };
+		llvm::Value* GetLValue(bool checkHas) override { return def->llvm_value; };
 	};
 
 	/// PrototypeAST - This class represents the "prototype" for a function,
@@ -826,7 +831,7 @@ namespace Birdee {
 	public:
 		llvm::Value* llvm_obj = nullptr;
 		llvm::Value* Generate();
-		llvm::Value* GetLValue() override;
+		llvm::Value* GetLValue(bool checkHas) override;
 		enum
 		{
 			member_error,

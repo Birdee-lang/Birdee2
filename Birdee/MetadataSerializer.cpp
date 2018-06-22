@@ -76,6 +76,9 @@ json ConvertTypeToIndex(ResolvedType& type)
 	case tok_void:
 		ret["base"] = -9;
 		break;
+	case tok_byte:
+		ret["base"] = -10;
+		break;
 	case tok_class:
 	{
 		auto itr = class_idx_map.find(type.class_ast);
