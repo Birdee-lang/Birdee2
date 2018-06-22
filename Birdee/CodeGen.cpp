@@ -633,6 +633,8 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 llvm::Value * Birdee::IdentifierExprAST::Generate()
 {
+	if (resolved_type.type == tok_package)
+		return nullptr;
 	return impl->Generate();
 }
 
@@ -786,14 +788,27 @@ llvm::Value * Birdee::CallExprAST::Generate()
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	llvm_obj = Obj->Generate();
 	if (kind == member_field)
 	{
+		llvm_obj = Obj->Generate();
 		return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
 	}
 	else if (kind == member_function)
 	{
+		llvm_obj = Obj->Generate();
 		return func->decl->llvm_func;
+	}
+	else if (kind == member_imported_dim)
+	{
+		return builder.CreateLoad(import_dim->llvm_value);
+	}
+	else if (kind == member_imported_function)
+	{
+		return import_func->llvm_func;
+	}
+	else if (kind == member_package)
+	{
+		return nullptr;
 	}
 	else
 	{

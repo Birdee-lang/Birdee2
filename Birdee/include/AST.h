@@ -84,8 +84,8 @@ namespace Birdee {
 	//a quick structure to find & store names of imported packages
 	class ImportTree
 	{
-		unordered_map<string, unique_ptr<ImportTree>> map;
 	public:
+		unordered_map<string, unique_ptr<ImportTree>> map;
 		unique_ptr<ImportedModule> mod;
 		//if the current node has the name, will not search the next levels
 		ImportTree* FindName(const string& name) const;
@@ -122,6 +122,18 @@ namespace Birdee {
 		}
 	};
 
+	class QualifiedIdentifierType :public Type {
+
+	public:
+		vector<string> name;
+		QualifiedIdentifierType(vector<string>&&_name) :Type(tok_package), name(std::move(_name)) {}
+		void print(int level)
+		{
+			Type::print(level);
+			std::cout << " QualifiedName: " << name.back();
+		}
+	};
+
 	class ClassAST;
 	class PrototypeAST;
 	extern const string& GetClassASTName(ClassAST*);
@@ -134,6 +146,7 @@ namespace Birdee {
 		union {
 			ClassAST* class_ast;
 			PrototypeAST * proto_ast;
+			ImportTree* import_node;
 		};
 		ResolvedType(Type& _type,SourcePos pos) :type(_type.type),index_level(_type.index_level), class_ast(nullptr)
 		{
@@ -807,6 +820,8 @@ namespace Birdee {
 		{
 			MemberFunctionDef* func;
 			FieldDef* field;
+			FunctionAST* import_func;
+			VariableSingleDefAST* import_dim;
 		};
 	public:
 		llvm::Value* llvm_obj = nullptr;
@@ -815,12 +830,15 @@ namespace Birdee {
 		enum
 		{
 			member_error,
+			member_package,
 			member_field,
 			member_function,
+			member_imported_dim,
+			member_imported_function,
 		}kind;
 		void Phase1();
 		bool isMutable() {
-			return kind == member_field;
+			return kind == member_field || kind==member_imported_dim;
 		}
 		void print(int level)
 		{

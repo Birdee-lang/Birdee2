@@ -10,6 +10,25 @@ using std::reference_wrapper;
 
 using namespace Birdee;
 
+template <typename T>
+T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
+	const string& name)
+{
+	auto itr = M.find(name);
+	if (itr == M.end())
+		return nullptr;
+	return (itr->second);
+}
+
+template <typename T>
+T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
+	const string& name)
+{
+	auto itr = M.find(name);
+	if (itr == M.end())
+		return nullptr;
+	return (itr->second.get());
+}
 class ScopeManager
 {
 public:
@@ -84,16 +103,8 @@ public:
 	}
 
 	
-	template <typename T>
-	T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
-		const string& name)
-	{
-		auto itr = M.find(name);
-		if (itr == M.end())
-			return nullptr;
-		return (itr->second);
-	}
-	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name,SourcePos pos)
+
+	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
 		auto bb = FindLocalVar(name);
 		if (bb)
@@ -131,14 +142,20 @@ public:
 		if (ret2)
 			return make_unique<ResolvedFuncExprAST>(ret2, pos);
 		
+		auto package = cu.imported_packages.FindName(name);
+		if (package)
+		{
+			out_import = package;
+			return nullptr;
+		}
 		throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
 		return nullptr;
 	}
 
 }scope_mgr;
 
-template <typename T>
-T* GetItemByName(const unordered_map<reference_wrapper<const string>, reference_wrapper<T>>& M,
+template <typename T,typename T2>
+T* GetItemByName(const unordered_map<T2, reference_wrapper<T>>& M,
 	const string& name, SourcePos pos)
 {
 	auto itr = M.find(name);
@@ -259,13 +276,15 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,b
 
 }
 
-
+extern string GetModuleNameByArray(const vector<string>& package);
 namespace Birdee
 {
 	const string& GetClassASTName(ClassAST* cls)
 	{
 		return cls->name;
 	}
+
+	
 	void ResolvedType::ResolveType(Type& type, SourcePos pos)
 	{
 		if (type.type == tok_identifier)
@@ -279,6 +298,23 @@ namespace Birdee
 			else
 				this->class_ast= &(itr->second.get());
 			//fix-me: should find function proto
+		}
+		else if (type.type == tok_package)
+		{
+			QualifiedIdentifierType* ty=dynamic_cast<QualifiedIdentifierType*>(&type);
+			assert(ty && "Type should be a QualifiedIdentifierType");
+			string clsname = ty->name.back();
+			ty->name.pop_back();
+			auto node = cu.imported_packages.Contains(ty->name);
+			if (!node || (node && !node->mod))
+			{
+				throw CompileError(pos.line,pos.pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
+			}
+			auto itr = node->mod->classmap.find(clsname);
+			if(itr== node->mod->classmap.end())
+				throw CompileError(pos.line, pos.pos, "Cannot find class " + clsname+" in module "+ GetModuleNameByArray(ty->name));
+			this->type = tok_class;
+			this->class_ast = itr->second.get();
 		}
 
 	}
@@ -365,8 +401,15 @@ namespace Birdee
 
 	void IdentifierExprAST::Phase1()
 	{
-		impl = scope_mgr.ResolveName(Name, Pos);
-		resolved_type = impl->resolved_type;
+		ImportTree* import_node;
+		impl = scope_mgr.ResolveName(Name, Pos, import_node);
+		if (!impl)
+		{
+			resolved_type.type = tok_package;
+			resolved_type.import_node = import_node;
+		}
+		else
+			resolved_type = impl->resolved_type;
 	}
 
 	void ASTBasicBlock::Phase1()
@@ -453,6 +496,43 @@ namespace Birdee
 		if (resolved_type.isResolved())
 			return;
 		Obj->Phase1();
+		if (Obj->resolved_type.type == tok_package)
+		{
+			ImportTree* node = Obj->resolved_type.import_node;
+			if (node->map.size() == 0)
+			{
+				auto ret1 = FindImportByName(node->mod->dimmap, member);
+				if (ret1)
+				{
+					kind = member_imported_dim;
+					import_dim = ret1;
+					Obj = nullptr;
+					resolved_type = ret1->resolved_type;
+					return;
+				}
+				auto ret2 = FindImportByName(node->mod->funcmap, member);
+				if (ret2)
+				{
+					kind = member_imported_function;
+					import_func = ret2;
+					Obj = nullptr;
+					resolved_type = ret2->resolved_type;
+					return;
+				}
+				throw CompileError(Pos.line,Pos.pos,"Cannot resolve name "+ member);
+			}
+			else
+			{
+				kind = member_package;
+				resolved_type.type = tok_package;
+				resolved_type.import_node = node->FindName(member);
+				if(!resolved_type.import_node)
+					throw CompileError(Pos.line, Pos.pos, "Cannot resolve name " + member);
+				Obj = nullptr;
+				return;
+			}
+			return;
+		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
 		ClassAST* cls = Obj->resolved_type.class_ast;
 		auto field = cls->fieldmap.find(member);

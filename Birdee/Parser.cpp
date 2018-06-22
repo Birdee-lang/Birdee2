@@ -135,6 +135,7 @@ std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
 PrototypeAST *current_func_proto = nullptr;
 
+void ParsePackageName(vector<string>& ret);
 std::unique_ptr<Type> ParseType()
 {
 	static std::unordered_set<Token> types = { tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
@@ -145,7 +146,17 @@ std::unique_ptr<Type> ParseType()
 	std::unique_ptr<Type> type;
 	if (tokenizer.CurTok == tok_identifier)
 	{
-		type = make_unique<IdentifierType>(tokenizer.IdentifierStr);
+		string iden = tokenizer.IdentifierStr;
+		Token next=tokenizer.GetNextToken();
+		if (next == tok_dot)
+		{
+			vector<string> pkg = { iden };
+			tokenizer.GetNextToken();
+			ParsePackageName(pkg);
+			type = make_unique<QualifiedIdentifierType>(std::move(pkg));
+		}
+		else
+			type = make_unique<IdentifierType>(iden);
 	}
 	else
 	{
@@ -153,8 +164,9 @@ std::unique_ptr<Type> ParseType()
 			type = make_unique<Type>(tokenizer.CurTok);
 		else
 			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an identifier or basic type name");
+		tokenizer.GetNextToken();
 	}
-	tokenizer.GetNextToken();
+	
 	while (tokenizer.CurTok == tok_left_index)
 	{
 		type->index_level++;
@@ -663,9 +675,8 @@ done:
 	return std::move(ret);
 }
 
-vector<string> ParsePackageName()
+void ParsePackageName(vector<string>& ret)
 {
-	vector<string> ret;
 	CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
 	ret.push_back(tokenizer.IdentifierStr);
 	tokenizer.GetNextToken();
@@ -676,8 +687,13 @@ vector<string> ParsePackageName()
 		ret.push_back(tokenizer.IdentifierStr);
 		tokenizer.GetNextToken();
 	}
+}
 
-	return ret;
+vector<string> ParsePackageName()
+{
+	vector<string> ret;
+	ParsePackageName(ret);
+	return ret;;
 }
 
 void ParsePackage()
@@ -766,7 +782,7 @@ ImportTree* Birdee::ImportTree::Insert(const vector<string>& package, int level)
 	}
 }
 
-static string GetModuleNameByArray(const vector<string>& package)
+string GetModuleNameByArray(const vector<string>& package)
 {
 	string ret=package[0];
 	for (int i = 1; i < package.size(); i++)

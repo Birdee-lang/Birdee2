@@ -1,3 +1,5 @@
-import test:str
+import test
 
-print(str)
+dim p=test.add(1,2)
+dim str as birdee.string="123"
+print(test.str)
