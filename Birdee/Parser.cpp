@@ -310,13 +310,15 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	switch (tokenizer.CurTok)
 	{
 	case tok_address_of:
+	case tok_pointer_of:
 	{
+		Token tok = tokenizer.CurTok;
 		SourcePos pos = tokenizer.GetSourcePos();
 		tokenizer.GetNextToken();
 		CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
-		firstexpr = make_unique<AddressOfExprAST>(std::move(firstexpr), pos);
+		firstexpr = make_unique<AddressOfExprAST>(std::move(firstexpr),tok== tok_address_of, pos);
 		break;
 	}
 	case tok_new:

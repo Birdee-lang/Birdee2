@@ -388,7 +388,10 @@ namespace Birdee
 	void AddressOfExprAST::Phase1()
 	{
 		expr->Phase1();
-		CompileAssert(expr->resolved_type.isReference() || expr->GetLValue(true), Pos, "The expression in addressof should be a reference type or be a LValue");
+		if (is_address_of)
+			CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
+		else
+			CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
 		resolved_type.type = tok_pointer;
 	}
 

@@ -60,7 +60,10 @@ extern "C" void* BirdeeMallocArr(uint32_t sz,uint32_t param_sz,...)
 	return ret;
 }
 
-
+extern "C" void prints(char* i)
+{
+	fputs(i, stdout);
+}
 
 
 extern "C" BirdeeString* BirdeeP2S(void* i)

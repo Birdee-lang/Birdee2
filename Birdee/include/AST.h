@@ -464,11 +464,12 @@ namespace Birdee {
 
 	class AddressOfExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> expr;
+		bool is_address_of;
 	public:
 		void Phase1();
 		llvm::Value* Generate();
-		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, SourcePos Pos)
-			: expr(std::move(Expr)){
+		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, bool is_address_of, SourcePos Pos)
+			: expr(std::move(Expr)), is_address_of(is_address_of){
 			this->Pos = Pos;
 		}
 		void print(int level) {
@@ -593,7 +594,7 @@ namespace Birdee {
 		LocalVarExprAST(VariableSingleDefAST* def, SourcePos pos) :def(def) { Pos = pos; Phase1(); }
 		void Phase1();
 		llvm::Value* Generate();
-		llvm::Value* GetLValue(bool checkHas) override { return def->llvm_value; };
+		llvm::Value* GetLValue(bool checkHas) override { return checkHas? (llvm::Value*)1:def->llvm_value; };
 	};
 
 	/// PrototypeAST - This class represents the "prototype" for a function,

@@ -1,5 +1,6 @@
 
 declare function puts (str as pointer) as int
+declare function prints (str as pointer) as int
 
 class genericarray
 	private len as uint
@@ -39,10 +40,9 @@ function pointer2str(i as pointer) as string
 end
 
 function print(str as string)
-	puts(str.getRaw())
+	prints(str.getRaw())
 end
 
 function println(str as string)
 	puts(str.getRaw())
-	puts("\n".getRaw())
 end

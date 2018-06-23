@@ -798,7 +798,7 @@ llvm::Value * Birdee::LocalVarExprAST::Generate()
 llvm::Value * Birdee::AddressOfExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	if(expr->resolved_type.isReference())
+	if(!is_address_of)
 		return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
 	auto ret=expr->GetLValue(false);
 	assert(ret);

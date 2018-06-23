@@ -6,8 +6,9 @@ dim a as byte[]= new byte[10]
 dim s=int2str(a.length())
 print(s)
 dim b as byte[][]= new byte[10][100]
-print(pointer2str(addressof(b)))
-print(pointer2str(addressof(b[0])))
+println(pointer2str(pointerof(b)))
+println(pointer2str(addressof(b)))
+println(pointer2str(addressof(b[0])))
 b[0][0]=123
 
 dim c as string= new string

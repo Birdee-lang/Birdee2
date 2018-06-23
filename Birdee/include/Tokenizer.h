@@ -178,6 +178,7 @@ namespace Birdee
 		{"function",tok_func},
 		{"declare",tok_declare},
 		{"addressof",tok_address_of},
+		{ "pointerof",tok_pointer_of },
 		{"pointer",tok_pointer},
 		{"end",tok_end},
 		{"class",tok_class},

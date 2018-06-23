@@ -40,6 +40,7 @@ namespace Birdee
 		tok_this,
 		tok_null,
 		tok_address_of,
+		tok_pointer_of,
 		tok_new,
 
 		//type
