@@ -137,18 +137,16 @@ std::unique_ptr<IfBlockAST> ParseIf();
 PrototypeAST *current_func_proto = nullptr;
 
 void ParsePackageName(vector<string>& ret);
-std::unique_ptr<Type> ParseType()
+
+//parse basic type, will not get the array type
+std::unique_ptr<Type> ParseBasicType()
 {
 	static std::unordered_set<Token> types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
-	//CompileExpect(tok_as, "Expected \'as\'");
-	if (tokenizer.CurTok != tok_as)
-		return make_unique<Type>(tok_auto);
-	tokenizer.GetNextToken(); //eat as
 	std::unique_ptr<Type> type;
 	if (tokenizer.CurTok == tok_identifier)
 	{
 		string iden = tokenizer.IdentifierStr;
-		Token next=tokenizer.GetNextToken();
+		Token next = tokenizer.GetNextToken();
 		if (next == tok_dot)
 		{
 			vector<string> pkg = { iden };
@@ -167,7 +165,16 @@ std::unique_ptr<Type> ParseType()
 			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an identifier or basic type name");
 		tokenizer.GetNextToken();
 	}
-	
+	return std::move(type);
+}
+
+std::unique_ptr<Type> ParseType()
+{
+	//CompileExpect(tok_as, "Expected \'as\'");
+	if (tokenizer.CurTok != tok_as)
+		return make_unique<Type>(tok_auto);
+	tokenizer.GetNextToken(); //eat as
+	std::unique_ptr<Type> type= ParseBasicType();
 	while (tokenizer.CurTok == tok_left_index)
 	{
 		type->index_level++;
@@ -265,6 +272,38 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 
 }
 
+std::unique_ptr<NewExprAST> ParseNew()
+{
+	SourcePos pos = tokenizer.GetSourcePos();
+	tokenizer.GetNextToken();
+	auto type = ParseBasicType();
+	vector<std::unique_ptr<ExprAST>> expr;
+	string method;
+	while (tokenizer.CurTok == tok_left_index)
+	{
+		type->index_level++;
+		tokenizer.GetNextToken();//eat [
+		expr.push_back(ParseExpressionUnknown());
+		CompileExpect(tok_right_index, "Expected  \']\'");
+	}
+	if (type->index_level == 0)
+	{
+		if (tokenizer.CurTok == tok_colon)
+		{
+			tokenizer.GetNextToken();//eat :
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier after :");
+			method = tokenizer.IdentifierStr;
+			tokenizer.GetNextToken();
+		}
+		if (tokenizer.CurTok == tok_left_bracket)
+		{
+			tokenizer.GetNextToken();//eat (
+			expr = ParseArguments();
+		}
+	}
+	return make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos);
+}
+
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
 {
 	std::unique_ptr<ExprAST> firstexpr;
@@ -276,29 +315,39 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		tokenizer.GetNextToken();
 		CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
 		firstexpr = ParseExpressionUnknown();
-		CompileAssert(tok_right_bracket == tokenizer.CurTok, "Expected \')\'");
+		CompileExpect(tok_right_bracket, "Expected \')\'");
 		firstexpr = make_unique<AddressOfExprAST>(std::move(firstexpr), pos);
+		break;
+	}
+	case tok_new:
+	{
+		firstexpr = ParseNew();
 		break;
 	}
 	case tok_this:
 		firstexpr = make_unique<ThisExprAST>();
+		tokenizer.GetNextToken();
 		break;
 	case tok_null:
 		firstexpr = make_unique<NullExprAST>();
+		tokenizer.GetNextToken();
 		break;
 	case tok_identifier:
 		firstexpr = make_unique<IdentifierExprAST>(tokenizer.IdentifierStr);
+		tokenizer.GetNextToken();
 		break;
 	case tok_number:
 		firstexpr = make_unique<NumberExprAST>(tokenizer.NumVal);
+		tokenizer.GetNextToken();
 		break;
 	case tok_string_literal:
 		firstexpr = make_unique<StringLiteralAST>(tokenizer.IdentifierStr);
+		tokenizer.GetNextToken();
 		break;
 	case tok_left_bracket:
 		tokenizer.GetNextToken();
 		firstexpr = ParseExpressionUnknown();
-		CompileAssert(tok_right_bracket == tokenizer.CurTok, "Expected \')\'");
+		CompileExpect(tok_right_bracket, "Expected \')\'");
 		break;
 	case tok_func:
 		tokenizer.GetNextToken(); //eat function
@@ -312,7 +361,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	default:
 		throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an expression");
 	}
-	tokenizer.GetNextToken(); //eat token
+	//tokenizer.GetNextToken(); //eat token
 	auto parse_tail_token = [&firstexpr]()
 	{
 		//parse . [] func(), these operators have highest priorities and are parsed from left to right

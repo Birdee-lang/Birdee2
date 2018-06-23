@@ -2,9 +2,9 @@
 declare function puts (str as pointer) as int
 
 class genericarray
-	private len as int
-	private dummy as byte
-	public function length() as int
+	private len as uint
+	private dummy as pointer
+	public function length() as uint
 		return len
 	end
 	public function getRaw() as pointer
@@ -14,8 +14,8 @@ end
 
 class string
 	private buf as byte[]
-	private len as int
-	public function length() as int
+	private len as uint
+	public function length() as uint
 		return len
 	end
 	public function add(other as string) as string
@@ -26,6 +26,17 @@ class string
 		return buf.getRaw()
 	end
 end class
+
+declare function BirdeeI2S (i as int) as string
+declare function BirdeeP2S (i as pointer) as string
+
+function int2str(i as int) as string
+	return BirdeeI2S(i)
+end
+
+function pointer2str(i as pointer) as string
+	return BirdeeP2S(i)
+end
 
 function print(str as string)
 	puts(str.getRaw())

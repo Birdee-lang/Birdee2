@@ -755,6 +755,27 @@ namespace Birdee {
 		}
 		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl) :access(access), decl(std::move(decl)) {}
 	};
+
+	class NewExprAST : public ExprAST {
+		std::unique_ptr<Type> ty;
+		string method;
+		vector<std::unique_ptr<ExprAST>> args;
+		MemberFunctionDef* func = nullptr;
+	public:
+		void Phase1();
+		llvm::Value* Generate();
+		NewExprAST(std::unique_ptr<Type>&& ty, vector<std::unique_ptr<ExprAST>>&& args, const string& method, SourcePos Pos)
+			: ty(std::move(ty)), args(std::move(args)), method(method) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "New\n";
+			ty->print(level + 1);
+
+		}
+	};
+
 	class ClassAST : public StatementAST {
 	public:
 		llvm::Value* Generate();

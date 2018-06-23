@@ -155,13 +155,13 @@ public:
 }scope_mgr;
 
 template <typename T,typename T2>
-T* GetItemByName(const unordered_map<T2, reference_wrapper<T>>& M,
+T GetItemByName(const unordered_map<T2, T>& M,
 	const string& name, SourcePos pos)
 {
 	auto itr = M.find(name);
 	if (itr == M.end())
 		throw CompileError(pos.line, pos.pos, "Cannot find the name: " + name);
-	return &(itr->second.get());
+	return itr->second;
 }
 
 inline void CompileAssert(bool a, SourcePos pos,const std::string& msg)
@@ -297,7 +297,7 @@ namespace Birdee
 			this->type = tok_class;
 			auto itr = cu.classmap.find(ty->name);
 			if (itr == cu.classmap.end())
-				this->class_ast = GetItemByName(cu.classmap, ty->name, pos);
+				this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
 			else
 				this->class_ast= &(itr->second.get());
 			//fix-me: should find function proto
@@ -489,6 +489,51 @@ namespace Birdee
 			return cu.imported_classmap.find(name)->second;
 	}
 
+	void CheckFunctionCallParameters(PrototypeAST* proto, std::vector<std::unique_ptr<ExprAST>>& Args, SourcePos Pos)
+	{
+		if (proto->resolved_args.size() != Args.size())
+		{
+			std::stringstream buf;
+			buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << "are given";
+			CompileAssert(false, Pos, buf.str());
+		}
+
+		int i = 0;
+		for (auto& arg : Args)
+		{
+			arg->Phase1();
+			SourcePos pos = arg->Pos;
+			arg = FixTypeForAssignment(proto->resolved_args[i]->resolved_type, std::move(arg), pos);
+			i++;
+		}
+	}
+
+	void NewExprAST::Phase1()
+	{
+		resolved_type = ResolvedType(*ty, Pos);
+		for (auto& expr : args)
+		{
+			expr->Phase1();
+			if (resolved_type.index_level > 0)
+			{
+				CompileAssert(expr->resolved_type.isInteger(), expr->Pos, "Expected an integer for array size");
+			}
+		}
+		if (resolved_type.index_level == 0)
+		{
+			if (!method.empty())
+			{
+				CompileAssert(resolved_type.type==tok_class, Pos, "new expression only supports class types");
+				ClassAST* cls = resolved_type.class_ast;
+				auto itr = cls->funcmap.find(method);
+				CompileAssert(itr != cls->funcmap.end(), Pos, "Cannot resolve name "+ method);
+				func = &cls->funcs[itr->second];
+				CompileAssert(func->access==access_public, Pos, "Accessing a private method");
+				CheckFunctionCallParameters(func->decl->Proto.get(), args, Pos);
+			}
+		}
+	}
+
 	void ClassAST::Phase1()
 	{
 		Phase0();
@@ -593,17 +638,7 @@ namespace Birdee
 		Callee->Phase1();
 		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
 		auto proto = Callee->resolved_type.proto_ast;
-		std::stringstream buf;
-		buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << "are given";
-		CompileAssert(proto->resolved_args.size() == Args.size(), Pos, buf.str());
-		int i = 0;
-		for (auto& arg : Args)
-		{
-			arg->Phase1();
-			SourcePos pos = arg->Pos;
-			arg = FixTypeForAssignment(proto->resolved_args[i]->resolved_type, std::move(arg), pos);
-			i++;
-		}
+		CheckFunctionCallParameters(proto, Args, Pos);
 		resolved_type = proto->resolved_type;
 	}
 

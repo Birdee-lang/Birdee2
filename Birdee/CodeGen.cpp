@@ -572,6 +572,73 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	return ret;
 }
 
+
+llvm::Function* GetMallocObj()
+{
+	static llvm::Function* func = nullptr;
+	if (!func)
+	{
+		auto fty = FunctionType::get(builder.getInt8PtrTy(), { builder.getInt32Ty() }, false);
+		func=Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocObj", module);
+	}
+	return func;
+}
+
+llvm::Function* GetMallocArr()
+{
+	static llvm::Function* func = nullptr;
+	if (!func)
+	{
+		//base_size,dimension,[size1,size2....]
+		auto fty = FunctionType::get(builder.getInt8PtrTy(), { builder.getInt32Ty(),builder.getInt32Ty()}, true);
+		func = Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocArr", module);
+	}
+	return func;
+}
+
+Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, vector<unique_ptr<ExprAST>>& Args)
+{
+	vector<Value*> args;
+	if (obj)
+		args.push_back(obj);
+	for (auto& vargs : Args)
+	{
+		args.push_back(vargs->Generate());
+	}
+	return builder.CreateCall(func, args);
+}
+
+
+llvm::Value * Birdee::NewExprAST::Generate()
+{
+	
+	if (resolved_type.index_level > 0)
+	{
+		ResolvedType tyelement(resolved_type);
+		tyelement.index_level = 0;
+		auto llvm_ele_ty=helper.GetType(tyelement);
+		size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
+		vector<Value*> LArgs;
+		LArgs.push_back(builder.getInt32(sz));
+		LArgs.push_back(builder.getInt32(args.size()));
+		for (auto& arg : args)
+		{
+			LArgs.push_back(builder.CreateZExtOrBitCast(arg->Generate(),builder.getInt32Ty()));
+		}
+		auto ret= builder.CreateCall(GetMallocArr(), LArgs);
+		return builder.CreatePointerCast(ret, helper.GetType(resolved_type));
+	}
+
+	assert(resolved_type.type == tok_class);
+	auto llvm_ele_ty = resolved_type.class_ast->llvm_type;
+	size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
+	Value* ret= builder.CreateCall(GetMallocObj(), builder.getInt32(sz));
+	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
+	if(func)
+		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args);
+	return ret;
+}
+
 bool Birdee::ASTBasicBlock::Generate()
 {
 	for (auto& stmt : body)
@@ -812,23 +879,21 @@ llvm::Value * Birdee::IndexExprAST::Generate()
 	return builder.CreateLoad(builder.CreateGEP(ptr, index));
 }
 
+
 llvm::Value * Birdee::CallExprAST::Generate()
 {
 	dinfo.emitLocation(this);
 	auto func=Callee->Generate();
 	assert(Callee->resolved_type.type == tok_func);
-	vector<Value*> args;
-	if (Callee->resolved_type.proto_ast->cls)
+	auto proto = Callee->resolved_type.proto_ast;
+	Value* obj = nullptr;
+	if (proto->cls)
 	{
 		auto pobj = dynamic_cast<MemberExprAST*>(Callee.get());
 		assert(pobj);
-		args.push_back(pobj->llvm_obj);
+		obj=pobj->llvm_obj;
 	}
-	for (auto& vargs : Args)
-	{
-		args.push_back(vargs->Generate());
-	}
-	return builder.CreateCall(func, args);
+	return GenerateCall(func, proto, obj, Args);
 }
 namespace Birdee
 {

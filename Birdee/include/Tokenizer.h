@@ -162,6 +162,7 @@ namespace Birdee
 		};
 
 		std::map < std::string , Token > token_map = {
+			{"new",tok_new},
 			{ "dim",tok_dim },
 		{ "as",tok_as },
 		{ "int",tok_int },
