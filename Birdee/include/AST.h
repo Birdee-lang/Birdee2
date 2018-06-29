@@ -367,6 +367,15 @@ namespace Birdee {
 		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
 	};
+	class BoolLiteralExprAST : public ExprAST {
+	public:
+		bool v;
+		void Phase1() {};
+		llvm::Value* Generate();
+		BoolLiteralExprAST(bool v) : v(v) { resolved_type.type = tok_boolean;}
+		void print(int level) { ExprAST::print(level); std::cout << "bool" << "\n"; }
+	};
+
 	class NullExprAST : public ExprAST {
 	public:
 		void Phase1() {};
@@ -417,6 +426,7 @@ namespace Birdee {
 	/// BinaryExprAST - Expression class for a binary operator.
 	class BinaryExprAST : public ExprAST {
 		Token Op;
+		FunctionAST* func=nullptr;
 		std::unique_ptr<ExprAST> LHS, RHS;
 	public:
 		BinaryExprAST(Token Op, std::unique_ptr<ExprAST>&& LHS,
@@ -666,6 +676,7 @@ namespace Birdee {
 	public:
 		bool isDeclare;
 		bool isImported=false;
+		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
 		llvm::Function* llvm_func=nullptr;
 		llvm::DIType* PreGenerate();
@@ -678,8 +689,8 @@ namespace Birdee {
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false) {
 			Pos = pos;
 		}
-		FunctionAST(std::unique_ptr<PrototypeAST> Proto, SourcePos pos)
-			: Proto(std::move(Proto)), isDeclare(true) {
+		FunctionAST(std::unique_ptr<PrototypeAST> Proto,const string& link_name , SourcePos pos)
+			: Proto(std::move(Proto)), isDeclare(true),link_name(link_name) {
 			Pos = pos;
 		}
 

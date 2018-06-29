@@ -1,6 +1,7 @@
 
 declare function puts (str as pointer) as int
 declare function prints (str as pointer) as int
+declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
 
 class genericarray
 	private len as uint
@@ -19,12 +20,18 @@ class string
 	public function length() as uint
 		return len
 	end
-	public function add(other as string) as string
-		len=len+other.len
-		return this
+	public function __add__(other as string) as string
+		dim ret=new string
+		dim newlen as uint=len+other.len+1
+		ret.buf=new byte[newlen]
+		ret.buf[newlen-1]=0
+		memcpy(addressof(ret.buf[0]),addressof(buf[0]),len,1,false)
+		memcpy(addressof(ret.buf[len]),addressof(other.buf[0]),other.len,1,false)
+		ret.len=len+other.len
+		return ret
 	end
 	public function getRaw() as pointer
-		return buf.getRaw()
+		return addressof(buf[0])
 	end
 end class
 

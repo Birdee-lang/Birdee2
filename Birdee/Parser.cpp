@@ -326,6 +326,14 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		firstexpr = ParseNew();
 		break;
 	}
+	case tok_true:
+		firstexpr = make_unique<BoolLiteralExprAST>(true);
+		tokenizer.GetNextToken();
+		break;
+	case tok_false:
+		firstexpr = make_unique<BoolLiteralExprAST>(false);
+		tokenizer.GetNextToken();
+		break;
 	case tok_this:
 		firstexpr = make_unique<ThisExprAST>();
 		tokenizer.GetNextToken();
@@ -615,6 +623,16 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
 	CompileExpect(tok_identifier, "Expected an identifier");
+	string link_name;
+	if (tokenizer.CurTok == tok_alias)
+	{
+		if (tokenizer.GetNextToken() != tok_string_literal)
+		{
+			throw CompileError("Expected a string literal after alias");
+		}
+		link_name = tokenizer.IdentifierStr;
+		tokenizer.GetNextToken();
+	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
 	std::unique_ptr<VariableDefAST> args;
 	if (tokenizer.CurTok != tok_right_bracket)
@@ -625,7 +643,7 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 	if (rettype->type == tok_auto)
 		rettype->type = tok_void;
 	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos());
-	return make_unique<FunctionAST>(std::move(funcproto), pos);
+	return make_unique<FunctionAST>(std::move(funcproto), link_name, pos);
 }
 
 

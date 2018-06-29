@@ -596,7 +596,7 @@ llvm::Function* GetMallocArr()
 	return func;
 }
 
-Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, vector<unique_ptr<ExprAST>>& Args)
+Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args)
 {
 	vector<Value*> args;
 	if (obj)
@@ -697,8 +697,13 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		builder.restoreIP(IP);
 		helper.cur_llvm_func = func_backup;
 	}
-	else if(!isImported) //if is declaration and is a c-style extern function
-		llvm_func->setName(Proto->GetName());
+	else if (!isImported) //if is declaration and is a c-style extern function
+	{
+		if(link_name.empty())
+			llvm_func->setName(Proto->GetName());
+		else
+			llvm_func->setName(link_name);
+	}
 	return llvm_func;
 }
 
@@ -722,6 +727,11 @@ StructType* GetStringType()
 	if (cls_string)
 		return cls_string;
 	return GetStringClass()->llvm_type;
+}
+
+llvm::Value * Birdee::BoolLiteralExprAST::Generate()
+{
+	return builder.getInt1(v);
 }
 
 llvm::Value * Birdee::StringLiteralAST::Generate()
@@ -998,6 +1008,8 @@ llvm::Value * BinaryGenerateFloat(Token op,Value* lv,Value* rv)
 	{
 	case tok_add:
 		return builder.CreateFAdd(lv, rv);
+	case tok_minus:
+		return builder.CreateFSub(lv, rv);
 	case tok_equal:
 		return builder.CreateFCmpOEQ(lv, rv);
 	case tok_ne:
@@ -1041,6 +1053,8 @@ llvm::Value * BinaryGenerateInt(Token op, Value* lv, Value* rv,bool issigned)
 	{
 	case tok_add:
 		return builder.CreateAdd(lv, rv);
+	case tok_minus:
+		return builder.CreateSub(lv, rv);
 	case tok_equal:
 		return builder.CreateICmpEQ(lv, rv);
 	case tok_ne:
@@ -1087,6 +1101,12 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		assert(lv);
 		builder.CreateStore(RHS->Generate(), lv);
 		return nullptr;
+	}
+	if (LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0)
+	{
+		auto proto = func->resolved_type.proto_ast;
+		vector<unique_ptr<ExprAST>> vec;vec.push_back( std::move(RHS));
+		return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec);
 	}
 	assert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber());
 	if (LHS->resolved_type.isInteger())

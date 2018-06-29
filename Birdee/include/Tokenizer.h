@@ -164,6 +164,9 @@ namespace Birdee
 		std::map < std::string , Token > token_map = {
 			{"new",tok_new},
 			{ "dim",tok_dim },
+		{"alias",tok_alias},
+		{ "true",tok_true },
+		{ "false",tok_false },
 		{ "as",tok_as },
 		{ "int",tok_int },
 		{ "long",tok_long},
@@ -237,8 +240,12 @@ namespace Birdee
 			}
 			if (isalpha(LastChar)|| LastChar=='_') { // identifier: [a-zA-Z][a-zA-Z0-9]*
 				IdentifierStr = LastChar;
-				while (isalnum((LastChar = GetChar())))
+				LastChar = GetChar();
+				while (isalnum(LastChar) || LastChar == '_')
+				{
 					IdentifierStr += LastChar;
+					LastChar = GetChar();
+				}
 
 				auto single_token = token_map.find(IdentifierStr);
 				if (single_token != token_map.end())

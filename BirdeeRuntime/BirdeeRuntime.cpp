@@ -9,11 +9,13 @@
 
 extern "C" void* BirdeeMallocObj(uint32_t sz)
 {
-	return malloc(sz);
+	void* ret= malloc(sz);
+	return ret;
 }
 
 
-
+#pragma pack(push)
+#pragma pack(4)
 struct GenericArray
 {
 	uint32_t sz;
@@ -23,6 +25,7 @@ struct GenericArray
 		void* buf[10];
 	};
 };
+#pragma pack(pop)
 
 struct BirdeeString
 {

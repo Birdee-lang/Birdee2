@@ -164,13 +164,15 @@ T GetItemByName(const unordered_map<T2, T>& M,
 	return itr->second;
 }
 
-inline void CompileAssert(bool a, SourcePos pos,const std::string& msg)
-{
-	if (!a)
-	{
-		throw CompileError(pos.line, pos.pos, msg);
-	}
-}
+
+#define CompileAssert(a, p ,msg)\
+do\
+{\
+	if (!(a))\
+	{\
+		throw CompileError(p.line, p.pos, msg);\
+	}\
+}while(0)\
 
 
 void ThrowCastError(ResolvedType& target, ResolvedType& fromtype, SourcePos pos)
@@ -387,6 +389,7 @@ namespace Birdee
 
 	void AddressOfExprAST::Phase1()
 	{
+		
 		expr->Phase1();
 		if (is_address_of)
 			CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
@@ -742,6 +745,37 @@ namespace Birdee
 		}
 		else
 		{
+			if (LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0) //if is class object, check for operator overload
+			{
+				static unordered_map<Token, string> operator_map = {
+				{tok_add,"__add__"},
+				{tok_minus,"__sub__"},
+				{tok_mul,"__mul__"},
+				{tok_div,"__div__"},
+				{tok_mod,"__mod__"},
+				{tok_cmp_equal,"__eq__"},
+				{ tok_ge,"__ge__" },
+				{ tok_le,"__le__" },
+				{ tok_logic_and,"__logic_and__" },
+				{ tok_logic_or,"__logic_or__" },
+				{ tok_gt,"__gt__" },
+				{ tok_lt,"__lt__" },
+				{ tok_and,"__and__" },
+				{ tok_or,"__or__" },
+				{ tok_not,"__not__" },
+				{ tok_xor,"__xor__" },
+				};
+				string& name = operator_map[Op];
+				auto itr=LHS->resolved_type.class_ast->funcmap.find(name);
+				CompileAssert(itr!= LHS->resolved_type.class_ast->funcmap.end(), Pos, string("Cannot find function") + name);
+				func = LHS->resolved_type.class_ast->funcs[itr->second].decl.get();
+				auto proto = func->resolved_type.proto_ast;
+				vector<unique_ptr<ExprAST>> args;args.push_back(std::move(RHS) );
+				CheckFunctionCallParameters(proto,args , Pos);
+				RHS = std::move(args[0]);
+				resolved_type = proto->resolved_type;
+				return;
+			}
 			CompileAssert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber(), Pos, "Currently only binary expressions of Numbers are supported");
 			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
 		}

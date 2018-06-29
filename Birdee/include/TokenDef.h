@@ -42,6 +42,9 @@ namespace Birdee
 		tok_address_of,
 		tok_pointer_of,
 		tok_new,
+		tok_alias,
+		tok_true,
+		tok_false,
 
 		//type
 		tok_int,

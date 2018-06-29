@@ -1,16 +1,5 @@
-import test
-
-dim p=test.add(1,2)
-dim str as birdee.string="123"
-dim a as byte[]= new byte[10]
-dim s=int2str(a.length())
-print(s)
-dim b as byte[][]= new byte[10][100]
-println(pointer2str(pointerof(b)))
-println(pointer2str(addressof(b)))
-println(pointer2str(addressof(b[0])))
-b[0][0]=123
-
-dim c as string= new string
-dim d as string= new string:add(c)
-print(test.str)
+dim a as string="123456789"
+print(a)
+dim c=a+123
+println(c)
+println(int2str(c.length()))
