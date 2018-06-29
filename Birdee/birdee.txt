@@ -2,6 +2,7 @@
 declare function puts (str as pointer) as int
 declare function prints (str as pointer) as int
 declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
+declare function strcmp (a as pointer,b as pointer) as int
 
 class genericarray
 	private len as uint
@@ -30,6 +31,11 @@ class string
 		ret.len=len+other.len
 		return ret
 	end
+
+	public function __eq__(other as string) as boolean
+		return strcmp(addressof(buf[0]),addressof(other.buf[0]))==0
+	end
+
 	public function getRaw() as pointer
 		return addressof(buf[0])
 	end
@@ -40,6 +46,14 @@ declare function BirdeeP2S (i as pointer) as string
 
 function int2str(i as int) as string
 	return BirdeeI2S(i)
+end
+
+function bool2str(i as boolean) as string
+	if i then
+		return "true"
+	else
+		return "false"
+	end
 end
 
 function pointer2str(i as pointer) as string

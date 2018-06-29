@@ -1,5 +1,5 @@
 dim a as string="123456789"
 print(a)
-dim c=a+123
+dim c=a+"123"
 println(c)
-println(int2str(c.length()))
+println(bool2str(c==="123456789123"))
