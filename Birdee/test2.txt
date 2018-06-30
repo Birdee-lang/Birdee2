@@ -3,3 +3,12 @@ print(a)
 dim c=a+"123"
 println(c)
 println(bool2str(c==="123456789123"))
+dim arr=new byte[10][10]
+arr[9][9]=12
+println(int2str(arr[9][9]))
+dim arr2=new int[10][10]
+arr2[9][9]=120
+println(int2str(arr2[9][9]))
+dim arr3=new long[10][10]
+arr3[9][9]=1200
+println(int2str(arr3[9][9]))
