@@ -1,14 +1,19 @@
 dim a as string="123456789"
-print(a)
+println(a)
 dim c=a+"123"
-println(c)
-println(bool2str(c==="123456789123"))
-dim arr=new byte[10][10]
-arr[9][9]=12
-println(int2str(arr[9][9]))
-dim arr2=new int[10][10]
-arr2[9][9]=120
-println(int2str(arr2[9][9]))
-dim arr3=new long[10][10]
-arr3[9][9]=1200
-println(int2str(arr3[9][9]))
+
+dim i as int
+for i=0 to 2
+	println(int2str(i))
+end
+
+for dim i=0 to 4
+	println(int2str(i))
+end
+println("global i="+int2str(i))
+for i=0 till 4
+	if i==2 then
+		continue
+	end
+	println(int2str(i))
+end

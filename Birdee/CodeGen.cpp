@@ -89,6 +89,12 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 struct LLVMHelper {
 	Function* cur_llvm_func = nullptr;
 	ClassAST* cur_class_ast = nullptr;
+	struct LoopInfo
+	{
+		BasicBlock* next;
+		BasicBlock* cont;
+		bool isNotNull() { return next && cont; }
+	}cur_loop{ nullptr,nullptr };
 
 	unordered_map<Birdee::ResolvedType, llvm::Type*> typemap;
 	unordered_map<Birdee::ResolvedType, DIType *> dtypemap;
@@ -721,6 +727,19 @@ llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
 }
 
 
+llvm::Value * Birdee::LoopControlAST::Generate()
+{
+	if (!helper.cur_loop.isNotNull())
+		throw CompileError(Pos.line, Pos.pos, "continue or break cannot be used outside of a loop");
+	if (tok == tok_break)
+		builder.CreateBr(helper.cur_loop.cont);
+	else if (tok == tok_continue)
+		builder.CreateBr(helper.cur_loop.next);
+	else
+		abort();
+	return nullptr;
+}
+
 StructType* GetStringType()
 {
 	static StructType* cls_string = nullptr;
@@ -956,13 +975,13 @@ llvm::Value * Birdee::IfBlockAST::Generate()
 {
 	dinfo.emitLocation(this);
 	
-	auto bt = BasicBlock::Create(context, "if_t", helper.cur_llvm_func);
-	auto bf = BasicBlock::Create(context, "if_f", helper.cur_llvm_func);
 	auto cont = BasicBlock::Create(context, "cont", helper.cur_llvm_func);
+	BasicBlock* bf = iffalse.body.empty()? nullptr:BasicBlock::Create(context, "if_f", helper.cur_llvm_func,cont);
+	auto bt = BasicBlock::Create(context, "if_t", helper.cur_llvm_func,bf);
 
 	auto condv = cond->Generate();
 
-	builder.CreateCondBr(condv,bt,bf);
+	builder.CreateCondBr(condv,bt, iffalse.body.empty()?cont:bf);
 	builder.SetInsertPoint(bt);
 	bool hasret=iftrue.Generate();
 	if(!hasret)
@@ -976,6 +995,75 @@ llvm::Value * Birdee::IfBlockAST::Generate()
 			SafeBr(cont);
 	}
 	builder.SetInsertPoint(cont);
+	return nullptr;
+}
+
+
+llvm::Value * Birdee::ForBlockAST::Generate()
+{
+	dinfo.emitLocation(this);
+	auto loopinfo = helper.cur_loop;
+	init->Generate();
+	Value* loopvar;
+	bool issigned;
+	if (isdim)
+	{
+		auto var = (VariableSingleDefAST*)init.get();
+		issigned=var->resolved_type.isSigned();
+		loopvar = var->llvm_value;
+	}
+	else
+	{
+		issigned = loop_var->resolved_type.isSigned();
+		loopvar = loop_var->GetLValue(false);
+	}
+	
+	auto cont = BasicBlock::Create(context, "cont", helper.cur_llvm_func);
+	auto inc = BasicBlock::Create(context, "for_inc", helper.cur_llvm_func, cont);
+	auto bt = BasicBlock::Create(context, "for", helper.cur_llvm_func,inc);
+	auto check = BasicBlock::Create(context, "forcheck", helper.cur_llvm_func,bt);
+	
+	helper.cur_loop.next = inc;
+	helper.cur_loop.cont = cont;
+
+	builder.CreateBr(check);
+	builder.SetInsertPoint(check);
+	Value* cond;
+	auto v = builder.CreateLoad(loopvar);
+	if (issigned)
+	{
+		if (including)
+			cond = builder.CreateICmpSLE(v, till->Generate());
+		else
+			cond = builder.CreateICmpSLT(v, till->Generate());
+	}
+	else
+	{
+		if (including)
+			cond = builder.CreateICmpULE(v, till->Generate());
+		else
+			cond = builder.CreateICmpULT(v, till->Generate());
+	}
+	builder.CreateCondBr(cond, bt, cont);
+
+	builder.SetInsertPoint(bt);
+	bool hasret = block.Generate();
+	if (!hasret)
+	{
+		SafeBr(inc);
+	}
+
+	builder.SetInsertPoint(inc);
+	Value* newloopv = builder.CreateLoad(loopvar);
+	builder.CreateStore(
+			builder.CreateAdd(newloopv, ConstantInt::get(newloopv->getType(), 1)),
+			loopvar);
+		//do loopvar++
+	SafeBr(check);
+	
+
+	builder.SetInsertPoint(cont);
+	helper.cur_loop = loopinfo;
 	return nullptr;
 }
 

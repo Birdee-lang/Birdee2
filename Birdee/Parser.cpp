@@ -440,6 +440,8 @@ int GetTokPrecedence()
 	case tok_right_index:
 	case tok_comma:
 	case tok_then:
+	case tok_to:
+	case tok_till:
 		return -1;
 		break;
 	default:
@@ -504,7 +506,7 @@ std::unique_ptr<ExprAST> ParseExpressionUnknown()
 
 
 
-
+std::unique_ptr<ForBlockAST> ParseFor();
 void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 {
 	std::unique_ptr<ExprAST> firstexpr;
@@ -514,6 +516,11 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 
 		switch (tokenizer.CurTok)
 		{
+		case tok_continue:
+		case tok_break:
+			body.body.push_back(make_unique<LoopControlAST>(tokenizer.CurTok));
+			tokenizer.GetNextToken();
+			break;
 		case tok_newline:
 			tokenizer.GetNextToken(); //eat newline
 			continue;
@@ -534,6 +541,11 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			tokenizer.GetNextToken(); //eat function
 			body.body.push_back(std::move(ParseFunction(nullptr)));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after function definition");
+			break;
+		case tok_for:
+			tokenizer.GetNextToken(); //eat function
+			body.body.push_back(std::move(ParseFor()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
 			break;
 		case tok_end:
 			tokenizer.GetNextToken(); //eat end
@@ -563,6 +575,44 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 done:
 	return;
 }
+
+std::unique_ptr<ForBlockAST> ParseFor()
+{
+	SourcePos pos = tokenizer.GetSourcePos();
+	bool isdim;
+	unique_ptr<StatementAST> init;
+	if (tokenizer.CurTok == tok_dim)
+	{
+		isdim = true;
+		tokenizer.GetNextToken();
+		init=ParseSingleDim();
+	}
+	else
+	{
+		isdim = false;
+		init = ParseExpressionUnknown();
+	}
+	bool including;
+	if (tokenizer.CurTok == tok_to)
+	{
+		including = true;
+	}
+	else if (tokenizer.CurTok == tok_till)
+	{
+		including = false;
+	}
+	else
+	{
+		throw CompileError("Expect to or till after for");
+	}
+	tokenizer.GetNextToken();
+	auto till = ParseExpressionUnknown();
+	CompileExpect(tok_newline, "Expect a new line after for");
+	ASTBasicBlock block;
+	ParseBasicBlock(block, tok_for);
+	return make_unique<ForBlockAST>(std::move(init), std::move(till), including, isdim,std::move(block), pos);
+}
+
 std::unique_ptr<IfBlockAST> ParseIf()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
@@ -1022,6 +1072,13 @@ int ParseTopLevel()
 		case tok_eof:
 			return 0;
 			break;
+		case tok_for:
+		{
+			tokenizer.GetNextToken(); //eat function
+			out.push_back(ParseFor());
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
+			break;
+		}
 		case tok_func:
 		{
 			tokenizer.GetNextToken(); //eat function

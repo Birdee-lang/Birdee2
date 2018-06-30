@@ -782,5 +782,35 @@ namespace Birdee
 
 	}
 
-
+	void ForBlockAST::Phase1()
+	{
+		scope_mgr.PushBasicBlock();
+		init->Phase1();
+		if (!isdim)
+		{
+			auto bin = dynamic_cast<BinaryExprAST*>(init.get());
+			if (bin)
+			{
+				CompileAssert(bin->Op == tok_assign, Pos, "Expected an assignment expression after for");
+				loop_var = bin->LHS.get();
+			}
+			else
+			{
+				CompileAssert(((ExprAST*)init.get())->GetLValue(true), Pos, "The loop variable in for block should be a LValue");
+				loop_var = (ExprAST*)init.get();
+			}
+			CompileAssert(loop_var->resolved_type.isInteger(), Pos, "The loop variable should be an integer");
+		}
+		else
+		{
+			CompileAssert(((VariableSingleDefAST*)init.get())->resolved_type.isInteger(), Pos, "The loop variable should be an integer");
+			loop_var = nullptr;
+		}
+		till->Phase1();
+		for (auto&& node : block.body)
+		{
+			node->Phase1();
+		}
+		scope_mgr.PopBasicBlock();
+	}
 }

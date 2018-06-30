@@ -45,6 +45,10 @@ namespace Birdee
 		tok_alias,
 		tok_true,
 		tok_false,
+		tok_to,
+		tok_till,
+		tok_break,
+		tok_continue,
 
 		//type
 		tok_int,

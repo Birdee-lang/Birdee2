@@ -422,13 +422,49 @@ namespace Birdee {
 			iffalse.print(level + 2);
 		}
 	};
+	/// IfBlockAST - Expression class for If block.
+	class ForBlockAST : public StatementAST {
+		std::unique_ptr<StatementAST> init;
+		ExprAST* loop_var;
+		std::unique_ptr<ExprAST> till;
+		bool including;
+		bool isdim;
+		ASTBasicBlock block;
+	public:
+		void Phase1();
+		llvm::Value* Generate();
+		ForBlockAST(std::unique_ptr<StatementAST>&& init, std::unique_ptr<ExprAST>&& till,
+			bool including,
+			bool isdim,
+			ASTBasicBlock&& block,
+			SourcePos pos)
+			: init(std::move(init)), till(std::move(till)), block(std::move(block)),including(including),isdim(isdim) {
+			Pos = pos;
+		}
 
+		void print(int level) {
+			StatementAST::print(level);	std::cout << "For" << "\n";
+			init->print(level + 1);
+			StatementAST::print(level + 1);	std::cout << "To" << "\n";
+			till->print(level + 1);
+			StatementAST::print(level + 1);	std::cout << "Block" << "\n";
+			block.print(level + 2);
+		}
+	};
+	class LoopControlAST :public StatementAST {
+	public:
+		Token tok;
+		void Phase1() {};
+		llvm::Value* Generate();
+		LoopControlAST(Token tok):tok(tok)
+		{}
+	};
 	/// BinaryExprAST - Expression class for a binary operator.
 	class BinaryExprAST : public ExprAST {
-		Token Op;
 		FunctionAST* func=nullptr;
-		std::unique_ptr<ExprAST> LHS, RHS;
 	public:
+		std::unique_ptr<ExprAST> LHS, RHS;
+		Token Op;
 		BinaryExprAST(Token Op, std::unique_ptr<ExprAST>&& LHS,
 			std::unique_ptr<ExprAST>&& RHS)
 			: Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}

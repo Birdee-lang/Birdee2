@@ -137,6 +137,7 @@ int main(int argc,char** argv)
 		ParseTopLevel();
 		cu.Phase0();
 		cu.Phase1();
+		cu.Generate();
 	}
 	catch (CompileError e)
 	{
@@ -152,7 +153,6 @@ int main(int argc,char** argv)
 	{
 		node->print(0);
 	}*/
-	cu.Generate();
 	SeralizeMetadata(metaf);
     return 0;
 }
