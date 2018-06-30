@@ -186,10 +186,10 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="birdee.txt" />
+    <Text Include="..\Test\src\birdee.txt" />
+    <Text Include="..\Test\src\test.txt" />
+    <Text Include="..\Test\src\test2.txt" />
     <Text Include="llvm.txt" />
-    <Text Include="test.txt" />
-    <Text Include="test2.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

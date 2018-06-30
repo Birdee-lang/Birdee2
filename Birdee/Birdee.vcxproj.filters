@@ -76,16 +76,16 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="test.txt">
-      <Filter>资源文件</Filter>
-    </Text>
     <Text Include="llvm.txt">
       <Filter>资源文件</Filter>
     </Text>
-    <Text Include="birdee.txt">
+    <Text Include="..\Test\src\birdee.txt">
       <Filter>资源文件</Filter>
     </Text>
-    <Text Include="test2.txt">
+    <Text Include="..\Test\src\test.txt">
+      <Filter>资源文件</Filter>
+    </Text>
+    <Text Include="..\Test\src\test2.txt">
       <Filter>资源文件</Filter>
     </Text>
   </ItemGroup>

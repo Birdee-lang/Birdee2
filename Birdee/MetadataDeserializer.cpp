@@ -188,6 +188,7 @@ void PreBuildClassFromJson(const json& cls, const string& module_name,ImportedMo
 		{
 			classdef = make_unique<ClassAST>(string(), SourcePos(0, 0)); //add placeholder
 		}
+		std::cout << name << "\n";
 		idx_to_class.push_back(classdef.get());
 		mod.classmap[name]=std::move(classdef);
 	}
@@ -231,12 +232,12 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 void BuildClassFromJson(const json& cls, ImportedModule& mod)
 {
 	BirdeeAssert(cls.is_array(), "Expeccted a JSON array");
-	auto itr = mod.classmap.begin();
+	auto itr = idx_to_class.begin();
 	for (auto& json_cls : cls)
 	{
-		if (itr->second->name.size() == 0) // if it is a placeholder
+		if ((*itr)->name.size() == 0) // if it is a placeholder
 		{
-			BuildSingleClassFromJson(itr->second.get(), json_cls, cu.imported_module_names.size() - 1);
+			BuildSingleClassFromJson((*itr), json_cls, cu.imported_module_names.size() - 1);
 		}
 		//fix-me: check if the imported type is the same as the existing type
 		itr++;

@@ -1,4 +1,4 @@
-birdeec: Birdee.o CodeGen.o NumberCast.o Preprocessing.o Parser.o MetadataSerializer.o
+birdeec: Birdee.o CodeGen.o NumberCast.o Preprocessing.o Parser.o MetadataSerializer.o MetadataDeserializer.o
 	$(CXX) -o $(BIN_DIR)/$@ $(CXXFLAGS) -Wl,--start-group $^ -lLLVM-6.0 $(LIBS) -Wl,--end-group
 .PHONY:clean
 clean:
