@@ -706,10 +706,27 @@ namespace Birdee {
 		}
 	};
 
+	struct TemplateParameters
+	{
+		//the struct for TemplateParameter: if type is null,
+		// then this parameter is a "typename" parameter. If 
+		//not null, it is a constant parameter
+		struct Parameter
+		{
+			unique_ptr<Type> type;
+			string name;
+			Parameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
+		};
+		vector<Parameter> params;
+		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
+		TemplateParameters() {}
+	};
+
 	/// FunctionAST - This class represents a function definition itself.
 	class FunctionAST : public ExprAST {
 		ASTBasicBlock Body;
 	public:
+		TemplateParameters template_param;
 		bool isDeclare;
 		bool isImported=false;
 		string link_name;
@@ -721,8 +738,8 @@ namespace Birdee {
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			ASTBasicBlock&& Body, SourcePos pos)
-			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false) {
+			ASTBasicBlock&& Body, TemplateParameters&& template_param, SourcePos pos)
+			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)), isDeclare(false) {
 			Pos = pos;
 		}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,const string& link_name , SourcePos pos)

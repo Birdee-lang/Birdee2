@@ -73,8 +73,8 @@ inline int DoWarn(const string& str)
 	std::cerr << "Warning: " << str;
 	return 0;
 }
-#define WarnAssert(_b,_msg) (_b?0:DoWarn(_msg));
-
+#define WarnAssert(_b,_msg) ( (_b) ? 0 : DoWarn(_msg));
+#define CompileAssert(_b,_msg) ( (_b) ? 0 : (throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), _msg),0) )
 inline void CompileExpect(Token expected_tok, const std::string& msg)
 {
 	if (tokenizer.CurTok != expected_tok)
@@ -85,14 +85,6 @@ inline void CompileExpect(Token expected_tok, const std::string& msg)
 	tokenizer.GetNextToken();
 }
 
-
-inline void CompileAssert(bool a, const std::string& msg)
-{
-	if (!a)
-	{
-		throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), msg);
-	}
-}
 
 inline void CompileExpect(std::initializer_list<Token> expected_tok, const std::string& msg)
 {
@@ -641,14 +633,59 @@ std::unique_ptr<IfBlockAST> ParseIf()
 	return make_unique<IfBlockAST>(std::move(cond), std::move(true_block), std::move(false_block), pos);
 }
 
+vector<TemplateParameters::Parameter> ParseTemplateParameters()
+{
+	vector<TemplateParameters::Parameter> ret;
+	if (tokenizer.CurTok == tok_right_index)
+		throw CompileError("The template parameters cannot be empty");
+	for (;;)
+	{
+		CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier");
+		string identifier = tokenizer.IdentifierStr;
+		tokenizer.GetNextToken();
+		if (tokenizer.CurTok == tok_as)
+		{
+			unique_ptr<Type> ty = ParseType();
+			if (ty->index_level > 0)
+				throw CompileError("Arrays are not supported in template parameters");
+			ret.push_back(TemplateParameters::Parameter(std::move(ty), identifier));
+		}
+		else
+		{
+			ret.push_back(TemplateParameters::Parameter(nullptr, identifier));
+		}
+
+		if (tokenizer.CurTok == tok_right_index)
+		{
+			tokenizer.GetNextToken();
+			break;
+		}
+		else if (tokenizer.CurTok == tok_comma)
+		{
+			tokenizer.GetNextToken();
+		}
+		else
+		{
+			throw CompileError("Unexpected token in template parameters");
+		}
+	}
+	return ret;
+}
+
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 {
 	auto pos = tokenizer.GetSourcePos();
+	TemplateParameters template_param;
 	std::string name;
 	if (tokenizer.CurTok == tok_identifier)
 	{
 		name = tokenizer.IdentifierStr;
 		tokenizer.GetNextToken();
+	}
+	if (tokenizer.CurTok == tok_left_index)
+	{
+		tokenizer.GetNextToken();
+		template_param.params=std::move(ParseTemplateParameters());
 	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
 	std::unique_ptr<VariableDefAST> args;
@@ -666,7 +703,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	//parse function body
 	ParseBasicBlock(body, tok_func);
 	current_func_proto = nullptr;
-	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), pos);
+	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 {

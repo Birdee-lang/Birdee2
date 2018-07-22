@@ -186,9 +186,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="..\Test\src\birdee.txt" />
-    <Text Include="..\Test\src\test.txt" />
-    <Text Include="..\Test\src\test2.txt" />
+    <Text Include="..\BirdeeHome\src\birdee.txt" />
+    <Text Include="..\BirdeeHome\src\test.txt" />
+    <Text Include="..\BirdeeHome\src\test2.txt" />
     <Text Include="llvm.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
