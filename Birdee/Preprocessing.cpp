@@ -387,6 +387,11 @@ namespace Birdee
 
 	}
 
+	void FunctionTemplateInstanceExprAST::Phase1()
+	{
+
+	}
+
 	void AddressOfExprAST::Phase1()
 	{
 		
@@ -464,6 +469,8 @@ namespace Birdee
 
 	void FunctionAST::Phase1()
 	{
+		if (template_param.params.size() != 0)
+			return;
 		Phase0();
 		Body.Phase1(Proto.get());
 	}

@@ -159,6 +159,7 @@ namespace Birdee
 		{ ',',tok_comma },
 		{'.',tok_dot},
 		{':',tok_colon },
+		{'@',tok_at},
 		};
 
 		std::map < std::string , Token > token_map = {

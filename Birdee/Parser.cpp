@@ -160,13 +160,9 @@ std::unique_ptr<Type> ParseBasicType()
 	return std::move(type);
 }
 
-std::unique_ptr<Type> ParseType()
+std::unique_ptr<Type> ParseTypeName()
 {
-	//CompileExpect(tok_as, "Expected \'as\'");
-	if (tokenizer.CurTok != tok_as)
-		return make_unique<Type>(tok_auto);
-	tokenizer.GetNextToken(); //eat as
-	std::unique_ptr<Type> type= ParseBasicType();
+	std::unique_ptr<Type> type = ParseBasicType();
 	while (tokenizer.CurTok == tok_left_index)
 	{
 		type->index_level++;
@@ -174,6 +170,15 @@ std::unique_ptr<Type> ParseType()
 		CompileExpect(tok_right_index, "Expected  \']\'");
 	}
 	return std::move(type);
+}
+
+std::unique_ptr<Type> ParseType()
+{
+	//CompileExpect(tok_as, "Expected \'as\'");
+	if (tokenizer.CurTok != tok_as)
+		return make_unique<Type>(tok_auto);
+	tokenizer.GetNextToken(); //eat as
+	return ParseTypeName();
 }
 
 std::unique_ptr<VariableSingleDefAST> ParseSingleDim()
@@ -371,6 +376,32 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		std::string member;
 		switch (tokenizer.CurTok)
 		{
+		case tok_at:
+		{
+			tokenizer.GetNextToken();//eat @
+			CompileAssert(tok_left_index==tokenizer.CurTok, "Expected [ after @");
+			vector<TemplateArgument> template_args;
+			do
+			{
+				tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_at)
+				{
+					tokenizer.GetNextToken();
+					template_args.push_back(
+						std::move(TemplateArgument(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template")))
+					);
+				}
+				else
+				{
+					template_args.push_back(
+						std::move(TemplateArgument(ParseTypeName()))
+					);
+				}				
+			} while (tokenizer.CurTok == tok_comma);
+			CompileExpect(tok_right_index, "Expected  \']\'");
+			firstexpr = make_unique<FunctionTemplateInstanceExprAST>(std::move(firstexpr), std::move(template_args), pos);
+			return true;
+		}
 		case tok_left_index:
 			tokenizer.GetNextToken();//eat [
 			firstexpr = make_unique<IndexExprAST>(std::move(firstexpr), CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for index"), pos);

@@ -507,7 +507,37 @@ namespace Birdee {
 			Index->print(level + 1);
 		}
 	};
+	struct TemplateArgument
+	{
+		enum {
+			TEMPLATE_ARG_TYPE,
+			TEMPLATE_ARG_EXPR
+		}kind;
+		unique_ptr<Type> type;
+		unique_ptr<ExprAST> expr; //fix-me: should use union?
+		TemplateArgument(unique_ptr<Type>&& type) :kind(TEMPLATE_ARG_TYPE),type(std::move(type)), expr(nullptr){}
+		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
+	};
 
+	class FunctionTemplateInstanceExprAST : public ExprAST {
+		std::unique_ptr<ExprAST> expr;
+		vector<TemplateArgument> template_args;
+	public:
+		void Phase1();
+		llvm::Value* Generate() { return nullptr; };
+		llvm::Value* GetLValue(bool checkHas) override { return nullptr; };
+		FunctionTemplateInstanceExprAST(std::unique_ptr<ExprAST>&& expr,
+			vector<TemplateArgument>&& template_args, SourcePos Pos)
+			: expr(std::move(expr)), template_args(std::move(template_args)) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "FunctionTemplateInstanceExprAST\n";
+			expr->print(level + 1);
+			ExprAST::print(level + 1); std::cout << "----------------\n";
+		}
+	};
 	class AddressOfExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> expr;
 		bool is_address_of;
@@ -756,6 +786,8 @@ namespace Birdee {
 		//put a phase0 because we may reference a function before we parse the function in phase1
 		void Phase0()
 		{
+			if (template_param.params.size() != 0)
+				return;
 			if (resolved_type.isResolved())
 				return;
 			resolved_type.type = tok_func;
