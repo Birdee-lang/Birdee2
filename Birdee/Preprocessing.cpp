@@ -387,9 +387,81 @@ namespace Birdee
 
 	}
 
+	void TemplateArgument::Phase1(SourcePos Pos)
+	{
+		if (kind == TemplateArgument::TEMPLATE_ARG_EXPR)
+			expr->Phase1();
+		else
+		{
+			resolved_type = ResolvedType(*type, Pos);
+			type = nullptr;
+		}
+	}
+
+	string int2str(const int v)
+	{
+		std::stringstream stream;
+		stream << v;
+		return stream.str();   
+	}
+
+	void TemplateParameters::ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos)
+	{
+		CompileAssert(params.size() == args.size(), Pos, 
+			string("The template requires ") + int2str(params.size()) + " Arguments, but " + int2str(args.size()) + "are given");
+		
+		for (int i = 0; i < args.size(); i++)
+		{
+			if (params[i].isTypeParameter())
+			{
+				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
+			}
+			else
+			{
+				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
+				CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
+					string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
+				args[i].expr->Phase1();
+				CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
+					string("The expression type does not match at the template parameter number ") + int2str(i + 1));
+			}
+		}
+		
+	}
+
 	void FunctionTemplateInstanceExprAST::Phase1()
 	{
-
+		FunctionAST* func = nullptr;
+		expr->Phase1();
+		IdentifierExprAST*  iden = dynamic_cast<IdentifierExprAST*>(expr.get());
+		if (iden)
+		{
+			auto resolvedfunc = dynamic_cast<ResolvedFuncExprAST*>(iden->impl.get());
+			CompileAssert(resolvedfunc, Pos, "Expected a function name for template");
+			func = resolvedfunc->def;
+		}
+		else
+		{
+			MemberExprAST*  mem = dynamic_cast<MemberExprAST*>(expr.get());
+			CompileAssert(mem, Pos, "Expected a function name or a member function for template");
+			if (mem->kind == MemberExprAST::member_function)
+			{
+				func = mem->func->decl.get();
+			}
+			else if (mem->kind == MemberExprAST::member_imported_function)
+			{
+				func = mem->func->decl.get();
+			}
+			else
+			{
+				throw CompileError(Pos.line,Pos.pos, "Expected a function name or a member function for template");
+			}
+		}
+		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
+		for (auto& arg : template_args)
+			arg.Phase1(Pos);
+		func->template_param.ValidateArguments(template_args,Pos);
+		//fix-me: remember to set the resolved type
 	}
 
 	void AddressOfExprAST::Phase1()

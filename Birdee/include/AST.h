@@ -351,8 +351,8 @@ namespace Birdee {
 	};
 
 	class ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
-		FunctionAST* def;
 	public:
+		FunctionAST * def;
 		bool isMutable() { return false; }
 		ResolvedFuncExprAST(FunctionAST* def, SourcePos pos) :def(def) { Phase1(); Pos = pos; }
 		void Phase1();
@@ -515,8 +515,10 @@ namespace Birdee {
 		}kind;
 		unique_ptr<Type> type;
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
+		ResolvedType resolved_type;
 		TemplateArgument(unique_ptr<Type>&& type) :kind(TEMPLATE_ARG_TYPE),type(std::move(type)), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
+		void Phase1(SourcePos pos);
 	};
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
@@ -745,11 +747,13 @@ namespace Birdee {
 		{
 			unique_ptr<Type> type;
 			string name;
+			bool isTypeParameter() { return type == nullptr; }
 			Parameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
 		};
 		vector<Parameter> params;
 		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
 		TemplateParameters() {}
+		void ValidateArguments(const vector<TemplateArgument>& args,SourcePos Pos);
 	};
 
 	/// FunctionAST - This class represents a function definition itself.
@@ -786,7 +790,7 @@ namespace Birdee {
 		//put a phase0 because we may reference a function before we parse the function in phase1
 		void Phase0()
 		{
-			if (template_param.params.size() != 0)
+			if (isTemplate())
 				return;
 			if (resolved_type.isResolved())
 				return;
@@ -796,6 +800,8 @@ namespace Birdee {
 			Proto->Phase0();
 		}
 		void Phase1();
+
+		bool isTemplate() { return template_param.params.size() != 0; }
 
 		const string& GetName()
 		{
@@ -939,6 +945,7 @@ namespace Birdee {
 	class MemberExprAST : public ResolvedIdentifierExprAST {
 		std::unique_ptr<ExprAST> Obj;
 		std::string member;
+	public:
 		union
 		{
 			MemberFunctionDef* func;
@@ -946,7 +953,6 @@ namespace Birdee {
 			FunctionAST* import_func;
 			VariableSingleDefAST* import_dim;
 		};
-	public:
 		llvm::Value* llvm_obj = nullptr;
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
