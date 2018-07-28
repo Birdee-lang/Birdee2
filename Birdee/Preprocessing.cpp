@@ -29,12 +29,15 @@ T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
 		return nullptr;
 	return (itr->second.get());
 }
+
+static FunctionAST* cur_func=nullptr;
 class ScopeManager
 {
 public:
 	typedef unordered_map<reference_wrapper<const string>, VariableSingleDefAST*> BasicBlock;
 	vector<ClassAST*> class_stack;
 	vector <BasicBlock> basic_blocks;
+	
 
 	inline bool IsCurrentClass(ClassAST* cls)
 	{
@@ -543,8 +546,11 @@ namespace Birdee
 	{
 		if (template_param.params.size() != 0)
 			return;
+		auto prv_func = cur_func;
+		cur_func = this;
 		Phase0();
 		Body.Phase1(Proto.get());
+		cur_func = prv_func;
 	}
 
 	void VariableSingleDefAST::Phase1InClass()
@@ -754,8 +760,8 @@ namespace Birdee
 	void ReturnAST::Phase1()
 	{
 		Val->Phase1();
-		assert(proto->resolved_type.type != tok_error && "The prototype should be resolved first");
-		Val = FixTypeForAssignment(proto->resolved_type, std::move(Val),Pos);	
+		assert(cur_func->Proto->resolved_type.type != tok_error && "The prototype should be resolved first");
+		Val = FixTypeForAssignment(cur_func->Proto->resolved_type, std::move(Val),Pos);
 	}
 
 	ClassAST* GetStringClass()

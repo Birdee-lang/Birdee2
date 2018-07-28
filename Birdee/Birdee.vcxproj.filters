@@ -74,6 +74,9 @@
     <ClCompile Include="MetadataDeserializer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="CopyAST.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="llvm.txt">

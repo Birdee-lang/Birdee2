@@ -54,6 +54,7 @@ namespace Birdee {
 	using std::reference_wrapper;
 	using ::llvm::Value;
 	using std::make_unique;
+	
 	/*template<typename T, typename... Args>
 	std::unique_ptr<T> make_unique(Args&&... args) {
 		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
@@ -102,6 +103,7 @@ namespace Birdee {
 		Token type;
 		int index_level = 0;
 		virtual ~Type() = default;
+		virtual unique_ptr<Type> Copy();
 		Type(Token _type) :type(_type) {}
 		virtual void print(int level)
 		{
@@ -113,6 +115,7 @@ namespace Birdee {
 	class IdentifierType :public Type {
 		
 	public:
+		virtual unique_ptr<Type> Copy();
 		std::string name;
 		IdentifierType(const std::string&_name) :Type(tok_identifier), name(_name) {}
 		void print(int level)
@@ -125,6 +128,7 @@ namespace Birdee {
 	class QualifiedIdentifierType :public Type {
 
 	public:
+		virtual unique_ptr<Type> Copy();
 		vector<string> name;
 		QualifiedIdentifierType(vector<string>&&_name) :Type(tok_package), name(std::move(_name)) {}
 		void print(int level)
@@ -217,6 +221,7 @@ namespace Birdee {
 		SourcePos Pos=GetCurrentSourcePos();
 		virtual void Phase1() = 0;
 		virtual ~StatementAST() = default;
+		virtual unique_ptr<StatementAST> Copy()=0;
 		virtual void print(int level) {
 			for (int i = 0; i < level; i++)
 				std::cout << "\t";
@@ -309,20 +314,21 @@ namespace Birdee {
 				break;
 			}
 		}
+		unique_ptr<StatementAST> Copy();
 	};
 
 	class PrototypeAST;
 	class ReturnAST : public StatementAST {
 		std::unique_ptr<ExprAST> Val;
-		PrototypeAST* proto;
 	public:
 		Value* Generate();
 		virtual void Phase1();
-		ReturnAST(std::unique_ptr<ExprAST>&& val, PrototypeAST* proto, SourcePos pos) : Val(std::move(val)), proto(proto){ Pos = pos; };
+		ReturnAST(std::unique_ptr<ExprAST>&& val, SourcePos pos) : Val(std::move(val)){ Pos = pos; };
 		void print(int level) {
 			StatementAST::print(level); std::cout << "Return\n";
 			Val->print(level + 1);
 		}
+		unique_ptr<StatementAST> Copy();
 	};
 
 	class StringLiteralAST : public ExprAST {
@@ -332,6 +338,7 @@ namespace Birdee {
 		llvm::Value* Generate();
 		StringLiteralAST(const std::string& Val) : Val(Val) {}
 		void print(int level) { ExprAST::print(level); std::cout << "\"" << Val << "\"\n"; }
+		unique_ptr<StatementAST> Copy();
 	};
 
 	class ResolvedIdentifierExprAST : public ExprAST {
@@ -348,6 +355,7 @@ namespace Birdee {
 		llvm::Value* Generate();
 		IdentifierExprAST(const std::string &Name) : Name(Name) {}
 		void print(int level) { ExprAST::print(level); std::cout << "Identifier:" << Name << "\n"; }
+		std::unique_ptr<StatementAST> Copy();
 	};
 
 	class ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
@@ -357,6 +365,7 @@ namespace Birdee {
 		ResolvedFuncExprAST(FunctionAST* def, SourcePos pos) :def(def) { Phase1(); Pos = pos; }
 		void Phase1();
 		llvm::Value* Generate();
+		std::unique_ptr<StatementAST> Copy();
 	};
 
 	class ThisExprAST : public ExprAST {
@@ -364,6 +373,7 @@ namespace Birdee {
 		void Phase1();
 		llvm::Value* Generate();
 		ThisExprAST()   {}
+		std::unique_ptr<StatementAST> Copy();
 		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
 	};
@@ -372,6 +382,7 @@ namespace Birdee {
 		bool v;
 		void Phase1() {};
 		llvm::Value* Generate();
+		std::unique_ptr<StatementAST> Copy();
 		BoolLiteralExprAST(bool v) : v(v) { resolved_type.type = tok_boolean;}
 		void print(int level) { ExprAST::print(level); std::cout << "bool" << "\n"; }
 	};
@@ -380,6 +391,7 @@ namespace Birdee {
 	public:
 		void Phase1() {};
 		llvm::Value* Generate();
+		std::unique_ptr<StatementAST> Copy();
 		NullExprAST() { resolved_type.type = tok_null; }
 		void print(int level) { ExprAST::print(level); std::cout << "null" << "\n"; }
 	};
@@ -387,6 +399,7 @@ namespace Birdee {
 	{
 	public:
 		std::vector<std::unique_ptr<StatementAST>> body;
+		ASTBasicBlock Copy();
 		void Phase1();
 		void Phase1(PrototypeAST* proto);
 		bool Generate();
@@ -404,6 +417,7 @@ namespace Birdee {
 		ASTBasicBlock iffalse;
 	public:
 		void Phase1();
+		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
 		IfBlockAST(std::unique_ptr<ExprAST>&& cond,
 			ASTBasicBlock&& iftrue,
@@ -422,7 +436,7 @@ namespace Birdee {
 			iffalse.print(level + 2);
 		}
 	};
-	/// IfBlockAST - Expression class for If block.
+	/// ForBlockAST - Expression class for For block.
 	class ForBlockAST : public StatementAST {
 		std::unique_ptr<StatementAST> init;
 		ExprAST* loop_var;
@@ -430,6 +444,7 @@ namespace Birdee {
 		bool including;
 		bool isdim;
 		ASTBasicBlock block;
+		std::unique_ptr<StatementAST> Copy();
 	public:
 		void Phase1();
 		llvm::Value* Generate();
@@ -458,6 +473,7 @@ namespace Birdee {
 		llvm::Value* Generate();
 		LoopControlAST(Token tok):tok(tok)
 		{}
+		std::unique_ptr<StatementAST> Copy();
 	};
 	/// BinaryExprAST - Expression class for a binary operator.
 	class BinaryExprAST : public ExprAST {
@@ -473,7 +489,7 @@ namespace Birdee {
 			: Op(Op), LHS(std::move(LHS)), RHS(std::move(RHS)) {
 			Pos = pos;
 		}
-
+		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
 		void print(int level) {
@@ -489,6 +505,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Expr, Index;
 	public:
 		void Phase1();
+		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
@@ -516,6 +533,7 @@ namespace Birdee {
 		unique_ptr<Type> type;
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
 		ResolvedType resolved_type;
+		TemplateArgument Copy();
 		TemplateArgument(unique_ptr<Type>&& type) :kind(TEMPLATE_ARG_TYPE),type(std::move(type)), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
 		void Phase1(SourcePos pos);
@@ -526,6 +544,7 @@ namespace Birdee {
 		vector<TemplateArgument> template_args;
 	public:
 		void Phase1();
+		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate() { return nullptr; };
 		llvm::Value* GetLValue(bool checkHas) override { return nullptr; };
 		FunctionTemplateInstanceExprAST(std::unique_ptr<ExprAST>&& expr,
@@ -545,6 +564,7 @@ namespace Birdee {
 		bool is_address_of;
 	public:
 		void Phase1();
+		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
 		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, bool is_address_of, SourcePos Pos)
 			: expr(std::move(Expr)), is_address_of(is_address_of){
@@ -563,6 +583,7 @@ namespace Birdee {
 		std::vector<std::unique_ptr<ExprAST>> Args;
 
 	public:
+		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
 		void print(int level)
@@ -605,7 +626,7 @@ namespace Birdee {
 		void PreGenerateForGlobal();
 		void PreGenerateExternForGlobal(const string& package_name);
 		void PreGenerateForArgument(llvm::Value* init,int argno);
-
+		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		//parse the varible as a member of a class, will not add to the basic block environment
 		void Phase1InClass();
@@ -646,6 +667,7 @@ namespace Birdee {
 				a->Phase1();
 		}
 		llvm::Value* Generate();
+		std::unique_ptr<StatementAST> Copy();
 		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
@@ -668,6 +690,7 @@ namespace Birdee {
 	class LocalVarExprAST : public ResolvedIdentifierExprAST {
 		VariableSingleDefAST* def;
 	public:
+		std::unique_ptr<StatementAST> Copy();
 		bool isMutable() { return true; }
 		LocalVarExprAST(VariableSingleDefAST* def, SourcePos pos) :def(def) { Pos = pos; Phase1(); }
 		void Phase1();
@@ -686,6 +709,7 @@ namespace Birdee {
 		SourcePos pos;
 		
 	public:
+		std::unique_ptr<PrototypeAST> Copy();
 		ClassAST * cls;
 		//the index in CompileUnit.imported_module_names
 		//if -1, means it is not imported from other modules
@@ -753,6 +777,7 @@ namespace Birdee {
 		vector<Parameter> params;
 		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
 		TemplateParameters() {}
+		TemplateParameters Copy();
 		void ValidateArguments(const vector<TemplateArgument>& args,SourcePos Pos);
 	};
 
@@ -768,6 +793,7 @@ namespace Birdee {
 		llvm::Function* llvm_func=nullptr;
 		llvm::DIType* PreGenerate();
 		llvm::Value* Generate();
+		std::unique_ptr<StatementAST> Copy();
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
@@ -829,6 +855,7 @@ namespace Birdee {
 		int index;
 		AccessModifier access;
 		std::unique_ptr<VariableSingleDefAST> decl;
+		FieldDef Copy();
 		void print(int level)
 		{
 			formatprint(level);
@@ -856,6 +883,7 @@ namespace Birdee {
 				std::cout << "public variable";
 			decl->print(level);
 		}
+		MemberFunctionDef Copy();
 		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl) :access(access), decl(std::move(decl)) {}
 	};
 
@@ -865,6 +893,7 @@ namespace Birdee {
 		vector<std::unique_ptr<ExprAST>> args;
 		MemberFunctionDef* func = nullptr;
 	public:
+		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
 		NewExprAST(std::unique_ptr<Type>&& ty, vector<std::unique_ptr<ExprAST>>&& args, const string& method, SourcePos Pos)
@@ -881,6 +910,7 @@ namespace Birdee {
 
 	class ClassAST : public StatementAST {
 	public:
+		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
 		std::string name;
 		std::vector<FieldDef> fields;
@@ -946,6 +976,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Obj;
 		std::string member;
 	public:
+		std::unique_ptr<StatementAST> Copy();
 		union
 		{
 			MemberFunctionDef* func;

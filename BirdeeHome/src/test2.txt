@@ -1,4 +1,4 @@
 function add[T1,T2,disp as int] (v1 as T1, v2 as T2) as int
 	return v1+v2
 end
-add@[int,int,@123]()
+add@[int,long,@123]()

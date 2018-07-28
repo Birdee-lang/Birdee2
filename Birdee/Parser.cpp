@@ -557,14 +557,18 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			tokenizer.GetNextToken(); //eat return
 			pos = tokenizer.GetSourcePos();
 			assert(current_func_proto && "Current func proto is empty!");
-			body.body.push_back(make_unique<ReturnAST>(ParseExpressionUnknown(), current_func_proto, pos));
+			body.body.push_back(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
 			break;
 		case tok_func:
+		{
 			tokenizer.GetNextToken(); //eat function
-			body.body.push_back(std::move(ParseFunction(nullptr)));
+			auto func = ParseFunction(nullptr);
+			CompileAssert(!func->isTemplate(), "Cannot define function template in basic blocks");
+			body.body.push_back(std::move(func));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after function definition");
 			break;
+		}
 		case tok_for:
 			tokenizer.GetNextToken(); //eat function
 			body.body.push_back(std::move(ParseFor()));

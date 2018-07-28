@@ -1,6 +1,7 @@
 #pragma once
 #include "AST.h"
 #include <cassert>
+#include <Util.h>
 namespace Birdee
 {
 	template <Token typefrom, Token typeto>
@@ -9,6 +10,10 @@ namespace Birdee
 		unique_ptr<ExprAST> expr;
 	public:
 		void Phase1() override {};
+		unique_ptr<StatementAST> Copy()
+		{
+			return make_unique<CastNumberExpr>(unique_ptr_cast<ExprAST>(expr->Copy()), Pos);
+		}
 		void print(int level)
 		{
 			ExprAST::print(level); std::cout << "Cast " << GetTokenString(typefrom) << " -> " << GetTokenString(typeto) << "\n";

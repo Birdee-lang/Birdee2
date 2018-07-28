@@ -173,6 +173,7 @@
   <ItemGroup>
     <ClCompile Include="Birdee.cpp" />
     <ClCompile Include="CodeGen.cpp" />
+    <ClCompile Include="CopyAST.cpp" />
     <ClCompile Include="MetadataDeserializer.cpp" />
     <ClCompile Include="MetadataSerializer.cpp" />
     <ClCompile Include="NumberCast.cpp" />

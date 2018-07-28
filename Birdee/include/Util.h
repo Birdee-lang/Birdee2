@@ -9,6 +9,16 @@ namespace Birdee
 		return std::unique_ptr<Derived, Del>(d, std::move(p.get_deleter()));
 	}
 
+
+	template<typename Derived, typename Base>
+	std::unique_ptr<Derived>
+		unique_ptr_cast(std::unique_ptr<Base>&& p)
+	{
+		Derived *result = (Derived *)(p.get());
+		p.release();
+		return std::unique_ptr<Derived>(result);
+	}
+
 	template<typename Derived, typename Base>
 	std::unique_ptr<Derived>
 		dynamic_unique_ptr_cast(std::unique_ptr<Base>&& p)
