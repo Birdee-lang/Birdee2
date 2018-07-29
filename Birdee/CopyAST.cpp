@@ -169,21 +169,27 @@ namespace Birdee
 		return make_unique<PrototypeAST>(Name,unique_ptr_cast<VariableDefAST>(Args->Copy()),RetType->Copy(),cur_cls,pos);
 	}
 
-	TemplateParameters Birdee::TemplateParameters::Copy()
+	unique_ptr<TemplateParameters> Birdee::TemplateParameters::Copy()
 	{
 		vector<Parameter> newparams;
 		for (auto& param : params)
 		{
 			newparams.push_back(std::move(Parameter(param.type == nullptr ? nullptr : param.type->Copy(), param.name)));
 		}
-		return TemplateParameters(std::move(newparams));
+		return make_unique<TemplateParameters>(std::move(newparams));
 	}
-
-	std::unique_ptr<StatementAST> Birdee::FunctionAST::Copy()
+	std::unique_ptr<FunctionAST> Birdee::FunctionAST::CopyNoTemplate()
 	{
 		if (isDeclare)
-			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declare function");
-		return make_unique<FunctionAST>(Proto->Copy(),Body.Copy(),template_param.Copy(),Pos);
+			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declared function");
+		return make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, Pos);
+	}
+	std::unique_ptr<StatementAST> Birdee::FunctionAST::Copy()
+	{
+		auto cpy = CopyNoTemplate();
+		if (template_param)
+			cpy->template_param = template_param->Copy();
+		return std::move(cpy);
 	}
 	FieldDef Birdee::FieldDef::Copy()
 	{

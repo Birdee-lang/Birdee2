@@ -102,6 +102,7 @@ namespace Birdee
 			uint64_t v_ulong;
 		};
 		Token type;
+		bool operator < (const NumberLiteral& v);
 	};
 
 	inline bool isTypeToken(Token t)

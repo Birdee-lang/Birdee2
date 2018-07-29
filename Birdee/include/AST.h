@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <unordered_map>
+#include <map>
 #include <functional>
 #include "SourcePos.h"
 #include "Util.h"
@@ -52,6 +53,7 @@ namespace Birdee {
 	using std::vector;
 	using std::unordered_map;
 	using std::reference_wrapper;
+	using std::map;
 	using ::llvm::Value;
 	using std::make_unique;
 	
@@ -104,6 +106,7 @@ namespace Birdee {
 		int index_level = 0;
 		virtual ~Type() = default;
 		virtual unique_ptr<Type> Copy();
+		bool operator < (const Type& that);
 		Type(Token _type) :type(_type) {}
 		virtual void print(int level)
 		{
@@ -199,6 +202,7 @@ namespace Birdee {
 			return type!=tok_error;
 		}
 		string GetString();
+		bool operator < (const ResolvedType& other) const;
 		bool operator == (const ResolvedType& other) const
 		{
 			if (type == other.type && other.index_level == index_level)
@@ -282,7 +286,7 @@ namespace Birdee {
 
 	/// NumberExprAST - Expression class for numeric literals like "1.0".
 	class NumberExprAST : public ExprAST {
-		NumberLiteral Val;
+		NumberLiteral Val = { 0,tok_error };
 	public:
 		Value* Generate();
 		virtual void Phase1();
@@ -332,8 +336,8 @@ namespace Birdee {
 	};
 
 	class StringLiteralAST : public ExprAST {
-		std::string Val;
 	public:
+		std::string Val;
 		virtual void Phase1();
 		llvm::Value* Generate();
 		StringLiteralAST(const std::string& Val) : Val(Val) {}
@@ -537,11 +541,13 @@ namespace Birdee {
 		TemplateArgument(unique_ptr<Type>&& type) :kind(TEMPLATE_ARG_TYPE),type(std::move(type)), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
 		void Phase1(SourcePos pos);
+		bool operator < (const TemplateArgument&);
 	};
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> expr;
 		vector<TemplateArgument> template_args;
+		FunctionAST* instance=nullptr;
 	public:
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
@@ -775,17 +781,19 @@ namespace Birdee {
 			Parameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
 		};
 		vector<Parameter> params;
+		map<vector<TemplateArgument>, unique_ptr<FunctionAST>> instances;
+		FunctionAST* GetOrCreate(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos);
 		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
 		TemplateParameters() {}
-		TemplateParameters Copy();
-		void ValidateArguments(const vector<TemplateArgument>& args,SourcePos Pos);
+		unique_ptr<TemplateParameters> Copy();
+		void ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos);
 	};
 
 	/// FunctionAST - This class represents a function definition itself.
 	class FunctionAST : public ExprAST {
 		ASTBasicBlock Body;
 	public:
-		TemplateParameters template_param;
+		unique_ptr<TemplateParameters> template_param;
 		bool isDeclare;
 		bool isImported=false;
 		string link_name;
@@ -794,11 +802,12 @@ namespace Birdee {
 		llvm::DIType* PreGenerate();
 		llvm::Value* Generate();
 		std::unique_ptr<StatementAST> Copy();
+		std::unique_ptr<FunctionAST> CopyNoTemplate();
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			ASTBasicBlock&& Body, TemplateParameters&& template_param, SourcePos pos)
+			ASTBasicBlock&& Body, unique_ptr<TemplateParameters>&& template_param, SourcePos pos)
 			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)), isDeclare(false) {
 			Pos = pos;
 		}
@@ -827,7 +836,7 @@ namespace Birdee {
 		}
 		void Phase1();
 
-		bool isTemplate() { return template_param.params.size() != 0; }
+		bool isTemplate() { return template_param!=nullptr && template_param->params.size() != 0; }
 
 		const string& GetName()
 		{

@@ -710,7 +710,7 @@ vector<TemplateParameters::Parameter> ParseTemplateParameters()
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 {
 	auto pos = tokenizer.GetSourcePos();
-	TemplateParameters template_param;
+	unique_ptr<TemplateParameters> template_param;
 	std::string name;
 	if (tokenizer.CurTok == tok_identifier)
 	{
@@ -720,7 +720,8 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	if (tokenizer.CurTok == tok_left_index)
 	{
 		tokenizer.GetNextToken();
-		template_param.params=std::move(ParseTemplateParameters());
+		template_param = make_unique<TemplateParameters>();
+		template_param->params=std::move(ParseTemplateParameters());
 	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
 	std::unique_ptr<VariableDefAST> args;
