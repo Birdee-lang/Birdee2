@@ -341,6 +341,19 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
+	class BasicTypeExprAST : public ExprAST
+	{
+	public:
+		Token tok;
+		Value * Generate();
+		virtual void Phase1() {}
+		BasicTypeExprAST(Token token, SourcePos pos) : tok(token) { Pos = pos; };
+		void print(int level) {
+			ExprAST::print(level); std::cout << "BasicType"<<tok<<"\n";
+		}
+		unique_ptr<StatementAST> Copy();
+	};
+
 	class PrototypeAST;
 	class ReturnAST : public StatementAST {
 		std::unique_ptr<ExprAST> Val;
@@ -567,6 +580,7 @@ namespace Birdee {
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> expr;
+		vector<unique_ptr<ExprAST>> raw_template_args;
 		vector<TemplateArgument> template_args;
 		FunctionAST* instance=nullptr;
 	public:
@@ -575,8 +589,8 @@ namespace Birdee {
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override { return nullptr; };
 		FunctionTemplateInstanceExprAST(std::unique_ptr<ExprAST>&& expr,
-			vector<TemplateArgument>&& template_args, SourcePos Pos)
-			: expr(std::move(expr)), template_args(std::move(template_args)) {
+			vector<unique_ptr<ExprAST>>&& raw_template_args, SourcePos Pos)
+			: expr(std::move(expr)), raw_template_args(std::move(raw_template_args)) {
 			this->Pos = Pos;
 		}
 		void print(int level) {

@@ -178,6 +178,12 @@ namespace Birdee
 		}
 		return make_unique<TemplateParameters>(std::move(newparams));
 	}
+
+	unique_ptr<StatementAST> Birdee::BasicTypeExprAST::Copy()
+	{
+		return make_unique<BasicTypeExprAST>(tok,Pos);
+	}
+
 	std::unique_ptr<FunctionAST> Birdee::FunctionAST::CopyNoTemplate()
 	{
 		if (isDeclare)

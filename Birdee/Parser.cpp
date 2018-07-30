@@ -130,10 +130,11 @@ PrototypeAST *current_func_proto = nullptr;
 
 void ParsePackageName(vector<string>& ret);
 
+static std::unordered_set<Token> basic_types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
 //parse basic type, will not get the array type
 std::unique_ptr<Type> ParseBasicType()
 {
-	static std::unordered_set<Token> types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
+	
 	std::unique_ptr<Type> type;
 	if (tokenizer.CurTok == tok_identifier)
 	{
@@ -151,7 +152,7 @@ std::unique_ptr<Type> ParseBasicType()
 	}
 	else
 	{
-		if (types.find(tokenizer.CurTok) != types.end())
+		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
 			type = make_unique<Type>(tokenizer.CurTok);
 		else
 			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an identifier or basic type name");
@@ -301,6 +302,31 @@ std::unique_ptr<NewExprAST> ParseNew()
 	return make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos);
 }
 
+unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,SourcePos Pos)
+{
+
+	tokenizer.GetNextToken();//eat [
+	if (tokenizer.CurTok == tok_right_index)
+	{
+		//if empty []
+	}
+	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for array index or template");
+	if (tokenizer.CurTok == tok_right_index)
+	{
+		tokenizer.GetNextToken();
+		return make_unique<IndexExprAST>(std::move(expr),std::move(firstexpr),Pos);
+	}
+	vector<unique_ptr<ExprAST>> template_args;
+	template_args.emplace_back(std::move(firstexpr));
+	while (tokenizer.CurTok == tok_comma)
+	{
+		tokenizer.GetNextToken();
+		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
+	}
+	CompileExpect(tok_right_index, "Expected  \']\'");
+	return make_unique<FunctionTemplateInstanceExprAST>(std::move(firstexpr), std::move(template_args), Pos);
+}
+
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
 {
 	std::unique_ptr<ExprAST> firstexpr;
@@ -366,7 +392,13 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		return nullptr;
 		break;
 	default:
-		throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an expression");
+		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
+		{
+			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok, tokenizer.GetSourcePos());
+			tokenizer.GetNextToken();
+		}
+		else
+			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an expression");
 	}
 	//tokenizer.GetNextToken(); //eat token
 	auto parse_tail_token = [&firstexpr]()
@@ -376,36 +408,8 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		std::string member;
 		switch (tokenizer.CurTok)
 		{
-		case tok_at:
-		{
-			tokenizer.GetNextToken();//eat @
-			CompileAssert(tok_left_index==tokenizer.CurTok, "Expected [ after @");
-			vector<TemplateArgument> template_args;
-			do
-			{
-				tokenizer.GetNextToken();
-				if (tokenizer.CurTok == tok_at)
-				{
-					tokenizer.GetNextToken();
-					template_args.emplace_back(
-						std::move(TemplateArgument(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template")))
-					);
-				}
-				else
-				{
-					template_args.emplace_back(
-						std::move(TemplateArgument(ParseTypeName()))
-					);
-				}				
-			} while (tokenizer.CurTok == tok_comma);
-			CompileExpect(tok_right_index, "Expected  \']\'");
-			firstexpr = make_unique<FunctionTemplateInstanceExprAST>(std::move(firstexpr), std::move(template_args), pos);
-			return true;
-		}
 		case tok_left_index:
-			tokenizer.GetNextToken();//eat [
-			firstexpr = make_unique<IndexExprAST>(std::move(firstexpr), CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for index"), pos);
-			CompileExpect(tok_right_index, "Expected  \']\'");
+			firstexpr = ParseIndexOrTemplateInstance(std::move(firstexpr),pos);
 			return true;
 		case tok_left_bracket:
 			tokenizer.GetNextToken();//eat (

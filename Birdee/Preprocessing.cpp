@@ -600,6 +600,15 @@ namespace Birdee
 		func = GetFunctionFromExpression(expr.get(),Pos);
 		CompileAssert(func, Pos, "Expected a function name or a member function for template");
 		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
+		for (auto& template_arg : raw_template_args)
+		{
+			auto typeexpr = dynamic_cast<BasicTypeExprAST*>(template_arg.get());
+			if (typeexpr)
+			{
+				template_args.push_back(TemplateArgument(typeexpr->tok));;
+			}
+		}
+		raw_template_args.clear();
 		for (auto& arg : template_args)
 			arg.Phase1(Pos);
 		func->template_param->ValidateArguments(template_args, Pos);

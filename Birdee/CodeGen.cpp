@@ -234,6 +234,12 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	return resolved;
 }
 
+Value * Birdee::BasicTypeExprAST::Generate()
+{
+	assert(0 && "Should not generate BasicTypeExprAST");
+	return nullptr;
+}
+
 llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 {
 	dinfo.emitLocation(this);
