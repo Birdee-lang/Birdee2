@@ -234,6 +234,11 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	return resolved;
 }
 
+llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	return instance->llvm_func;
+}
 
 void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& package_name)
 {
@@ -563,6 +568,15 @@ void Birdee::ClassAST::PreGenerateFuncs()
 }
 DIType* Birdee::FunctionAST::PreGenerate()
 {
+	if (isTemplate())
+	{
+		assert(template_param && "template_param should not be null");
+		for (auto& v : template_param->instances)
+		{
+			v.second->PreGenerate();
+		}
+		return nullptr;
+	}
 	if (llvm_func)
 		return helper.dtypemap[resolved_type];
 	string prefix;
@@ -667,7 +681,14 @@ llvm::Value * Birdee::ThisExprAST::Generate()
 llvm::Value * Birdee::FunctionAST::Generate()
 {
 	DISubroutineType* functy=(DISubroutineType*)PreGenerate();
-
+	if (isTemplate())
+	{
+		for (auto& v : template_param->instances)
+		{
+			v.second->Generate();
+		}
+		return nullptr;
+	}
 	auto dbginfo = PrepareFunctionDebugInfo(llvm_func, functy, Pos);
 
 	if (!isDeclare)

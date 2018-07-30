@@ -387,13 +387,13 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 				if (tokenizer.CurTok == tok_at)
 				{
 					tokenizer.GetNextToken();
-					template_args.push_back(
+					template_args.emplace_back(
 						std::move(TemplateArgument(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template")))
 					);
 				}
 				else
 				{
-					template_args.push_back(
+					template_args.emplace_back(
 						std::move(TemplateArgument(ParseTypeName()))
 					);
 				}				

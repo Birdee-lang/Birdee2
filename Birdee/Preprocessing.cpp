@@ -10,6 +10,8 @@ using std::reference_wrapper;
 
 using namespace Birdee;
 
+//fix-me: show template stack on error
+
 template <typename T>
 T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
 	const string& name)
@@ -41,13 +43,20 @@ public:
 	{
 		unordered_map<string, ResolvedType> typemap;
 		unordered_map<string, ExprAST*> exprmap;
-		TemplateEnv() {}
-		TemplateEnv(TemplateEnv&& v)
+		SourcePos pos;
+		TemplateEnv(SourcePos pos): pos(pos){}
+		TemplateEnv& operator = (TemplateEnv&& v)
 		{
 			typemap = std::move(v.typemap);
 			exprmap = std::move(v.exprmap);
 		}
-	}template_env;
+		TemplateEnv(TemplateEnv&& v):pos(v.pos)
+		{
+			typemap = std::move(v.typemap);
+			exprmap = std::move(v.exprmap);
+		}
+	};
+	vector<TemplateEnv> template_stack;
 
 	inline bool IsCurrentClass(ClassAST* cls)
 	{
@@ -64,6 +73,18 @@ public:
 			{
 				return &(cls->fields[cls_field->second]);
 			}
+		}
+		return nullptr;
+	}
+
+	unique_ptr<ResolvedIdentifierExprAST> FindAndCopyTemplateArgument(const string& name)
+	{
+		if (template_stack.empty())
+			return nullptr;
+		auto itr = template_stack.back().exprmap.find(name);
+		if (itr != template_stack.back().exprmap.end())
+		{
+			return unique_ptr_cast<ResolvedIdentifierExprAST>(itr->second->Copy());
 		}
 		return nullptr;
 	}
@@ -98,15 +119,23 @@ public:
 		return nullptr;
 	}
 
-	TemplateEnv SetTemplateEnv(const vector<TemplateArgument>& template_args)
+	void SetTemplateEnv(const vector<TemplateArgument>& template_args, 
+		const vector<TemplateParameters::Parameter>& parameters, SourcePos pos)
 	{
-		........................;
-		return std::move(template_env);
+		TemplateEnv env(pos);
+		for (int i=0;i<template_args.size();i++)
+		{
+			if (template_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
+				env.typemap[parameters[i].name] = template_args[i].resolved_type;
+			else
+				env.exprmap[parameters[i].name] = template_args[i].expr.get();
+		}
+		template_stack.push_back(std::move(env));
 	}
 
-	void RestoreTemplateEnv(TemplateEnv&& env)
+	void RestoreTemplateEnv()
 	{
-		template_env = std::move(env);
+		template_stack.pop_back();
 	}
 
 	void PushBasicBlock()
@@ -130,6 +159,9 @@ public:
 
 	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
+		auto template_arg = FindAndCopyTemplateArgument(name);
+		if (template_arg)
+			return std::move(template_arg);
 		auto bb = FindLocalVar(name);
 		if (bb)
 		{
@@ -198,6 +230,32 @@ do\
 	}\
 }while(0)\
 
+static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
+{
+	FunctionAST* func = nullptr;
+	IdentifierExprAST*  iden = dynamic_cast<IdentifierExprAST*>(expr);
+	if (iden)
+	{
+		auto resolvedfunc = dynamic_cast<ResolvedFuncExprAST*>(iden->impl.get());
+		func = resolvedfunc->def;
+	}
+	else
+	{
+		MemberExprAST*  mem = dynamic_cast<MemberExprAST*>(expr);
+		if (mem)
+		{
+			if (mem->kind == MemberExprAST::member_function)
+			{
+				func = mem->func->decl.get();
+			}
+			else if (mem->kind == MemberExprAST::member_imported_function)
+			{
+				func = mem->func->decl.get();
+			}
+		}
+	}
+	return func;
+}
 
 void ThrowCastError(ResolvedType& target, ResolvedType& fromtype, SourcePos pos)
 {
@@ -321,6 +379,15 @@ namespace Birdee
 			IdentifierType* ty = dynamic_cast<IdentifierType*>(&type);
 			assert(ty && "Type should be a IdentifierType");
 			this->type = tok_class;
+			if (!scope_mgr.template_stack.empty())
+			{
+				auto template_itr = scope_mgr.template_stack.back().typemap.find(ty->name);
+				if (template_itr != scope_mgr.template_stack.back().typemap.end())
+				{
+					*this = template_itr->second;
+					return;
+				}
+			}
 			auto itr = cu.classmap.find(ty->name);
 			if (itr == cu.classmap.end())
 				this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
@@ -369,7 +436,7 @@ namespace Birdee
 		}
 		scope_mgr.PopBasicBlock();
 	}
-	string ResolvedType::GetString()
+	string ResolvedType::GetString() const
 	{
 		if (type == tok_class)
 			return GetClassASTName(class_ast);
@@ -454,7 +521,7 @@ namespace Birdee
 		return v_ulong<v.v_ulong;
 	}
 
-	bool Birdee::TemplateArgument::operator<(const TemplateArgument & that)
+	bool Birdee::TemplateArgument::operator<(const TemplateArgument & that) const
 	{
 		if (kind != that.kind)
 			return kind < that.kind;
@@ -469,7 +536,7 @@ namespace Birdee
 			if (s2)
 				return true;
 			if (n2)
-				return n1 < n2;
+				return n1->Val < n2->Val;
 			assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
 		else if(s1)
@@ -530,30 +597,8 @@ namespace Birdee
 	{
 		FunctionAST* func = nullptr;
 		expr->Phase1();
-		IdentifierExprAST*  iden = dynamic_cast<IdentifierExprAST*>(expr.get());
-		if (iden)
-		{
-			auto resolvedfunc = dynamic_cast<ResolvedFuncExprAST*>(iden->impl.get());
-			CompileAssert(resolvedfunc, Pos, "Expected a function name for template");
-			func = resolvedfunc->def;
-		}
-		else
-		{
-			MemberExprAST*  mem = dynamic_cast<MemberExprAST*>(expr.get());
-			CompileAssert(mem, Pos, "Expected a function name or a member function for template");
-			if (mem->kind == MemberExprAST::member_function)
-			{
-				func = mem->func->decl.get();
-			}
-			else if (mem->kind == MemberExprAST::member_imported_function)
-			{
-				func = mem->func->decl.get();
-			}
-			else
-			{
-				throw CompileError(Pos.line, Pos.pos, "Expected a function name or a member function for template");
-			}
-		}
+		func = GetFunctionFromExpression(expr.get(),Pos);
+		CompileAssert(func, Pos, "Expected a function name or a member function for template");
 		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
 		for (auto& arg : template_args)
 			arg.Phase1(Pos);
@@ -561,19 +606,46 @@ namespace Birdee
 		instance = func->template_param->GetOrCreate(template_args, func, Pos);
 		resolved_type = instance->resolved_type;
 	}
-
+	static string GetTemplateArgumentString(const vector<TemplateArgument>& v)
+	{
+		std::stringstream buf;
+		buf << "[";
+		for (auto& arg : v)
+		{
+			if (arg.kind == TemplateArgument::TEMPLATE_ARG_EXPR)
+			{
+				StringLiteralAST* str = dynamic_cast<StringLiteralAST*>(arg.expr.get());
+				if (str)
+					buf << str->Val <<",";
+				else
+				{
+					NumberExprAST* number = dynamic_cast<NumberExprAST*>(arg.expr.get());
+					assert(number && "Template arg should be string or number constant");
+					number->ToString(buf);
+					buf << ",";
+				}
+			}
+			else
+			{
+				buf << arg.resolved_type.GetString()<<",";
+			}
+		}
+		buf << "]";
+		return buf.str();
+	}
 	FunctionAST * Birdee::TemplateParameters::GetOrCreate(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(v);
 		if (ins != instances.end())
 			return ins->second.get();
 		unique_ptr<FunctionAST> replica_func = source_template->CopyNoTemplate();
-		instances.insert(std::make_pair(v, std::move(replica_func)));
 		FunctionAST* ret = replica_func.get();
-		auto env=scope_mgr.SetTemplateEnv(v);
-		replica_func->Phase0();
-		replica_func->Phase1();
-		scope_mgr.RestoreTemplateEnv(std::move(env));
+		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(v), std::move(replica_func)));
+		ret->Proto->Name += GetTemplateArgumentString(v);
+		scope_mgr.SetTemplateEnv(v,params,pos);
+		ret->Phase0();
+		ret->Phase1();
+		scope_mgr.RestoreTemplateEnv();
 		return ret;
 	}
 
@@ -838,6 +910,9 @@ namespace Birdee
 	{
 		Callee->Phase1();
 		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
+		auto func = GetFunctionFromExpression(Callee.get(),Pos);
+		if (func)
+			CompileAssert(!func->isTemplate(), Pos, "Cannot call a template");
 		auto proto = Callee->resolved_type.proto_ast;
 		CheckFunctionCallParameters(proto, Args, Pos);
 		resolved_type = proto->resolved_type;

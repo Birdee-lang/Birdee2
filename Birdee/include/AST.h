@@ -10,12 +10,22 @@
 #include "Util.h"
 #include "TokenDef.h"
 
+namespace Birdee
+{
+	struct TemplateArgument;
+}
 namespace std
 {
+	inline bool operator < (reference_wrapper<const vector<Birdee::TemplateArgument>> a, reference_wrapper<const vector<Birdee::TemplateArgument>> b)
+	{
+		return a.get() < b.get();
+	}
+
 	inline bool operator < (reference_wrapper<const string> a, reference_wrapper<const string> b)
 	{
 		return a.get() < b.get();
 	}
+
 	inline bool operator == (reference_wrapper<const string> a, reference_wrapper<const string> b)
 	{
 		return a.get() == b.get();
@@ -201,7 +211,7 @@ namespace Birdee {
 		{
 			return type!=tok_error;
 		}
-		string GetString();
+		string GetString() const;
 		bool operator < (const ResolvedType& other) const;
 		bool operator == (const ResolvedType& other) const
 		{
@@ -284,39 +294,49 @@ namespace Birdee {
 	};
 	extern  CompileUnit cu;
 
-	/// NumberExprAST - Expression class for numeric literals like "1.0".
-	class NumberExprAST : public ExprAST {
-		NumberLiteral Val = { 0,tok_error };
+	class ResolvedIdentifierExprAST : public ExprAST {
 	public:
+		virtual bool isMutable() = 0;
+	};
+	/// NumberExprAST - Expression class for numeric literals like "1.0".
+	class NumberExprAST : public ResolvedIdentifierExprAST {
+	public:
+		NumberLiteral Val = { 0,tok_error };
+		bool isMutable() { return false; } //for template argument replacement
 		Value* Generate();
 		virtual void Phase1();
 		NumberExprAST(const NumberLiteral& Val) : Val(Val) {}
-		void print(int level) {
-			ExprAST::print(level);
+		void ToString(std::ostream& os)
+		{
 			switch (Val.type)
 			{
 			case tok_byte:
-				std::cout << "const byte " << Val.v_int << "\n";
+				os << "const byte " << Val.v_int ;
 				break;
 			case tok_int:
-				std::cout << "const int " << Val.v_int << "\n";
+				os << "const int " << Val.v_int ;
 				break;
 			case tok_long:
-				std::cout << "const long " << Val.v_long << "\n";
+				os << "const long " << Val.v_long ;
 				break;
 			case tok_uint:
-				std::cout << "const uint " << Val.v_uint << "\n";
+				os << "const uint " << Val.v_uint;
 				break;
 			case tok_ulong:
-				std::cout << "const ulong " << Val.v_ulong << "\n";
+				os << "const ulong " << Val.v_ulong;
 				break;
 			case tok_float:
-				std::cout << "const float " << Val.v_double << "\n";
+				os << "const float " << Val.v_double;
 				break;
 			case tok_double:
-				std::cout << "const double " << Val.v_double << "\n";
+				os << "const double " << Val.v_double ;
 				break;
 			}
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			ToString(std::cout);
+			std::cout << "\n";
 		}
 		unique_ptr<StatementAST> Copy();
 	};
@@ -335,8 +355,9 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
-	class StringLiteralAST : public ExprAST {
+	class StringLiteralAST : public ResolvedIdentifierExprAST {
 	public:
+		bool isMutable() { return false; }//for template argument replacement
 		std::string Val;
 		virtual void Phase1();
 		llvm::Value* Generate();
@@ -345,10 +366,6 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
-	class ResolvedIdentifierExprAST : public ExprAST {
-	public:
-		virtual bool isMutable()=0;
-	};
 	/// IdentifierExprAST - Expression class for referencing a variable, like "a".
 	class IdentifierExprAST : public ExprAST {
 		std::string Name;
@@ -534,14 +551,18 @@ namespace Birdee {
 			TEMPLATE_ARG_TYPE,
 			TEMPLATE_ARG_EXPR
 		}kind;
+		TemplateArgument(const TemplateArgument&) = delete;
+		TemplateArgument& operator = (const TemplateArgument&) = delete;
 		unique_ptr<Type> type;
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
 		ResolvedType resolved_type;
 		TemplateArgument Copy();
 		TemplateArgument(unique_ptr<Type>&& type) :kind(TEMPLATE_ARG_TYPE),type(std::move(type)), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
+		TemplateArgument(TemplateArgument&& other): kind(other.kind), type(std::move(other.type)), expr(std::move(other.expr)) {  };
+		TemplateArgument& operator = (TemplateArgument&&) = default;
 		void Phase1(SourcePos pos);
-		bool operator < (const TemplateArgument&);
+		bool operator < (const TemplateArgument&) const;
 	};
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
@@ -551,7 +572,7 @@ namespace Birdee {
 	public:
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
-		llvm::Value* Generate() { return nullptr; };
+		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override { return nullptr; };
 		FunctionTemplateInstanceExprAST(std::unique_ptr<ExprAST>&& expr,
 			vector<TemplateArgument>&& template_args, SourcePos Pos)
@@ -709,12 +730,13 @@ namespace Birdee {
 	/// of arguments the function takes).
 	class PrototypeAST {
 	protected:
-		std::string Name;
+		
 		std::unique_ptr<VariableDefAST> Args;
 		std::unique_ptr<Type> RetType;
 		SourcePos pos;
 		
 	public:
+		std::string Name;
 		std::unique_ptr<PrototypeAST> Copy();
 		ClassAST * cls;
 		//the index in CompileUnit.imported_module_names
@@ -781,7 +803,7 @@ namespace Birdee {
 			Parameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
 		};
 		vector<Parameter> params;
-		map<vector<TemplateArgument>, unique_ptr<FunctionAST>> instances;
+		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<FunctionAST>> instances;
 		FunctionAST* GetOrCreate(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos);
 		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
 		TemplateParameters() {}
@@ -1036,3 +1058,4 @@ namespace Birdee {
 	};
 
 }
+

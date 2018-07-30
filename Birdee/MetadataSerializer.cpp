@@ -169,7 +169,7 @@ json BuildGlobalFuncJson()
 	json arr = json::array();
 	for (auto itr : cu.funcmap)
 	{
-		if (itr.second.get().isDeclare)
+		if (itr.second.get().isDeclare || itr.second.get().isTemplate())
 			continue;
 		arr.push_back(BuildFunctionJson(&itr.second.get()));
 	}
@@ -193,6 +193,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json json_funcs = json::array();
 	for (auto& func : cls.funcs)
 	{
+		if (func.decl->isDeclare || func.decl->isTemplate())
+			continue;
 		json json_func;
 		json_func["access"] = GetAccessModifierName(func.access);
 		json_func["def"] = BuildFunctionJson(func.decl.get());
