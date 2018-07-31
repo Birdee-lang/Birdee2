@@ -344,12 +344,13 @@ namespace Birdee {
 	class BasicTypeExprAST : public ExprAST
 	{
 	public:
-		Token tok;
+		unique_ptr<Type> type;
 		Value * Generate();
 		virtual void Phase1() {}
-		BasicTypeExprAST(Token token, SourcePos pos) : tok(token) { Pos = pos; };
+		BasicTypeExprAST() {}
+		BasicTypeExprAST(Token token, SourcePos pos) { Pos = pos; type = make_unique<Type>(token); };
 		void print(int level) {
-			ExprAST::print(level); std::cout << "BasicType"<<tok<<"\n";
+			ExprAST::print(level); std::cout << "BasicType"<<type->type<<"\n";
 		}
 		unique_ptr<StatementAST> Copy();
 	};
@@ -381,8 +382,8 @@ namespace Birdee {
 
 	/// IdentifierExprAST - Expression class for referencing a variable, like "a".
 	class IdentifierExprAST : public ExprAST {
-		std::string Name;
 	public:
+		std::string Name;
 		unique_ptr<ResolvedIdentifierExprAST> impl;
 		void Phase1();
 		llvm::Value * GetLValue(bool checkHas) override { return impl->GetLValue(checkHas); };
@@ -535,11 +536,14 @@ namespace Birdee {
 		}
 	};
 	/// BinaryExprAST - Expression class for a binary operator.
+	class FunctionTemplateInstanceExprAST;
 	class IndexExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> Expr, Index;
+		unique_ptr<FunctionTemplateInstanceExprAST> instance;
 	public:
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
+		bool isTemplateInstance();
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
@@ -564,17 +568,15 @@ namespace Birdee {
 			TEMPLATE_ARG_TYPE,
 			TEMPLATE_ARG_EXPR
 		}kind;
-		TemplateArgument(const TemplateArgument&) = delete;
-		TemplateArgument& operator = (const TemplateArgument&) = delete;
-		unique_ptr<Type> type;
+		//TemplateArgument(const TemplateArgument&) = delete;
+		//TemplateArgument& operator = (const TemplateArgument&) = delete;
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
-		ResolvedType resolved_type;
+		ResolvedType type;
 		TemplateArgument Copy();
-		TemplateArgument(unique_ptr<Type>&& type) :kind(TEMPLATE_ARG_TYPE),type(std::move(type)), expr(nullptr){}
+		TemplateArgument(ResolvedType type) :kind(TEMPLATE_ARG_TYPE),type(type), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
-		TemplateArgument(TemplateArgument&& other): kind(other.kind), type(std::move(other.type)), expr(std::move(other.expr)) {  };
-		TemplateArgument& operator = (TemplateArgument&&) = default;
-		void Phase1(SourcePos pos);
+		//TemplateArgument(TemplateArgument&& other): kind(other.kind), type(type), expr(std::move(other.expr)) {  };
+		//TemplateArgument& operator = (TemplateArgument&&) = default;
 		bool operator < (const TemplateArgument&) const;
 	};
 
@@ -1021,6 +1023,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Obj;
 		std::string member;
 	public:
+		vector<string> ToStringArray();
 		std::unique_ptr<StatementAST> Copy();
 		union
 		{

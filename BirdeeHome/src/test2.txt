@@ -1,11 +1,11 @@
 function add2[T1,T2,disp as int] (v1 as T1, v2 as T2) as T1
 	return v1+v2+disp
 end
-add2@[int,long,@123](1,2)
-add2@[int,long,@123](1,2)
+add2[int,long,123](1,2)
+add2[int,long,123](1,2)
 
 function add[T] (v1 as T, v2 as T) as T
 	return v1+v2
 end
 
-add@[string]("haha","123")
+add[string]("haha","123")

@@ -916,7 +916,7 @@ llvm::Value * Birdee::NullExprAST::Generate()
 llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 {
 	if (checkHas)
-		return (llvm::Value *)1;
+		return ( isTemplateInstance()?nullptr: (llvm::Value *)1 );
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();
@@ -927,6 +927,10 @@ llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 
 llvm::Value * Birdee::IndexExprAST::Generate()
 {
+	if (instance)
+	{
+		return instance->Generate();
+	}
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();

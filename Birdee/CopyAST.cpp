@@ -114,15 +114,15 @@ namespace Birdee
 
 	TemplateArgument Birdee::TemplateArgument::Copy()
 	{
-		return TEMPLATE_ARG_TYPE==kind?TemplateArgument(type->Copy()): TemplateArgument(unique_ptr_cast<ExprAST>(expr->Copy()));
+		return TEMPLATE_ARG_TYPE==kind?TemplateArgument(type): TemplateArgument(unique_ptr_cast<ExprAST>(expr->Copy()));
 	}
 
 	std::unique_ptr<StatementAST> Birdee::FunctionTemplateInstanceExprAST::Copy()
 	{
-		vector<TemplateArgument> args;
-		for (auto& arg : template_args)
+		vector<unique_ptr<ExprAST>> args;
+		for (auto& arg : raw_template_args)
 		{
-			args.push_back(arg.Copy());
+			args.push_back(ToExpr(arg->Copy()));
 		}
 		return make_unique<FunctionTemplateInstanceExprAST>(ToExpr(expr->Copy()),std::move(args),Pos);
 	}
@@ -181,7 +181,9 @@ namespace Birdee
 
 	unique_ptr<StatementAST> Birdee::BasicTypeExprAST::Copy()
 	{
-		return make_unique<BasicTypeExprAST>(tok,Pos);
+		auto ret = make_unique<BasicTypeExprAST>();
+		ret->type = type->Copy();
+		return std::move(ret);
 	}
 
 	std::unique_ptr<FunctionAST> Birdee::FunctionAST::CopyNoTemplate()

@@ -4,6 +4,7 @@
 #include <cassert>
 #include "CastAST.h"
 #include <sstream>
+#include "TemplateUtil.h"
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
@@ -126,7 +127,7 @@ public:
 		for (int i=0;i<template_args.size();i++)
 		{
 			if (template_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
-				env.typemap[parameters[i].name] = template_args[i].resolved_type;
+				env.typemap[parameters[i].name] = template_args[i].type;
 			else
 				env.exprmap[parameters[i].name] = template_args[i].expr.get();
 		}
@@ -157,7 +158,7 @@ public:
 
 	
 
-	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name,SourcePos pos,ImportTree*& out_import)
+	unique_ptr<ResolvedIdentifierExprAST> ResolveNameNoThrow(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
 		auto template_arg = FindAndCopyTemplateArgument(name);
 		if (template_arg)
@@ -204,8 +205,15 @@ public:
 			out_import = package;
 			return nullptr;
 		}
-		throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
 		return nullptr;
+	}
+
+	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name, SourcePos pos, ImportTree*& out_import)
+	{
+		unique_ptr<ResolvedIdentifierExprAST> ret = ResolveNameNoThrow(name, pos, out_import);
+		if(!ret)
+			throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
+		return ret;
 	}
 
 }scope_mgr;
@@ -526,7 +534,7 @@ namespace Birdee
 		if (kind != that.kind)
 			return kind < that.kind;
 		if (kind == TEMPLATE_ARG_TYPE)
-			return resolved_type < that.resolved_type;
+			return type < that.type;
 		//kind==TEMPLATE_ARG_EXPR
 		//let NumberExprAST<StringLiteralAST
 		NumberExprAST* n1 = dynamic_cast<NumberExprAST*>(expr.get()), *n2=dynamic_cast<NumberExprAST*>(that.expr.get());
@@ -549,17 +557,6 @@ namespace Birdee
 		}
 		assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
 		return false;
-	}
-
-	void TemplateArgument::Phase1(SourcePos Pos)
-	{
-		if (kind == TemplateArgument::TEMPLATE_ARG_EXPR)
-			expr->Phase1();
-		else
-		{
-			resolved_type = ResolvedType(*type, Pos);
-			type = nullptr;
-		}
 	}
 
 	string int2str(const int v)
@@ -593,6 +590,31 @@ namespace Birdee
 		
 	}
 
+	vector<string> Birdee::MemberExprAST::ToStringArray()
+	{
+		vector<string*> reverse;
+		reverse.push_back(&member);
+		ExprAST* cur = Obj.get();
+		for(;;)
+		{
+			if (!instance_of<MemberExprAST>(cur))
+			{
+				CompileAssert(instance_of<IdentifierExprAST>(cur), cur->Pos, "Expected an identifier for template");
+				reverse.push_back(&((IdentifierExprAST*)cur)->Name);
+				break;
+			}
+			MemberExprAST* node = (MemberExprAST*)cur;
+			reverse.push_back(&node->member);
+			cur = node->Obj.get();
+		}
+		vector<string> ret;
+		for (int i = reverse.size() - 1; i >= 0; i++)
+		{
+			ret.push_back(*reverse[i]);
+		}
+		return ret;
+	}
+
 	void FunctionTemplateInstanceExprAST::Phase1()
 	{
 		FunctionAST* func = nullptr;
@@ -600,17 +622,47 @@ namespace Birdee
 		func = GetFunctionFromExpression(expr.get(),Pos);
 		CompileAssert(func, Pos, "Expected a function name or a member function for template");
 		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
+		auto& this_template_args = template_args;
 		for (auto& template_arg : raw_template_args)
 		{
-			auto typeexpr = dynamic_cast<BasicTypeExprAST*>(template_arg.get());
-			if (typeexpr)
-			{
-				template_args.push_back(TemplateArgument(typeexpr->tok));;
+			RunOnTemplateArg(template_arg.get(),
+				[&this_template_args](BasicTypeExprAST* ex) {
+				this_template_args.push_back(TemplateArgument(ResolvedType(*ex->type,ex->Pos)));
+			},
+				[&this_template_args](IdentifierExprAST* ex) {
+				ImportTree* import_tree=nullptr;
+				auto ret = scope_mgr.ResolveNameNoThrow(ex->Name, ex->Pos, import_tree);
+				if (ret || import_tree)
+					assert(0 || "Not implemented");
+				IdentifierType type(ex->Name);
+				Type& dummy = type;
+				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+			},
+				[&this_template_args](MemberExprAST* ex) {
+				//fix-me: resolve this member!!!!!!!!!
+				QualifiedIdentifierType type= QualifiedIdentifierType(ex->ToStringArray());
+				Type& dummy = type;
+				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+			},
+				[](FunctionTemplateInstanceExprAST* ex) {
+				assert(0 && "Not implemented");
+			},
+				[](IndexExprAST* ex) {
+				assert(0 && "Not implemented");
+			},
+				[&this_template_args,&template_arg](NumberExprAST* ex) {
+				ex->Phase1();
+				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
+			},
+				[&this_template_args, &template_arg](StringLiteralAST* ex) {
+				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
+			},
+				[]() {
+				throw CompileError("Invalid template argument expression type");
 			}
+			);
 		}
 		raw_template_args.clear();
-		for (auto& arg : template_args)
-			arg.Phase1(Pos);
 		func->template_param->ValidateArguments(template_args, Pos);
 		instance = func->template_param->GetOrCreate(template_args, func, Pos);
 		resolved_type = instance->resolved_type;
@@ -636,7 +688,7 @@ namespace Birdee
 			}
 			else
 			{
-				buf << arg.resolved_type.GetString()<<",";
+				buf << arg.type.GetString()<<",";
 			}
 		}
 		buf << "]";
@@ -669,9 +721,31 @@ namespace Birdee
 		resolved_type.type = tok_pointer;
 	}
 
+	bool Birdee::IndexExprAST::isTemplateInstance()
+	{
+		if (!Expr)
+			return true;
+		auto func = GetFunctionFromExpression(Expr.get(), Pos);
+		if (func && func->isTemplate())
+		{
+			return true;
+		}
+		return false;
+	}
+
 	void IndexExprAST::Phase1()
 	{
 		Expr->Phase1();
+		if(isTemplateInstance())
+		{
+			vector<unique_ptr<ExprAST>> arg;
+			arg.push_back(std::move(Index));
+			instance = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
+			Expr = nullptr;
+			instance->Phase1();
+			resolved_type = instance->resolved_type;
+			return;
+		}
 		CompileAssert(Expr->resolved_type.index_level > 0, Pos, "The indexed expression should be indexable");
 		Index->Phase1();
 		CompileAssert(Index->resolved_type.isInteger(), Pos, "The index should be an integer");

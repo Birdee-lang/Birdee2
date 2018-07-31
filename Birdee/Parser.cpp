@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <unordered_set>
 #include <iostream>
+#include "TemplateUtil.h"
 using namespace Birdee;
 
 //===----------------------------------------------------------------------===//
@@ -309,6 +310,40 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 	if (tokenizer.CurTok == tok_right_index)
 	{
 		//if empty []
+		RunOnTemplateArg(expr.get(),
+			[](BasicTypeExprAST* ex) {
+			ex->type->index_level++;
+		},
+			[&expr](IdentifierExprAST* ex) {
+			auto type = make_unique<IdentifierType>(ex->Name);
+			auto nexpr = make_unique<BasicTypeExprAST>();
+			nexpr->type = std::move(type);
+			nexpr->type->index_level = 1;
+			expr = std::move(nexpr);
+		},
+			[&expr](MemberExprAST* ex) {
+			auto type = make_unique<QualifiedIdentifierType>(ex->ToStringArray());
+			auto nexpr = make_unique<BasicTypeExprAST>();
+			nexpr->type = std::move(type);
+			expr = std::move(nexpr);
+		},
+			[](FunctionTemplateInstanceExprAST* ex) {
+			assert(0 && "Not implemented yet for template instance array in template argument");
+		},
+			[](IndexExprAST* ex) {
+			assert(0 && "Not implemented yet for template instance array in template argument");
+		},
+			[](NumberExprAST* ex) {
+			throw CompileError("Cannot apply index on number");
+		},
+			[](StringLiteralAST* ex) {
+			throw CompileError("Cannot apply index on string");
+		},
+			[]() {
+			throw CompileError("Invalid template argument expression type for []");
+		}
+		);
+		return std::move(expr);
 	}
 	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for array index or template");
 	if (tokenizer.CurTok == tok_right_index)
@@ -324,7 +359,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
 	}
 	CompileExpect(tok_right_index, "Expected  \']\'");
-	return make_unique<FunctionTemplateInstanceExprAST>(std::move(firstexpr), std::move(template_args), Pos);
+	return make_unique<FunctionTemplateInstanceExprAST>(std::move(expr), std::move(template_args), Pos);
 }
 
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
@@ -394,7 +429,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	default:
 		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
 		{
-			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok, tokenizer.GetSourcePos());
+			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok,tokenizer.GetSourcePos());
 			tokenizer.GetNextToken();
 		}
 		else
