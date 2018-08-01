@@ -301,7 +301,7 @@ namespace Birdee {
 	/// NumberExprAST - Expression class for numeric literals like "1.0".
 	class NumberExprAST : public ResolvedIdentifierExprAST {
 	public:
-		NumberLiteral Val = { 0,tok_error };
+		NumberLiteral Val;
 		bool isMutable() { return false; } //for template argument replacement
 		Value* Generate();
 		virtual void Phase1();
