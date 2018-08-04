@@ -8,4 +8,10 @@ function add[T] (v1 as T, v2 as T) as T
 	return v1+v2
 end
 
+function get[T](arr as T,index as int) as int
+	return arr[index]
+end
+
+dim arr=new int[10]
+get[int[]](arr,1)
 add[string]("haha","123")

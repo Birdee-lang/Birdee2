@@ -310,6 +310,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 	if (tokenizer.CurTok == tok_right_index)
 	{
 		//if empty []
+		tokenizer.GetNextToken();//eat ]
 		RunOnTemplateArg(expr.get(),
 			[](BasicTypeExprAST* ex) {
 			ex->type->index_level++;

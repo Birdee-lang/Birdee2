@@ -245,7 +245,8 @@ static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
 	if (iden)
 	{
 		auto resolvedfunc = dynamic_cast<ResolvedFuncExprAST*>(iden->impl.get());
-		func = resolvedfunc->def;
+		if(resolvedfunc)
+			func = resolvedfunc->def;
 	}
 	else
 	{
@@ -664,7 +665,7 @@ namespace Birdee
 		}
 		raw_template_args.clear();
 		func->template_param->ValidateArguments(template_args, Pos);
-		instance = func->template_param->GetOrCreate(template_args, func, Pos);
+		instance = func->template_param->GetOrCreateFunction(template_args, func, Pos);
 		resolved_type = instance->resolved_type;
 	}
 	static string GetTemplateArgumentString(const vector<TemplateArgument>& v)
@@ -694,7 +695,18 @@ namespace Birdee
 		buf << "]";
 		return buf.str();
 	}
-	FunctionAST * Birdee::TemplateParameters::GetOrCreate(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos)
+
+	string Birdee::ClassAST::GetUniqueName()
+	{
+		if (package_name_idx == -1)
+			return cu.symbol_prefix + name;
+		else if (package_name_idx == -2)
+			return name;
+		else
+			return cu.imported_module_names[package_name_idx] + '.' + name;
+	}
+
+	FunctionAST * Birdee::TemplateParameters::GetOrCreateFunction(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(v);
 		if (ins != instances.end())

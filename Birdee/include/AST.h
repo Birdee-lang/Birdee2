@@ -820,7 +820,7 @@ namespace Birdee {
 		};
 		vector<Parameter> params;
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<FunctionAST>> instances;
-		FunctionAST* GetOrCreate(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos);
+		FunctionAST* GetOrCreateFunction(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos);
 		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
 		TemplateParameters() {}
 		unique_ptr<TemplateParameters> Copy();
@@ -962,6 +962,7 @@ namespace Birdee {
 		std::string name;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
+		unique_ptr<TemplateParameters> template_param;
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
@@ -976,15 +977,8 @@ namespace Birdee {
 			Pos = pos;
 		}
 
-		string GetUniqueName()
-		{
-			if (package_name_idx == -1)
-				return cu.symbol_prefix + name;
-			else if (package_name_idx == -2)
-				return name;
-			else
-				return cu.imported_module_names[package_name_idx] + '.' + name;
-		}
+		bool isTemplate() { return template_param != nullptr && template_param->params.size() != 0; }
+		string GetUniqueName();
 		void PreGenerate();
 		void PreGenerateFuncs();
 
