@@ -27,3 +27,5 @@ end
 dim lst=new list[int]
 lst.push_back(0)
 lst.get_and_add[float](3.7f)
+dim lst2=new list[list[int]]
+lst2.push_back(lst)

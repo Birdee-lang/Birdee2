@@ -545,8 +545,8 @@ namespace Birdee {
 	/// BinaryExprAST - Expression class for a binary operator.
 	class FunctionTemplateInstanceExprAST;
 	class IndexExprAST : public ExprAST {
-		std::unique_ptr<ExprAST> Expr, Index;
 	public:
+		std::unique_ptr<ExprAST> Expr, Index;
 		unique_ptr<FunctionTemplateInstanceExprAST> instance;
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
@@ -588,10 +588,10 @@ namespace Birdee {
 	};
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
-		vector<unique_ptr<ExprAST>> raw_template_args;
-		vector<TemplateArgument> template_args;
 		FunctionAST* instance=nullptr;
 	public:
+		vector<unique_ptr<ExprAST>> raw_template_args;
+		vector<TemplateArgument> template_args;
 		std::unique_ptr<ExprAST> expr;
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();

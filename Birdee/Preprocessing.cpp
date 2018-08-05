@@ -444,7 +444,7 @@ namespace Birdee
 				ImportTree* import_tree = nullptr;
 				auto ret = scope_mgr.ResolveNameNoThrow(ex->Name, ex->Pos, import_tree);
 				if (ret || import_tree)
-					assert(0 || "Not implemented");
+					assert(0 && "Not implemented");
 				IdentifierType type(ex->Name);
 				Type& dummy = type;
 				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
@@ -455,11 +455,44 @@ namespace Birdee
 				Type& dummy = type;
 				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 			},
-				[](FunctionTemplateInstanceExprAST* ex) {
-				assert(0 && "Not implemented");
+				[&this_template_args](FunctionTemplateInstanceExprAST* ex) {
+				if (instance_of<IdentifierExprAST>(ex->expr.get()))
+				{
+					IdentifierExprAST* iden = (IdentifierExprAST*)ex->expr.get();
+					IdentifierType type(iden->Name);
+					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>(std::move(ex->raw_template_args));
+					Type& dummy = type;
+					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
+				else if (instance_of<MemberExprAST>(ex->expr.get()))
+				{
+					QualifiedIdentifierType type = QualifiedIdentifierType(((MemberExprAST*)ex->expr.get())->ToStringArray());
+					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>(std::move(ex->raw_template_args));
+					Type& dummy = type;
+					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
+				else
+					assert(0 && "Not implemented");
 			},
-				[](IndexExprAST* ex) {
-				assert(0 && "Not implemented");
+				[&this_template_args](IndexExprAST* ex) {
+				if (instance_of<IdentifierExprAST>(ex->Expr.get()))
+				{
+					IdentifierType type(((IdentifierExprAST*)ex->Expr.get())->Name);
+					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>();
+					type.template_args->push_back(std::move(ex->Index));
+					Type& dummy = type;
+					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
+				else if (instance_of<MemberExprAST>(ex->Expr.get()))
+				{
+					QualifiedIdentifierType type = QualifiedIdentifierType(((MemberExprAST*)ex->Expr.get())->ToStringArray());
+					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>();
+					type.template_args->push_back(std::move(ex->Index));
+					Type& dummy = type;
+					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
+				else
+					assert(0 && "Not implemented");
 			},
 				[&this_template_args, &template_arg](NumberExprAST* ex) {
 				ex->Phase1();
