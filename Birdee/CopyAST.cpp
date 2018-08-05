@@ -103,13 +103,33 @@ namespace Birdee
 	{
 		auto v = make_unique<IdentifierType>(name);
 		v->index_level = index_level;
+		if (template_args)
+		{
+			v->template_args = make_unique<vector<unique_ptr<ExprAST>>>();
+			vector<unique_ptr<ExprAST>>& vec = *template_args.get();
+			for (auto& arg : vec)
+			{
+				v->template_args->push_back(ToExpr(arg->Copy()));
+			}
+		}
 		return std::move(v);
 	}
 
 	unique_ptr<Type> Birdee::QualifiedIdentifierType::Copy()
 	{
 		vector<string> copynames = name;
-		return make_unique<QualifiedIdentifierType>(std::move(copynames));
+		auto v = make_unique<QualifiedIdentifierType>(std::move(copynames));
+		v->index_level = index_level;
+		if (template_args)
+		{
+			v->template_args = make_unique<vector<unique_ptr<ExprAST>>>();
+			vector<unique_ptr<ExprAST>>& vec = *template_args.get();
+			for (auto& arg : vec)
+			{
+				v->template_args->push_back(ToExpr(arg->Copy()));
+			}
+		}
+		return std::move(v);
 	}
 
 	TemplateArgument Birdee::TemplateArgument::Copy()

@@ -125,12 +125,19 @@ namespace Birdee {
 		}
 	};
 
-	class IdentifierType :public Type {
+	class ExprAST;
+	class GeneralIdentifierType :public Type {
+	public:
+		unique_ptr<vector<unique_ptr<ExprAST>>> template_args;
+		GeneralIdentifierType(Token tok) :Type(tok) {}
+	};
+
+	class IdentifierType :public GeneralIdentifierType {
 		
 	public:
 		virtual unique_ptr<Type> Copy();
 		std::string name;
-		IdentifierType(const std::string&_name) :Type(tok_identifier), name(_name) {}
+		IdentifierType(const std::string&_name) :GeneralIdentifierType(tok_identifier), name(_name) {}
 		void print(int level)
 		{
 			Type::print(level);
@@ -138,12 +145,12 @@ namespace Birdee {
 		}
 	};
 
-	class QualifiedIdentifierType :public Type {
+	class QualifiedIdentifierType :public GeneralIdentifierType {
 
 	public:
 		virtual unique_ptr<Type> Copy();
 		vector<string> name;
-		QualifiedIdentifierType(vector<string>&&_name) :Type(tok_package), name(std::move(_name)) {}
+		QualifiedIdentifierType(vector<string>&&_name) :GeneralIdentifierType(tok_package), name(std::move(_name)) {}
 		void print(int level)
 		{
 			Type::print(level);

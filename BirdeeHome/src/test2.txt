@@ -12,6 +12,8 @@ function get[T](arr as T,index as int) as int
 	return arr[index]
 end
 
-dim arr=new int[10]
+dim arr=new int*10
+dim arr2=new string*(2,3)
+dim arr3 as int[][]=new int[]*3
 get[int[]](arr,1)
 add[string]("haha","123")

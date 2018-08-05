@@ -641,7 +641,8 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	if (resolved_type.index_level > 0)
 	{
 		ResolvedType tyelement(resolved_type);
-		tyelement.index_level = 0;
+		tyelement.index_level -= args.size();
+		assert(tyelement.index_level >= 0);
 		auto llvm_ele_ty=helper.GetType(tyelement);
 		size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
 		vector<Value*> LArgs;

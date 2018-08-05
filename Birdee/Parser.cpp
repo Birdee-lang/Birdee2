@@ -131,8 +131,28 @@ PrototypeAST *current_func_proto = nullptr;
 
 void ParsePackageName(vector<string>& ret);
 
+void ParseTemplateArgsForType(GeneralIdentifierType* type)
+{
+	if (tokenizer.CurTok == tok_left_index)
+	{
+		tokenizer.GetNextToken();
+		if (tokenizer.CurTok == tok_right_index)
+		{
+			type->index_level++;
+			return;
+		}
+		type->template_args = make_unique<vector<unique_ptr<ExprAST>>>();
+		type->template_args->push_back(ParseExpressionUnknown());
+		while (tokenizer.CurTok == tok_comma)
+		{
+			type->template_args->push_back(ParseExpressionUnknown());
+		}
+		CompileExpect(tok_right_index, "Expected ] after template arguments");		
+	}
+}
+
 static std::unordered_set<Token> basic_types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
-//parse basic type, will not get the array type
+//parse basic type, may get the array type if there is a [ after GeneralIdentifierType (QualifiedIdentifierType/IdentifierType)
 std::unique_ptr<Type> ParseBasicType()
 {
 	
@@ -150,6 +170,7 @@ std::unique_ptr<Type> ParseBasicType()
 		}
 		else
 			type = make_unique<IdentifierType>(iden);
+		ParseTemplateArgsForType(static_cast<GeneralIdentifierType*>(type.get()));
 	}
 	else
 	{
@@ -275,15 +296,25 @@ std::unique_ptr<NewExprAST> ParseNew()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
 	tokenizer.GetNextToken();
-	auto type = ParseBasicType();
+	auto type = ParseTypeName();
 	vector<std::unique_ptr<ExprAST>> expr;
 	string method;
-	while (tokenizer.CurTok == tok_left_index)
+	if (tokenizer.CurTok == tok_mul)
 	{
-		type->index_level++;
-		tokenizer.GetNextToken();//eat [
-		expr.push_back(ParseExpressionUnknown());
-		CompileExpect(tok_right_index, "Expected  \']\'");
+		if (tokenizer.GetNextToken() != tok_left_bracket) //new int*6
+		{
+			type->index_level++;
+			expr.push_back(ParseExpressionUnknown());
+		}
+		else //if tok_left_bracket -> new int*(2,4)
+		{
+			do {
+				tokenizer.GetNextToken(); //eat ( or ,
+				type->index_level++;
+				expr.push_back(ParseExpressionUnknown());
+			} while (tokenizer.CurTok==tok_comma);
+			CompileExpect(tok_right_bracket, "Expected )");
+		}
 	}
 	if (type->index_level == 0)
 	{
