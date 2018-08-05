@@ -546,8 +546,8 @@ namespace Birdee {
 	class FunctionTemplateInstanceExprAST;
 	class IndexExprAST : public ExprAST {
 		std::unique_ptr<ExprAST> Expr, Index;
-		unique_ptr<FunctionTemplateInstanceExprAST> instance;
 	public:
+		unique_ptr<FunctionTemplateInstanceExprAST> instance;
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
 		bool isTemplateInstance();
@@ -579,7 +579,7 @@ namespace Birdee {
 		//TemplateArgument& operator = (const TemplateArgument&) = delete;
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
 		ResolvedType type;
-		TemplateArgument Copy();
+		TemplateArgument Copy() const;
 		TemplateArgument(ResolvedType type) :kind(TEMPLATE_ARG_TYPE),type(type), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
 		//TemplateArgument(TemplateArgument&& other): kind(other.kind), type(type), expr(std::move(other.expr)) {  };
@@ -588,11 +588,11 @@ namespace Birdee {
 	};
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
-		std::unique_ptr<ExprAST> expr;
 		vector<unique_ptr<ExprAST>> raw_template_args;
 		vector<TemplateArgument> template_args;
 		FunctionAST* instance=nullptr;
 	public:
+		std::unique_ptr<ExprAST> expr;
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
@@ -813,24 +813,30 @@ namespace Birdee {
 		}
 	};
 
+	//the struct for TemplateParameter: if type is null,
+	// then this parameter is a "typename" parameter. If 
+	//not null, it is a constant parameter
+	struct TemplateParameter
+	{
+		unique_ptr<Type> type;
+		string name;
+		bool isTypeParameter() const { return type == nullptr; }
+		TemplateParameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
+	};
+
+	template<typename T>
 	struct TemplateParameters
 	{
-		//the struct for TemplateParameter: if type is null,
-		// then this parameter is a "typename" parameter. If 
-		//not null, it is a constant parameter
-		struct Parameter
-		{
-			unique_ptr<Type> type;
-			string name;
-			bool isTypeParameter() { return type == nullptr; }
-			Parameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
-		};
-		vector<Parameter> params;
-		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<FunctionAST>> instances;
-		FunctionAST* GetOrCreateFunction(const vector<TemplateArgument>& v, FunctionAST* source_template, SourcePos pos);
-		TemplateParameters(vector<Parameter>&& params) : params(std::move(params)) {};
+
+		vector<TemplateParameter> params;
+		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
+		/*
+		For classast, it will take the ownership of v. For FunctionAST, it won't
+		*/
+		T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
+		TemplateParameters(vector<TemplateParameter>&& params) : params(std::move(params)) {};
 		TemplateParameters() {}
-		unique_ptr<TemplateParameters> Copy();
+		unique_ptr<TemplateParameters<T>> Copy();
 		void ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos);
 	};
 
@@ -838,7 +844,7 @@ namespace Birdee {
 	class FunctionAST : public ExprAST {
 		ASTBasicBlock Body;
 	public:
-		unique_ptr<TemplateParameters> template_param;
+		unique_ptr<TemplateParameters<FunctionAST>> template_param;
 		bool isDeclare;
 		bool isImported=false;
 		string link_name;
@@ -852,7 +858,7 @@ namespace Birdee {
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			ASTBasicBlock&& Body, unique_ptr<TemplateParameters>&& template_param, SourcePos pos)
+			ASTBasicBlock&& Body, unique_ptr<TemplateParameters<FunctionAST>>&& template_param, SourcePos pos)
 			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)), isDeclare(false) {
 			Pos = pos;
 		}
@@ -965,11 +971,14 @@ namespace Birdee {
 	class ClassAST : public StatementAST {
 	public:
 		std::unique_ptr<StatementAST> Copy();
+		std::unique_ptr<ClassAST> CopyNoTemplate();
 		llvm::Value* Generate();
 		std::string name;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
-		unique_ptr<TemplateParameters> template_param;
+		unique_ptr< vector<TemplateArgument>> template_instance_args;
+		const vector<TemplateParameter>* template_instance_parameters = nullptr;
+		unique_ptr<TemplateParameters<ClassAST>> template_param;
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
@@ -992,6 +1001,8 @@ namespace Birdee {
 		//run phase0 in all members
 		void Phase0()
 		{
+			if (isTemplate())
+				return;
 			for (auto& funcdef : funcs)
 			{
 				funcdef.decl->Phase0();

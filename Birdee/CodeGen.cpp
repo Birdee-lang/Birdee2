@@ -210,7 +210,7 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	case tok_class:
 		if (!type.class_ast->llvm_type)
 		{
-			resolved = false;
+			resolved = true;
 			base = StructType::create(context, type.class_ast->GetUniqueName())->getPointerTo();
 			dtype = DBuilder->createPointerType(DBuilder->createUnspecifiedType(type.class_ast->GetUniqueName()),64);
 		}
@@ -243,6 +243,7 @@ Value * Birdee::BasicTypeExprAST::Generate()
 llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 {
 	dinfo.emitLocation(this);
+	expr->Generate();
 	return instance->llvm_func;
 }
 
@@ -311,6 +312,8 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	if (val)
 	{
 		auto v = val->Generate();
+		llvm_value->getType()->print(errs(), true); errs() << "<-";
+		v->getType()->print(errs(), true); errs() << "\n";
 		return builder.CreateStore(v, llvm_value);
 	}
 	else
@@ -545,6 +548,15 @@ DIType * Birdee::PrototypeAST::GenerateDebugType()
 
 void Birdee::ClassAST::PreGenerate()
 {
+	if (isTemplate())
+	{
+		assert(template_param && "template_param should not be null");
+		for (auto& v : template_param->instances)
+		{
+			v.second->PreGenerate();
+		}
+		return;
+	}
 	if (llvm_type)
 		return;
 	vector<llvm::Type*> types;
@@ -556,7 +568,8 @@ void Birdee::ClassAST::PreGenerate()
 		types.push_back(helper.GetType(field.decl->resolved_type, dty));
 		dtypes.push_back(dty); 
 	}
-	llvm_type = StructType::create(context, types, GetUniqueName());
+	llvm_type = (llvm::StructType*) helper.GetType(ResolvedType(this))->getPointerElementType();//StructType::create(context, types, GetUniqueName());
+	llvm_type->setBody(types);
 	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
 		dinfo.cu->getDirectory());
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
@@ -567,6 +580,14 @@ void Birdee::ClassAST::PreGenerate()
 
 void Birdee::ClassAST::PreGenerateFuncs()
 {
+	if (isTemplate())
+	{
+		for (auto& v : template_param->instances)
+		{
+			v.second->PreGenerateFuncs();
+		}
+		return;
+	}
 	for (auto& func : funcs)
 	{
 		func.decl->PreGenerate();
@@ -951,8 +972,16 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	if (proto->cls)
 	{
 		auto pobj = dynamic_cast<MemberExprAST*>(Callee.get());
-		assert(pobj);
-		obj=pobj->llvm_obj;
+		if(pobj)
+			obj=pobj->llvm_obj;
+		else
+		{
+			auto pidx= dynamic_cast<IndexExprAST*>(Callee.get());
+			assert(pidx);
+			pobj = dynamic_cast<MemberExprAST*>(pidx->instance->expr.get());
+			assert(pobj);
+			obj = pobj->llvm_obj;
+		}
 	}
 	return GenerateCall(func, proto, obj, Args);
 }
@@ -1102,6 +1131,15 @@ llvm::Value * Birdee::ForBlockAST::Generate()
 llvm::Value * Birdee::ClassAST::Generate()
 {
 	PreGenerate();
+	if (isTemplate())
+	{
+		assert(template_param && "template_param should not be null");
+		for (auto& v : template_param->instances)
+		{
+			v.second->Generate();
+		}
+		return nullptr;
+	}
 	for (auto& func : funcs)
 	{
 		func.decl->Generate();
@@ -1219,15 +1257,34 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 	{
 		Value* lv = LHS->GetLValue(false);
 		assert(lv);
-		builder.CreateStore(RHS->Generate(), lv);
+		auto rv = RHS->Generate();
+		lv->getType()->print(errs(), true);
+		errs() << "<-";
+		rv->getType()->print(errs(), true);
+		errs() << "\n";
+		builder.CreateStore(rv, lv);
 		return nullptr;
 	}
-	if (LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0)
+	if (LHS->resolved_type.isReference())
 	{
-		auto proto = func->resolved_type.proto_ast;
-		vector<unique_ptr<ExprAST>> vec;vec.push_back( std::move(RHS));
-		return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec);
+		if (Op == tok_equal)
+		{
+			return builder.CreateICmpEQ(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
+				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
+		}
+		if (Op == tok_ne)
+		{
+			return builder.CreateICmpNE(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
+				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
+		}
+		if(LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0)
+		{
+			auto proto = func->resolved_type.proto_ast;
+			vector<unique_ptr<ExprAST>> vec; vec.push_back(std::move(RHS));
+			return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec);
+		}
 	}
+
 	assert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber());
 	if (LHS->resolved_type.isInteger())
 	{

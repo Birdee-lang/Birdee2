@@ -1,19 +1,29 @@
-function add2[T1,T2,disp as int] (v1 as T1, v2 as T2) as T1
-	return v1+v2+disp
-end
-add2[int,long,123](1,2)
-add2[int,long,123](1,2)
+class list[T]
+	private head as list_node[T]
+	private tail as list_node[T]
+	public function push_back(v as T)
+		dim node=new list_node[T]
+		node.v=v
+		node.next=null
+		if head==null then
+			head=node
+			tail=node
+		else
+			tail.next=node
+			tail=node
+		end
+	end
 
-function add[T] (v1 as T, v2 as T) as T
-	return v1+v2
+	public function get_and_add[T2](v as T2) as T
+		return head.v+v
+	end
 end
 
-function get[T](arr as T,index as int) as int
-	return arr[index]
+class list_node[T]
+	public v as T
+	public next as list_node[T]
 end
 
-dim arr=new int*10
-dim arr2=new string*(2,3)
-dim arr3 as int[][]=new int[]*3
-get[int[]](arr,1)
-add[string]("haha","123")
+dim lst=new list[int]
+lst.push_back(0)
+lst.get_and_add[float](3.7f)

@@ -739,9 +739,9 @@ std::unique_ptr<IfBlockAST> ParseIf()
 	return make_unique<IfBlockAST>(std::move(cond), std::move(true_block), std::move(false_block), pos);
 }
 
-vector<TemplateParameters::Parameter> ParseTemplateParameters()
+vector<TemplateParameter> ParseTemplateParameters()
 {
-	vector<TemplateParameters::Parameter> ret;
+	vector<TemplateParameter> ret;
 	if (tokenizer.CurTok == tok_right_index)
 		throw CompileError("The template parameters cannot be empty");
 	for (;;)
@@ -754,11 +754,11 @@ vector<TemplateParameters::Parameter> ParseTemplateParameters()
 			unique_ptr<Type> ty = ParseType();
 			if (ty->index_level > 0)
 				throw CompileError("Arrays are not supported in template parameters");
-			ret.push_back(TemplateParameters::Parameter(std::move(ty), identifier));
+			ret.push_back(TemplateParameter(std::move(ty), identifier));
 		}
 		else
 		{
-			ret.push_back(TemplateParameters::Parameter(nullptr, identifier));
+			ret.push_back(TemplateParameter(nullptr, identifier));
 		}
 
 		if (tokenizer.CurTok == tok_right_index)
@@ -781,7 +781,7 @@ vector<TemplateParameters::Parameter> ParseTemplateParameters()
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 {
 	auto pos = tokenizer.GetSourcePos();
-	unique_ptr<TemplateParameters> template_param;
+	unique_ptr<TemplateParameters<FunctionAST>> template_param;
 	std::string name;
 	if (tokenizer.CurTok == tok_identifier)
 	{
@@ -791,7 +791,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	if (tokenizer.CurTok == tok_left_index)
 	{
 		tokenizer.GetNextToken();
-		template_param = make_unique<TemplateParameters>();
+		template_param = make_unique<TemplateParameters<FunctionAST>>();
 		template_param->params=std::move(ParseTemplateParameters());
 	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
@@ -846,8 +846,14 @@ std::unique_ptr<ClassAST> ParseClass()
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
 	CompileExpect(tok_identifier, "Expected an identifier for class name");
-	CompileExpect(tok_newline, "Expected an newline after class name");
 	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
+	if (tokenizer.CurTok == tok_left_index)
+	{
+		tokenizer.GetNextToken();
+		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
+		ret->template_param->params = std::move(ParseTemplateParameters());
+	}
+	CompileExpect(tok_newline, "Expected an newline after class name");
 	std::vector<FieldDef>& fields = ret->fields;
 	std::vector<MemberFunctionDef>& funcs = ret->funcs;
 	unordered_map<reference_wrapper<const string>, int>& fieldmap = ret->fieldmap;

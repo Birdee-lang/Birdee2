@@ -132,7 +132,7 @@ namespace Birdee
 		return std::move(v);
 	}
 
-	TemplateArgument Birdee::TemplateArgument::Copy()
+	TemplateArgument Birdee::TemplateArgument::Copy() const
 	{
 		return TEMPLATE_ARG_TYPE==kind?TemplateArgument(type): TemplateArgument(unique_ptr_cast<ExprAST>(expr->Copy()));
 	}
@@ -186,17 +186,18 @@ namespace Birdee
 
 	std::unique_ptr<PrototypeAST> Birdee::PrototypeAST::Copy()
 	{
-		return make_unique<PrototypeAST>(Name,unique_ptr_cast<VariableDefAST>(Args->Copy()),RetType->Copy(),cur_cls,pos);
+		return make_unique<PrototypeAST>(Name,unique_ptr_cast<VariableDefAST>(Args->Copy()),RetType->Copy(),cur_cls?cur_cls:cls,pos);
 	}
 
-	unique_ptr<TemplateParameters> Birdee::TemplateParameters::Copy()
+	template<typename T>
+	unique_ptr<TemplateParameters<T>> Birdee::TemplateParameters<T>::Copy()
 	{
-		vector<Parameter> newparams;
+		vector<TemplateParameter> newparams;
 		for (auto& param : params)
 		{
-			newparams.push_back(std::move(Parameter(param.type == nullptr ? nullptr : param.type->Copy(), param.name)));
+			newparams.push_back(std::move(TemplateParameter(param.type == nullptr ? nullptr : param.type->Copy(), param.name)));
 		}
-		return make_unique<TemplateParameters>(std::move(newparams));
+		return make_unique<TemplateParameters<T>>(std::move(newparams));
 	}
 
 	unique_ptr<StatementAST> Birdee::BasicTypeExprAST::Copy()
@@ -212,6 +213,36 @@ namespace Birdee
 			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declared function");
 		return make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, Pos);
 	}
+
+	std::unique_ptr<ClassAST> Birdee::ClassAST::CopyNoTemplate()
+	{
+		auto clsdef = make_unique<ClassAST>(name, Pos);
+		auto old_cls = cur_cls;
+		cur_cls = clsdef.get();
+		std::vector<FieldDef>& nfields = clsdef->fields;
+		std::vector<MemberFunctionDef>& nfuncs = clsdef->funcs;
+		unordered_map<reference_wrapper<const string>, int>& nfieldmap = clsdef->fieldmap;
+		unordered_map<reference_wrapper<const string>, int>& nfuncmap = clsdef->funcmap;
+		int idx = 0;
+		for (auto& v : fields)
+		{
+			FieldDef def = v.Copy();
+			nfieldmap[def.decl->name] = idx;
+			nfields.push_back(std::move(def));
+			idx++;
+		}
+		idx = 0;
+		for (auto& v : funcs)
+		{
+			auto def = v.Copy();
+			nfuncmap[def.decl->GetName()] = idx;
+			nfuncs.push_back(std::move(def));
+			idx++;
+		}
+		cur_cls = old_cls;
+		return std::move(clsdef);
+	}
+
 	std::unique_ptr<StatementAST> Birdee::FunctionAST::Copy()
 	{
 		auto cpy = CopyNoTemplate();
@@ -246,27 +277,8 @@ namespace Birdee
 
 	std::unique_ptr<StatementAST> Birdee::ClassAST::Copy()
 	{
-		auto clsdef= make_unique<ClassAST>(name,Pos);
-		std::vector<FieldDef>& nfields = clsdef->fields;
-		std::vector<MemberFunctionDef>& nfuncs = clsdef->funcs;
-		unordered_map<reference_wrapper<const string>, int>& nfieldmap = clsdef->fieldmap;
-		unordered_map<reference_wrapper<const string>, int>& nfuncmap = clsdef->funcmap;
-		int idx = 0;
-		for (auto& v : fields)
-		{
-			FieldDef def = v.Copy();
-			nfieldmap[def.decl->name] = idx;
-			nfields.push_back(std::move(def));
-			idx++;
-		}
-		idx = 0;
-		for (auto& v : funcs)
-		{
-			auto def = v.Copy();
-			nfuncmap[def.decl->GetName()] = idx;
-			nfuncs.push_back(std::move(def));
-			idx++;
-		}
+		auto clsdef = CopyNoTemplate();
+		clsdef->template_param = template_param->Copy();
 		return std::move(clsdef);
 	}
 

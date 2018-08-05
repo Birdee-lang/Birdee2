@@ -141,7 +141,19 @@ json BuildClassJson()
 	json arr=json::array();
 	int idx = 0;
 	for (auto itr : Birdee::cu.classmap)
-		class_idx_map[&itr.second.get()] = idx++;
+	{
+		if (itr.second.get().isTemplate())
+		{
+			for (auto& instance : (itr.second.get().template_param->instances))
+			{
+				class_idx_map[instance.second.get()] = idx++;
+			}
+		}
+		else
+		{
+			class_idx_map[&itr.second.get()] = idx++;
+		}
+	}
 	if (class_idx_map.size() > MAX_CLASS_DEF_COUNT)
 	{
 		std::cerr << "Defined too many classes\n";
@@ -149,7 +161,15 @@ json BuildClassJson()
 	}
 	for (auto itr : Birdee::cu.classmap)
 	{
-		arr.push_back(BuildSingleClassJson(itr.second,false));
+		if (itr.second.get().isTemplate())
+		{
+			for (auto& instance : (itr.second.get().template_param->instances))
+			{
+				arr.push_back(BuildSingleClassJson(*instance.second.get(), false));
+			}
+		}
+		else
+			arr.push_back(BuildSingleClassJson(itr.second,false));
 	}
 	return arr;
 }
