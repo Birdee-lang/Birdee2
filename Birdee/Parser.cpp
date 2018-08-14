@@ -119,7 +119,7 @@ inline void CompileCheckGlobalConflict(SourcePos pos, const std::string& name)
 	auto prv_dim = cu.dimmap.find(name);
 	if (prv_dim != cu.dimmap.end())
 	{
-		throw CompileError(pos.line, pos.pos, string("The global name ") + name + " is already defined in " + prv_func->second.get().Pos.ToString());
+		throw CompileError(pos.line, pos.pos, string("The global name ") + name + " is already defined in " + prv_dim->second.get().Pos.ToString());
 	}
 }
 /////////////////////////////////////////////////////////////////////////////////////

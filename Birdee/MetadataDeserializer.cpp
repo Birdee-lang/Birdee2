@@ -188,7 +188,6 @@ void PreBuildClassFromJson(const json& cls, const string& module_name,ImportedMo
 		{
 			classdef = make_unique<ClassAST>(string(), SourcePos(0, 0)); //add placeholder
 		}
-		std::cout << name << "\n";
 		idx_to_class.push_back(classdef.get());
 		mod.classmap[name]=std::move(classdef);
 	}

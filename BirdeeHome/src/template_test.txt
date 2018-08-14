@@ -1,0 +1,31 @@
+class list[T]
+	private head as list_node[T]
+	private tail as list_node[T]
+	public function push_back(v as T)
+		dim node=new list_node[T]
+		node.v=v
+		node.next=null
+		if head==null then
+			head=node
+			tail=node
+		else
+			tail.next=node
+			tail=node
+		end
+	end
+
+	public function get_and_add[T2](v as T2) as T
+		return head.v+v
+	end
+end
+
+class list_node[T]
+	public v as T
+	public next as list_node[T]
+end
+
+dim lst=new list[int]
+lst.push_back(0)
+lst.get_and_add[float](3.7f)
+dim lst2=new list[list[int]]
+lst2.push_back(lst)

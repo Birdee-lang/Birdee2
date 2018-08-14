@@ -39,6 +39,7 @@ class ScopeManager
 public:
 	typedef unordered_map<reference_wrapper<const string>, VariableSingleDefAST*> BasicBlock;
 	vector<ClassAST*> class_stack;
+	BasicBlock top_level_bb;
 	vector <BasicBlock> basic_blocks;
 	struct TemplateEnv
 	{
@@ -211,14 +212,18 @@ public:
 
 	unique_ptr<ResolvedIdentifierExprAST> ResolveNameNoThrow(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
-		auto template_arg = FindAndCopyTemplateArgument(name);
-		if (template_arg)
-			return std::move(template_arg);
 		auto bb = FindLocalVar(name);
 		if (bb)
 		{
 			return make_unique<LocalVarExprAST>(bb,pos);
 		}
+		auto template_arg = FindAndCopyTemplateArgument(name);
+		if (template_arg)
+			return std::move(template_arg);
+		auto global_itr = top_level_bb.find(name);
+		if(global_itr!=top_level_bb.end())
+			return make_unique<LocalVarExprAST>(global_itr->second, pos);
+
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
 		{
@@ -265,6 +270,13 @@ public:
 		if(!ret)
 			throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
 		return ret;
+	}
+	BasicBlock& GetCurrentBasicBlock()
+	{
+		if (basic_blocks.empty())
+			return top_level_bb;
+		else
+			return basic_blocks.back();
 	}
 
 }scope_mgr;
@@ -575,12 +587,12 @@ namespace Birdee
 
 	void CompileUnit::Phase1()
 	{
-		scope_mgr.PushBasicBlock();
+		//scope_mgr.PushBasicBlock();
 		for (auto& stmt : toplevel)
 		{
 			stmt->Phase1();
 		}
-		scope_mgr.PopBasicBlock();
+		//scope_mgr.PopBasicBlock();
 	}
 	string ResolvedType::GetString() const
 	{
@@ -948,6 +960,9 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1()
 	{
+		if (!scope_mgr.basic_blocks.empty())			
+			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
+				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
 		if (resolved_type.type == tok_auto)
 		{
@@ -963,7 +978,7 @@ namespace Birdee
 				val = FixTypeForAssignment(resolved_type, std::move(val), Pos);
 			}
 		}
-		scope_mgr.basic_blocks.back()[name] = this;
+		scope_mgr.GetCurrentBasicBlock()[name] = this;
 	}
 
 	void FunctionAST::Phase1()
