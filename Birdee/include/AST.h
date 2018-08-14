@@ -160,7 +160,7 @@ namespace Birdee {
 
 	class ClassAST;
 	class PrototypeAST;
-	extern const string& GetClassASTName(ClassAST*);
+	extern string GetClassASTName(ClassAST*);
 	extern bool operator ==(const PrototypeAST& ,const PrototypeAST& );
 	class ResolvedType {
 		void ResolveType(Type& _type, SourcePos pos);

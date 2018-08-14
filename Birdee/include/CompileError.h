@@ -4,6 +4,7 @@
 namespace Birdee
 {
 	extern SourcePos GetCurrentSourcePos();
+	extern std::string GetTemplateStackTrace();
 	class CompileError {
 		int linenumber;
 		int pos;
@@ -14,6 +15,9 @@ namespace Birdee
 		void print()
 		{
 			printf("Compile Error at line %d, postion %d : %s", linenumber, pos, msg.c_str());
+			auto ret = GetTemplateStackTrace();
+			if (!ret.empty())
+				printf("\nTemplate stack trace:\n%s", ret.c_str());
 		}
 	};
 	template<typename T>

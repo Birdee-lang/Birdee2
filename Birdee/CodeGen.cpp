@@ -312,8 +312,6 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	if (val)
 	{
 		auto v = val->Generate();
-		llvm_value->getType()->print(errs(), true); errs() << "<-";
-		v->getType()->print(errs(), true); errs() << "\n";
 		return builder.CreateStore(v, llvm_value);
 	}
 	else
@@ -1258,10 +1256,6 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		Value* lv = LHS->GetLValue(false);
 		assert(lv);
 		auto rv = RHS->Generate();
-		lv->getType()->print(errs(), true);
-		errs() << "<-";
-		rv->getType()->print(errs(), true);
-		errs() << "\n";
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}

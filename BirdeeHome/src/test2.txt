@@ -14,11 +14,12 @@ class list[T]
 		end
 	end
 
-##
+	##
 	public function get_and_add[T2](v as T2) as T
 		return head.v+v+dummy
 	end
-##
+	##
+	
 	public function get_and_add[T2](v as T2) as T
 		return head.v+v
 	end

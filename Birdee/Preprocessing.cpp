@@ -9,6 +9,7 @@ using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
 
+
 using namespace Birdee;
 
 //fix-me: show template stack on error
@@ -47,6 +48,7 @@ public:
 		unordered_map<string, ExprAST*> exprmap;
 		SourcePos pos;
 		bool isClass;
+		TemplateEnv():pos(0,0){};
 		TemplateEnv(SourcePos pos, bool isClass): pos(pos), isClass(isClass) {}
 		TemplateEnv& operator = (TemplateEnv&& v)
 		{
@@ -63,6 +65,8 @@ public:
 	};
 	vector<TemplateEnv> template_stack;
 	vector<TemplateEnv> template_class_stack;
+	typedef std::pair<vector<TemplateEnv>*, int> template_stack_frame;
+	vector<template_stack_frame> template_trace_back_stack;
 
 	inline bool IsCurrentClass(ClassAST* cls)
 	{
@@ -186,6 +190,11 @@ public:
 		template_class_stack.push_back(std::move(env));
 	}
 
+	void SetEmptyClassTemplateEnv()
+	{
+		template_class_stack.push_back(TemplateEnv());
+	}
+
 	void RestoreClassTemplateEnv()
 	{
 		template_class_stack.pop_back();
@@ -280,6 +289,21 @@ public:
 	}
 
 }scope_mgr;
+
+
+std::string Birdee::GetTemplateStackTrace()
+{
+	std::stringstream buf;
+	if (scope_mgr.template_trace_back_stack.size())
+	{
+		for (auto& pair : scope_mgr.template_trace_back_stack) 
+		{
+			auto& env = (*pair.first)[pair.second];
+			buf << "At " << env.pos.ToString() << "\n"; //fix-me : print the types and the expressions
+		}
+	}
+	return buf.str();
+}
 
 template <typename T,typename T2>
 T GetItemByName(const unordered_map<T2, T>& M,
@@ -438,9 +462,9 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,b
 extern string GetModuleNameByArray(const vector<string>& package);
 namespace Birdee
 {
-	const string& GetClassASTName(ClassAST* cls)
+	string GetClassASTName(ClassAST* cls)
 	{
-		return cls->name;
+		return cls->GetUniqueName();
 	}
 
 	static void ParseRawTemplateArgs(vector<unique_ptr<ExprAST>>& raw_template_args, vector<TemplateArgument>& template_args)
@@ -788,7 +812,7 @@ namespace Birdee
 			{
 				StringLiteralAST* str = dynamic_cast<StringLiteralAST*>(arg.expr.get());
 				if (str)
-					buf << str->Val << suffix;
+					buf << '\"' << str->Val << '\"' << suffix;
 				else
 				{
 					NumberExprAST* number = dynamic_cast<NumberExprAST*>(arg.expr.get());
@@ -828,24 +852,33 @@ namespace Birdee
 	{
 		func->Proto->Name += GetTemplateArgumentString(v);
 		ClassAST* cls_template=nullptr;
-		if (func->Proto->cls && func->Proto->cls->template_instance_args) //if the function is defined in a template class, push the template environment
+		if (func->Proto->cls) 
 		{
 			cls_template = func->Proto->cls;
-			scope_mgr.SetClassTemplateEnv(*cls_template->template_instance_args, 
-				*cls_template->template_instance_parameters, pos);
+			if (func->Proto->cls->template_instance_args)//if the function is defined in a template class, push the template environment
+			{
+				scope_mgr.SetClassTemplateEnv(*cls_template->template_instance_args,
+					*cls_template->template_instance_parameters, pos);
+			}
 			scope_mgr.PushClass(cls_template);
 		}
+		else
+		{
+			scope_mgr.SetEmptyClassTemplateEnv();
+		}
 		scope_mgr.SetTemplateEnv(v, parameters, pos);
+		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
 		auto basic_blocks_backup = std::move(scope_mgr.basic_blocks);
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
+		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.basic_blocks = std::move(basic_blocks_backup);
 		if (cls_template)
 		{
-			scope_mgr.RestoreClassTemplateEnv();
 			scope_mgr.PopClass();
 		}
+		scope_mgr.RestoreClassTemplateEnv();
 	}
 
 	/*
@@ -858,12 +891,14 @@ namespace Birdee
 		cls->template_instance_parameters = &parameters;
 		cls->name += GetTemplateArgumentString(v);
 		scope_mgr.SetClassTemplateEnv(v, parameters, pos);
+		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
 		for (auto& funcdef : cls->funcs)
 		{
 			funcdef.decl->Proto->cls = cls;
 		}
 		cls->Phase0();
 		cls->Phase1();
+		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.RestoreClassTemplateEnv();
 	}
 	template<typename T>
