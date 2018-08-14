@@ -836,9 +836,11 @@ namespace Birdee
 			scope_mgr.PushClass(cls_template);
 		}
 		scope_mgr.SetTemplateEnv(v, parameters, pos);
+		auto basic_blocks_backup = std::move(scope_mgr.basic_blocks);
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
+		scope_mgr.basic_blocks = std::move(basic_blocks_backup);
 		if (cls_template)
 		{
 			scope_mgr.RestoreClassTemplateEnv();

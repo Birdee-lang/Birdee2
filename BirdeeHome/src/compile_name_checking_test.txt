@@ -1,0 +1,21 @@
+dim a as int
+function aaa (a as int)
+end
+
+##
+function func2 (a as int,a as float)
+end
+##
+
+function func3 (a as int)
+	if a==3 then
+		dim a as float
+		a=2.345
+	end
+end
+
+##
+function func4 (a as int)
+	dim a as string
+end
+##

@@ -97,5 +97,8 @@
     <Text Include="..\BirdeeHome\src\template_test.txt">
       <Filter>资源文件</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt">
+      <Filter>资源文件</Filter>
+    </Text>
   </ItemGroup>
 </Project>

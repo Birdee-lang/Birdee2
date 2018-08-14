@@ -1,19 +1,40 @@
-dim a as int
-function aaa (a as int)
-end
+class list[T]
+	private head as list_node[T]
+	private tail as list_node[T]
+	public function push_back(v as T)
+		dim node=new list_node[T]
+		node.v=v
+		node.next=null
+		if head==null then
+			head=node
+			tail=node
+		else
+			tail.next=node
+			tail=node
+		end
+	end
 
 ##
-function func2 (a as int,a as float)
-end
+	public function get_and_add[T2](v as T2) as T
+		return head.v+v+dummy
+	end
 ##
-
-function func3 (a as int)
-	if a==3 then
-		dim a as float
-		a=2.345
+	public function get_and_add[T2](v as T2) as T
+		return head.v+v
 	end
 end
 
-function func4 (a as int)
-	dim a as string
+class list_node[T]
+	public v as T
+	public next as list_node[T]
 end
+
+dim lst=new list[int]
+lst.push_back(0)
+if lst!=null then
+	dim dummy =123
+	lst.get_and_add[float](3.7f)
+	dummy=321
+end
+dim lst2=new list[list[int]]
+lst2.push_back(lst)
