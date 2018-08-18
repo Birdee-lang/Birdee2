@@ -860,6 +860,8 @@ namespace Birdee
 				scope_mgr.SetClassTemplateEnv(*cls_template->template_instance_args,
 					*cls_template->template_instance_parameters, pos);
 			}
+			else
+				scope_mgr.SetEmptyClassTemplateEnv();
 			scope_mgr.PushClass(cls_template);
 		}
 		else

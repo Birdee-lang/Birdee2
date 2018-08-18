@@ -20,8 +20,12 @@ static std::vector<ClassAST*> orphan_idx_to_class;
 static string current_package_name;
 static int current_module_idx;
 
-
-
+/*
+fix-me: Load template class & functions & instances
+link templates with instances by name (remember find them in orphans)
+Template class' template functions are not included in the metadata of class template instances, which are already included in the class template.
+remember to restore the functions in the cls template instances!
+*/
 
 ResolvedType ConvertIdToType(const json& type)
 {

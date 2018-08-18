@@ -4,6 +4,7 @@
 //#include <sstream>      // std::stringbuf
 #include "SourcePos.h"
 #include "TokenDef.h"
+#include <assert.h>
 //modified based on LLVM tutorial
 //https://llvm.org/docs/tutorial/LangImpl02.html
 
@@ -34,12 +35,15 @@ namespace Birdee
 		int line;
 		int pos;
 		int LastChar = ' ';
-		
-
-
+		std::string template_source;
+	public:
+		bool is_recording = false;
+	private:
 		int GetChar()
 		{
 			int c = getc(f);
+			if (is_recording)
+				template_source += c;
 			if (c == '\n')
 			{
 				line++;
@@ -122,6 +126,21 @@ namespace Birdee
 			}
 		}
 	public:
+		void StartRecording(const std::string& s)
+		{
+			template_source = s;
+			template_source+=LastChar;
+			assert(is_recording == false);
+			is_recording = true;
+		}
+
+		std::string&& StopRecording()
+		{
+			assert(is_recording);
+			is_recording = false;
+			template_source.pop_back();
+			return std::move(template_source);
+		}
 
 		SourcePos GetSourcePos()
 		{

@@ -783,6 +783,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	auto pos = tokenizer.GetSourcePos();
 	unique_ptr<TemplateParameters<FunctionAST>> template_param;
 	std::string name;
+	bool is_top_level_template = false;
 	if (tokenizer.CurTok == tok_identifier)
 	{
 		name = tokenizer.IdentifierStr;
@@ -790,6 +791,11 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	}
 	if (tokenizer.CurTok == tok_left_index)
 	{
+		if (!tokenizer.is_recording)
+		{
+			is_top_level_template = true;
+			tokenizer.StartRecording(string("function ") + name + " [");
+		}
 		tokenizer.GetNextToken();
 		template_param = make_unique<TemplateParameters<FunctionAST>>();
 		template_param->params=std::move(ParseTemplateParameters());
@@ -810,6 +816,8 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	//parse function body
 	ParseBasicBlock(body, tok_func);
 	current_func_proto = nullptr;
+	if (is_top_level_template)
+		template_param->source = std::move(tokenizer.StopRecording());
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
@@ -847,8 +855,14 @@ std::unique_ptr<ClassAST> ParseClass()
 	std::string name = tokenizer.IdentifierStr;
 	CompileExpect(tok_identifier, "Expected an identifier for class name");
 	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
+	bool is_top_level_template = false;
 	if (tokenizer.CurTok == tok_left_index)
 	{
+		if (!tokenizer.is_recording)
+		{
+			is_top_level_template = true;
+			tokenizer.StartRecording(string("class ") + name + " [");
+		}
 		tokenizer.GetNextToken();
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
 		ret->template_param->params = std::move(ParseTemplateParameters());
@@ -942,6 +956,8 @@ std::unique_ptr<ClassAST> ParseClass()
 		}
 	}
 done:
+	if (is_top_level_template)
+		ret->template_param->source = std::move(tokenizer.StopRecording());
 	return std::move(ret);
 }
 

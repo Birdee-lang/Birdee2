@@ -136,9 +136,10 @@ json BuildFunctionJson(FunctionAST* func)
 	return ret;
 }
 
-json BuildClassJson()
+json BuildClassJson(json& out_template_arr)
 {
 	json arr=json::array();
+	out_template_arr = json::array();
 	int idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
@@ -148,6 +149,7 @@ json BuildClassJson()
 			{
 				class_idx_map[instance.second.get()] = idx++;
 			}
+			out_template_arr.push_back(itr.second.get().template_param->source);
 		}
 		else
 		{
@@ -184,14 +186,24 @@ json BuildGlobalVaribleJson()
 	return arr;
 }
 
-json BuildGlobalFuncJson()
+json BuildGlobalFuncJson(json& func_template)
 {
 	json arr = json::array();
+	func_template = json::array();
 	for (auto itr : cu.funcmap)
 	{
-		if (itr.second.get().isDeclare || itr.second.get().isTemplate())
+		if (itr.second.get().isDeclare)
 			continue;
-		arr.push_back(BuildFunctionJson(&itr.second.get()));
+		if (itr.second.get().isTemplate())
+		{
+			for (auto& instance : (itr.second.get().template_param->instances))
+			{
+				arr.push_back(BuildFunctionJson(instance.second.get()));
+			}
+			func_template.push_back(itr.second.get().template_param->source);
+		}
+		else
+			arr.push_back(BuildFunctionJson(&itr.second.get()));
 	}
 	return arr;
 }
@@ -213,11 +225,27 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json json_funcs = json::array();
 	for (auto& func : cls.funcs)
 	{
-		if (func.decl->isDeclare || func.decl->isTemplate())
+		if (func.decl->isDeclare)
 			continue;
 		json json_func;
-		json_func["access"] = GetAccessModifierName(func.access);
-		json_func["def"] = BuildFunctionJson(func.decl.get());
+		auto access = GetAccessModifierName(func.access);
+		json_func["access"] = access;
+		if (func.decl->isTemplate())
+		{
+			for (auto& instance : (func.decl->template_param->instances))
+			{
+				json json_instance;
+				json_instance["access"] = access;
+				json_instance["def"] = BuildFunctionJson(instance.second.get());
+				json_funcs.push_back(json_instance);
+			}
+			if (func.decl->template_param->source.empty()) //if is empty, then this function template is in a template class, just skip
+				continue;
+			json_func["template"] = func.decl->template_param->source;
+		}
+		else
+			json_func["def"] = BuildFunctionJson(func.decl.get());
+
 		json_funcs.push_back(json_func);
 	}
 	json_cls["funcs"] = json_funcs;
@@ -226,17 +254,21 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 
 void SeralizeMetadata(std::ostream& out)
 {
-	json json;
+	json outjson;
 	imported_class.clear();
 	class_idx_map.clear();
 	imported_class = json::array();
 	NextImportedIndex = MAX_CLASS_DEF_COUNT;
-	json["Type"] = "Birdee Module Metadata";
-	json["Version"] = META_DATA_VERSION;
-	json["Package"] = cu.symbol_prefix.substr(0, cu.symbol_prefix.size() - 1);
-	json["Classes"] = BuildClassJson();
-	json["Variables"] = BuildGlobalVaribleJson();
-	json["Functions"] = BuildGlobalFuncJson();
-	json["ImportedClasses"] = imported_class;
-	out << std::setw(4)<< json;
+	outjson["Type"] = "Birdee Module Metadata";
+	outjson["Version"] = META_DATA_VERSION;
+	outjson["Package"] = cu.symbol_prefix.substr(0, cu.symbol_prefix.size() - 1);
+	json cls_template;
+	outjson["Classes"] = BuildClassJson(cls_template);
+	outjson["ClassTemplates"] = cls_template;
+	outjson["Variables"] = BuildGlobalVaribleJson();
+	json func_template;
+	outjson["Functions"] = BuildGlobalFuncJson(func_template);
+	outjson["FunctionTemplates"] = func_template;
+	outjson["ImportedClasses"] = imported_class;
+	out << std::setw(4)<< outjson;
 }
