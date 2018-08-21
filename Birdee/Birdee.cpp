@@ -183,8 +183,8 @@ void ParseParameters(int argc, char** argv)
 			cu.targetmetapath = target + ".bmm";
 		}
 		cu.targetpath = target;
-		auto f=std::make_unique<std::ifstream>(source.c_str());
-		if (!(*f))
+		auto f=std::make_unique<FileStream>(source.c_str());
+		if (!f->Okay())
 		{
 			std::cerr << "Error when opening file " << source << "\n";
 			exit(3);

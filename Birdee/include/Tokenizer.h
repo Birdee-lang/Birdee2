@@ -28,12 +28,53 @@ namespace Birdee
 		}
 	};
 
+	class Stream
+	{
+	public:
+		virtual ~Stream() {};
+		virtual int Getc() = 0;
+	};
 
+	class FileStream: public Stream
+	{
+		FILE* f;
+	public:
+		bool Okay() { return f; }
+		FileStream(const char* path)
+		{
+			f = fopen(path, "r");
+		}
+		virtual ~FileStream()
+		{
+			fclose(f);
+		}
+		virtual int Getc()
+		{
+			return ::getc(f);
+		}
+	};
+
+	class StringStream: public Stream
+	{
+		std::string str;
+		int pos = 0;
+	public:
+		StringStream(std::string && s):str(std::move(s))
+		{}
+		virtual ~StringStream()
+		{}
+		virtual int Getc()
+		{
+			if (pos >= str.length())
+				return EOF;
+			return str[pos++];
+		}
+	};
 
 	class Tokenizer
 	{
 
-		std::unique_ptr<std::istream> f;
+		std::unique_ptr<Stream> f;
 		
 		int line;
 		int pos;
@@ -45,7 +86,7 @@ namespace Birdee
 	private:
 		int GetChar()
 		{
-			int c = f->get();
+			int c = f->Getc();
 			if (is_recording)
 				template_source += c;
 			if (c == '\n')
@@ -175,7 +216,7 @@ namespace Birdee
 			return *this;
 		}
 
-		Tokenizer(std::unique_ptr<std::istream>&& f,int source_idx):f(std::move(f)),source_idx (source_idx){ line = 1; pos = 1;}
+		Tokenizer(std::unique_ptr<Stream>&& f,int source_idx):f(std::move(f)),source_idx (source_idx){ line = 1; pos = 1;}
 		NumberLiteral NumVal;		// Filled in if tok_number
 
 		static std::map<int, Token> single_operator_map;
