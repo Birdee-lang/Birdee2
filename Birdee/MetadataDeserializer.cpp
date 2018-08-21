@@ -20,6 +20,8 @@ static std::vector<ClassAST*> orphan_idx_to_class;
 static string current_package_name;
 static int current_module_idx;
 
+extern std::vector<std::string> Birdee::source_paths;
+
 /*
 fix-me: Load template class & functions & instances
 link templates with instances by name (remember find them in orphans)
@@ -190,7 +192,7 @@ void PreBuildClassFromJson(const json& cls, const string& module_name,ImportedMo
 		}
 		else
 		{
-			classdef = make_unique<ClassAST>(string(), SourcePos(0, 0)); //add placeholder
+			classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size()-1, 0, 0)); //add placeholder
 		}
 		idx_to_class.push_back(classdef.get());
 		mod.classmap[name]=std::move(classdef);
@@ -223,7 +225,7 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 			}
 			else
 			{
-				auto newclass = make_unique<ClassAST>(string(), SourcePos(0, 0)); //add placeholder
+				auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size()-1,0, 0)); //add placeholder
 				classdef = newclass.get();
 				cu.orphan_class[name]=std::move(newclass);
 			}
@@ -292,7 +294,8 @@ void ImportedModule::Init(const vector<string>& package,const string& module_nam
 	std::ifstream in(path,std::ios::in);
 	if (!in)
 	{
-		in = std::ifstream(GetModulePath(package), std::ios::in);
+		path = GetModulePath(package);
+		in = std::ifstream(path, std::ios::in);
 		if (!in)
 		{
 			std::cerr << "Cannot open file " << path << '\n';
@@ -304,6 +307,7 @@ void ImportedModule::Init(const vector<string>& package,const string& module_nam
 	current_module_idx = cu.imported_module_names.size() - 1;
 	idx_to_class.clear();
 	orphan_idx_to_class.clear();
+	source_paths.push_back(path);
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");

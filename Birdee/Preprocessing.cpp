@@ -48,7 +48,7 @@ public:
 		unordered_map<string, ExprAST*> exprmap;
 		SourcePos pos;
 		bool isClass;
-		TemplateEnv():pos(0,0){};
+		TemplateEnv():pos(0,0,0){};
 		TemplateEnv(SourcePos pos, bool isClass): pos(pos), isClass(isClass) {}
 		TemplateEnv& operator = (TemplateEnv&& v)
 		{

@@ -435,7 +435,7 @@ void Birdee::CompileUnit::Generate()
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
 	DISubroutineType* functy = DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
-	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(1, 1));
+	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(0,1, 1));
 	dinfo.LexicalBlocks.push_back(dbginfo);
 
 	helper.cur_llvm_func = F;

@@ -31,7 +31,7 @@ namespace Birdee
 {
 	SourcePos GetCurrentSourcePos()
 	{
-		return SourcePos{ tokenizer.GetLine(),tokenizer.GetPos() };
+		return SourcePos{ tokenizer.source_idx, tokenizer.GetLine(),tokenizer.GetPos() };
 	}
 	string GetTokenString(Token tok)
 	{
@@ -604,7 +604,7 @@ std::unique_ptr<ForBlockAST> ParseFor();
 void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 {
 	std::unique_ptr<ExprAST> firstexpr;
-	SourcePos pos(0, 0);
+	SourcePos pos(tokenizer.source_idx,0, 0);
 	while (true)
 	{
 

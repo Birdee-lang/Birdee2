@@ -5,6 +5,8 @@
 #include "SourcePos.h"
 #include "TokenDef.h"
 #include <assert.h>
+#include <istream>
+#include <memory>
 //modified based on LLVM tutorial
 //https://llvm.org/docs/tutorial/LangImpl02.html
 
@@ -31,17 +33,19 @@ namespace Birdee
 	class Tokenizer
 	{
 
-		FILE * f;
+		std::unique_ptr<std::istream> f;
+		
 		int line;
 		int pos;
 		int LastChar = ' ';
 		std::string template_source;
 	public:
+		int source_idx;
 		bool is_recording = false;
 	private:
 		int GetChar()
 		{
-			int c = getc(f);
+			int c = f->get();
 			if (is_recording)
 				template_source += c;
 			if (c == '\n')
@@ -144,7 +148,7 @@ namespace Birdee
 
 		SourcePos GetSourcePos()
 		{
-			return SourcePos(line, pos);
+			return SourcePos(source_idx,line, pos);
 		}
 
 		int GetLine() { return line; }
@@ -152,81 +156,31 @@ namespace Birdee
 		Token CurTok =tok_add;
 		Token GetNextToken() { return CurTok = gettok(); }
 
-		Tokenizer(FILE* file) { f = file; line = 1; pos = 1; }
+		Tokenizer(Tokenizer&& old_t)
+		{
+			*this = std::move(old_t);
+		}
+
+		Tokenizer& operator =(Tokenizer&& old_t)
+		{
+			f = std::move(old_t.f);
+			source_idx = old_t.source_idx;
+			line = old_t.line;
+			pos = old_t.pos;
+			LastChar = old_t.LastChar;
+			IdentifierStr = std::move(old_t.IdentifierStr);
+			is_recording = old_t.is_recording;
+			NumVal = old_t.NumVal;
+			template_source = std::move(old_t.template_source);
+			return *this;
+		}
+
+		Tokenizer(std::unique_ptr<std::istream>&& f,int source_idx):f(std::move(f)),source_idx (source_idx){ line = 1; pos = 1;}
 		NumberLiteral NumVal;		// Filled in if tok_number
 
-		std::map<int, Token> single_operator_map = {
-		{ '+',tok_add },
-		{'-',tok_minus},
-		{ '=',tok_assign },
-		{ '*',tok_mul },
-		{ '/',tok_div },
-		{ '%',tok_mod },
-		{ '>',tok_gt },
-		{ '<',tok_lt },
-		{ '&',tok_and },
-		{ '|',tok_or },
-		{ '!',tok_not },
-		{ '^',tok_xor },
-		};
-		std::map<int, Token> single_token_map={
-		{'(',tok_left_bracket },
-		{')',tok_right_bracket },
-		{ '[',tok_left_index },
-		{ ']',tok_right_index },
-		{'\n',tok_newline},
-		{ ',',tok_comma },
-		{'.',tok_dot},
-		{':',tok_colon },
-		{'@',tok_at},
-		};
-
-		std::map < std::string , Token > token_map = {
-			{"new",tok_new},
-			{ "dim",tok_dim },
-		{"alias",tok_alias},
-		{ "true",tok_true },
-		{ "false",tok_false },
-		{"break",tok_break},
-		{ "continue",tok_continue },
-		{ "to",tok_to },
-		{ "till",tok_till },
-		{ "for",tok_for },
-		{ "as",tok_as },
-		{ "int",tok_int },
-		{ "long",tok_long},
-		{ "byte",tok_byte },
-		{ "ulong",tok_ulong},
-		{ "uint",tok_uint},
-		{ "float",tok_float},
-		{ "double",tok_double},
-		{"package",tok_package},
-		{"import",tok_import},
-		{"boolean",tok_boolean},
-		{"function",tok_func},
-		{"declare",tok_declare},
-		{"addressof",tok_address_of},
-		{ "pointerof",tok_pointer_of },
-		{"pointer",tok_pointer},
-		{"end",tok_end},
-		{"class",tok_class},
-		{"private",tok_private},
-		{"public",tok_public},
-		{"if",tok_if},
-		{"this",tok_this},
-		{"then",tok_then},
-		{"else",tok_else},
-		{"return",tok_return},
-		{"for",tok_for},
-		{"null",tok_null},
-		{"==",tok_equal},
-		{ "!=",tok_ne },
-		{"===",tok_cmp_equal},
-		{">=",tok_ge},
-		{"<=",tok_le},
-		{"&&",tok_logic_and},
-		{"||",tok_logic_or},
-		};
+		static std::map<int, Token> single_operator_map;
+		static std::map<int, Token> single_token_map;
+		static std::map < std::string, Token > token_map;
 		std::string IdentifierStr; // Filled in if tok_identifier
 
 
