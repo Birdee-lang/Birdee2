@@ -244,6 +244,7 @@ llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 {
 	dinfo.emitLocation(this);
 	expr->Generate();
+	instance->Generate();
 	return instance->llvm_func;
 }
 
@@ -706,6 +707,8 @@ llvm::Value * Birdee::ThisExprAST::Generate()
 
 llvm::Value * Birdee::FunctionAST::Generate()
 {
+	if (llvm_func)
+		return llvm_func;
 	DISubroutineType* functy=(DISubroutineType*)PreGenerate();
 	if (isTemplate())
 	{

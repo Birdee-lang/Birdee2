@@ -8,6 +8,7 @@
 #include <fstream>
 #include <assert.h>
 #include <stdlib.h>
+#include "Tokenizer.h"
 
 using std::unordered_map;
 template<class K, class V, class dummy_compare, class A>
@@ -19,6 +20,10 @@ static std::vector<ClassAST*> idx_to_class;
 static std::vector<ClassAST*> orphan_idx_to_class;
 static string current_package_name;
 static int current_module_idx;
+
+extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
+extern std::unique_ptr<ClassAST> ParseClass();
+extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
 
 extern std::vector<std::string> Birdee::source_paths;
 
@@ -169,7 +174,22 @@ void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx
 	{
 		json json_func;
 		AccessModifier acc = GetAccessModifier(func["access"].get<string>());
-		auto funcdef = BuildFunctionFromJson(func["def"],ret);
+		unique_ptr<FunctionAST> funcdef;
+		auto templ = func.find("template");
+		if (templ != func.end())
+		{
+			Tokenizer toknzr(std::make_unique<StringStream>(templ->get<string>()),source_paths.size()-1);
+			toknzr.GetNextToken();
+			BirdeeAssert(toknzr.CurTok == tok_func, "The first token of template should be function");
+			toknzr.GetNextToken();
+			Tokenizer old = SwitchTokenizer(std::move(toknzr));
+			funcdef = ParseFunction(ret);
+			SwitchTokenizer(std::move(old));
+		}
+		else
+		{
+			funcdef = BuildFunctionFromJson(func["def"], ret);
+		}
 		const string& str = funcdef->Proto->GetName();
 		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef)));
 		ret->funcmap[str] = idx;

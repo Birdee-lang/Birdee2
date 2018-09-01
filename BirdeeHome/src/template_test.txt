@@ -14,6 +14,12 @@ class list[T]
 		end
 	end
 
+	##
+	public function get_and_add[T2](v as T2) as T
+		return head.v+v+dummy
+	end
+	##
+	
 	public function get_and_add[T2](v as T2) as T
 		return head.v+v
 	end
@@ -22,10 +28,37 @@ end
 class list_node[T]
 	public v as T
 	public next as list_node[T]
+	public function get_and_add[T2](v as T2) as T
+		return v
+	end
 end
+
+
+class list_node2
+	public function get_and_add[T2](v as T2) as T2
+		return v
+	end
+end
+
+function get_and_add[T2](v as T2) as T2
+		return v
+end
+get_and_add[int](2)
+
+dim nd=new list_node2
+nd.get_and_add[int](2)
+nd.get_and_add[float](2)
+
+dim node=new list_node[int]
+node.get_and_add[int](2)
+node.get_and_add[float](2)
 
 dim lst=new list[int]
 lst.push_back(0)
-lst.get_and_add[float](3.7f)
+if lst!=null then
+	dim dummy =123
+	lst.get_and_add[float](3.7f)
+	dummy=321
+end
 dim lst2=new list[list[int]]
 lst2.push_back(lst)

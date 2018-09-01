@@ -122,6 +122,14 @@ inline void CompileCheckGlobalConflict(SourcePos pos, const std::string& name)
 		throw CompileError(pos.line, pos.pos, string("The global name ") + name + " is already defined in " + prv_dim->second.get().Pos.ToString());
 	}
 }
+
+Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
+{
+	Tokenizer t = std::move(tokenizer);
+	tokenizer = std::move(tokzr);
+	return std::move(t);
+}
+
 /////////////////////////////////////////////////////////////////////////////////////
 std::unique_ptr<ExprAST> ParseExpressionUnknown();
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);

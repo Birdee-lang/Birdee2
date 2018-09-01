@@ -208,6 +208,7 @@ namespace Birdee
 			source_idx = old_t.source_idx;
 			line = old_t.line;
 			pos = old_t.pos;
+			CurTok = old_t.CurTok;
 			LastChar = old_t.LastChar;
 			IdentifierStr = std::move(old_t.IdentifierStr);
 			is_recording = old_t.is_recording;
