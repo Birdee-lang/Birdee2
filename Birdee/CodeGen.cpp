@@ -244,7 +244,6 @@ llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 {
 	dinfo.emitLocation(this);
 	expr->Generate();
-	instance->Generate();
 	return instance->llvm_func;
 }
 
@@ -423,6 +422,19 @@ void Birdee::CompileUnit::Generate()
 		func.second.get().PreGenerate();
 	}
 
+	for (auto cls : imported_class_templates)
+	{
+		cls->PreGenerate();
+	}
+
+	for (auto cls : imported_class_templates)
+	{
+		cls->PreGenerateFuncs();
+	}
+	for (auto func : imported_func_templates)
+	{
+		func->PreGenerate();
+	}
 	for (auto& dim : dimmap)
 	{
 		dim.second.get().PreGenerateForGlobal();
@@ -459,6 +471,7 @@ void Birdee::CompileUnit::Generate()
 	for (auto& name : cu.imported_module_names)
 	{
 		Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, name+".main", module);
+		builder.SetCurrentDebugLocation(DebugLoc::get(0, 0, F->getSubprogram()));
 		builder.CreateCall(OtherMain);
 	}
 	
@@ -468,14 +481,30 @@ void Birdee::CompileUnit::Generate()
 		{
 			stmt->Generate();
 		}
-		if (toplevel.empty() || !instance_of<ReturnAST>(toplevel.back().get()))
+		if (!instance_of<ReturnAST>(toplevel.back().get()))
 		{
 			dinfo.emitLocation(toplevel.back().get());
 			builder.CreateRetVoid();
 		}
 	}
+	else
+	{
+		builder.CreateRetVoid();
+	}
 
 	dinfo.LexicalBlocks.pop_back();
+
+	for (auto cls : imported_class_templates)
+	{
+		cls->Generate();
+	}
+
+	for (auto func : imported_func_templates)
+	{
+		func->Generate();
+	}
+
+
 
 	// Finalize the debug info.
 	DBuilder->finalize();
@@ -642,7 +671,7 @@ llvm::Function* GetMallocArr()
 	return func;
 }
 
-Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args)
+Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args,SourcePos pos)
 {
 	vector<Value*> args;
 	if (obj)
@@ -651,6 +680,8 @@ Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<u
 	{
 		args.push_back(vargs->Generate());
 	}
+	builder.SetCurrentDebugLocation(
+		DebugLoc::get(pos.line, pos.pos, helper.cur_llvm_func->getSubprogram()));
 	return builder.CreateCall(func, args);
 }
 
@@ -672,6 +703,7 @@ llvm::Value * Birdee::NewExprAST::Generate()
 		{
 			LArgs.push_back(builder.CreateZExtOrBitCast(arg->Generate(),builder.getInt32Ty()));
 		}
+		dinfo.emitLocation(this);
 		auto ret= builder.CreateCall(GetMallocArr(), LArgs);
 		return builder.CreatePointerCast(ret, helper.GetType(resolved_type));
 	}
@@ -679,10 +711,11 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	assert(resolved_type.type == tok_class);
 	auto llvm_ele_ty = resolved_type.class_ast->llvm_type;
 	size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
+	dinfo.emitLocation(this);
 	Value* ret= builder.CreateCall(GetMallocObj(), builder.getInt32(sz));
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
 	if(func)
-		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args);
+		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args,this->Pos);
 	return ret;
 }
 
@@ -707,8 +740,6 @@ llvm::Value * Birdee::ThisExprAST::Generate()
 
 llvm::Value * Birdee::FunctionAST::Generate()
 {
-	if (llvm_func)
-		return llvm_func;
 	DISubroutineType* functy=(DISubroutineType*)PreGenerate();
 	if (isTemplate())
 	{
@@ -984,7 +1015,7 @@ llvm::Value * Birdee::CallExprAST::Generate()
 			obj = pobj->llvm_obj;
 		}
 	}
-	return GenerateCall(func, proto, obj, Args);
+	return GenerateCall(func, proto, obj, Args,this->Pos);
 }
 namespace Birdee
 {
@@ -1278,7 +1309,7 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		{
 			auto proto = func->resolved_type.proto_ast;
 			vector<unique_ptr<ExprAST>> vec; vec.push_back(std::move(RHS));
-			return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec);
+			return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec,this->Pos);
 		}
 	}
 

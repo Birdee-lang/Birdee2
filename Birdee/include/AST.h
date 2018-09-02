@@ -282,6 +282,8 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
 		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
 
+		vector<ClassAST*> imported_class_templates;
+		vector<FunctionAST*> imported_func_templates;
 		/*
 		The classes that are referenced by an imported class, but the packages of the 
 		referenced classes are not yet imported. The mapping from qualified names of classes to AST

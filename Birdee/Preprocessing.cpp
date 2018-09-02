@@ -276,7 +276,7 @@ public:
 	unique_ptr<ResolvedIdentifierExprAST> ResolveName(const string& name, SourcePos pos, ImportTree*& out_import)
 	{
 		unique_ptr<ResolvedIdentifierExprAST> ret = ResolveNameNoThrow(name, pos, out_import);
-		if(!ret)
+		if(!ret && !out_import)
 			throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
 		return ret;
 	}
@@ -346,7 +346,7 @@ static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
 			}
 			else if (mem->kind == MemberExprAST::member_imported_function)
 			{
-				func = mem->func->decl.get();
+				func = mem->import_func;
 			}
 		}
 	}
@@ -1145,6 +1145,8 @@ namespace Birdee
 					import_func = ret2;
 					Obj = nullptr;
 					resolved_type = ret2->resolved_type;
+					if (!resolved_type.isResolved()) //template function's resolved type is never resolved
+						resolved_type.type = tok_func; //set resolved_type to avoid entering this function multiple times
 					return;
 				}
 				throw CompileError(Pos.line,Pos.pos,"Cannot resolve name "+ member);

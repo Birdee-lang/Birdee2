@@ -34,6 +34,15 @@ Template class' template functions are not included in the metadata of class tem
 remember to restore the functions in the cls template instances!
 */
 
+
+static Tokenizer StartParseTemplate(string&& str, Token first_tok)
+{
+	Tokenizer toknzr(std::make_unique<StringStream>(std::move(str)), source_paths.size() - 1);
+	toknzr.GetNextToken();
+	BirdeeAssert(toknzr.CurTok == first_tok, "The first token of template should be function");
+	toknzr.GetNextToken();
+	return SwitchTokenizer(std::move(toknzr));
+}
 ResolvedType ConvertIdToType(const json& type)
 {
 	ResolvedType ret;
@@ -150,6 +159,34 @@ void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
 	}
 }
 
+void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
+{
+	BirdeeAssert(globals.is_array(), "Expected a JSON array");
+	for (auto& itr : globals)
+	{
+		auto var = StartParseTemplate(itr.get<string>(),tok_func);
+		auto func = ParseFunction(nullptr);
+		SwitchTokenizer(std::move(var));
+		cu.imported_func_templates.push_back(func.get());
+		func->Proto->prefix_idx = current_module_idx;
+		mod.funcmap[func->Proto->GetName()] = std::move(func);
+	}
+}
+
+void BuildGlobalTemplateClassFromJson(const json& globals, int module_idx, ImportedModule& mod)
+{
+	BirdeeAssert(globals.is_array(), "Expected a JSON array");
+	for (auto& itr : globals)
+	{
+		auto var = StartParseTemplate(itr.get<string>(), tok_class);
+		auto cls = ParseClass();
+		SwitchTokenizer(std::move(var));
+		cu.imported_class_templates.push_back(cls.get());
+		cls->package_name_idx = module_idx;
+		mod.classmap[cls->name] = std::move(cls);
+	}
+}
+
 void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx)
 {
 	ret->name = json_cls["name"].get<string>();
@@ -178,12 +215,10 @@ void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx
 		auto templ = func.find("template");
 		if (templ != func.end())
 		{
-			Tokenizer toknzr(std::make_unique<StringStream>(templ->get<string>()),source_paths.size()-1);
-			toknzr.GetNextToken();
-			BirdeeAssert(toknzr.CurTok == tok_func, "The first token of template should be function");
-			toknzr.GetNextToken();
-			Tokenizer old = SwitchTokenizer(std::move(toknzr));
+			Tokenizer old = StartParseTemplate(templ->get<string>(),tok_func);
 			funcdef = ParseFunction(ret);
+			cu.imported_func_templates.push_back(funcdef.get());
+			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
 		}
 		else
@@ -331,6 +366,14 @@ void ImportedModule::Init(const vector<string>& package,const string& module_nam
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");
+
+	auto itr = json.find("ClassTemplates");
+	if(itr !=json.end())
+		BuildGlobalTemplateClassFromJson(*itr, cu.imported_module_names.size() - 1 ,*this);
+	itr = json.find("FunctionTemplates");
+	if (itr != json.end())
+		BuildGlobalTemplateFuncFromJson(*itr, *this);
+
 	//we first make place holder for each class. Because classes may reference each other
 	PreBuildClassFromJson(json["Classes"],module_name,*this);
 	PreBuildOrphanClassFromJson(json["ImportedClasses"], *this);

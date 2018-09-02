@@ -186,7 +186,9 @@ namespace Birdee
 
 	std::unique_ptr<PrototypeAST> Birdee::PrototypeAST::Copy()
 	{
-		return make_unique<PrototypeAST>(Name,unique_ptr_cast<VariableDefAST>(Args->Copy()),RetType->Copy(),cur_cls?cur_cls:cls,pos);
+		auto ret = make_unique<PrototypeAST>(Name, unique_ptr_cast<VariableDefAST>(Args->Copy()), RetType->Copy(), cur_cls ? cur_cls : cls, pos);
+		ret->prefix_idx = prefix_idx;
+		return std::move(ret);
 	}
 
 	template<typename T>
@@ -219,6 +221,7 @@ namespace Birdee
 		auto clsdef = make_unique<ClassAST>(name, Pos);
 		auto old_cls = cur_cls;
 		cur_cls = clsdef.get();
+		clsdef->package_name_idx = package_name_idx;
 		std::vector<FieldDef>& nfields = clsdef->fields;
 		std::vector<MemberFunctionDef>& nfuncs = clsdef->funcs;
 		unordered_map<reference_wrapper<const string>, int>& nfieldmap = clsdef->fieldmap;
