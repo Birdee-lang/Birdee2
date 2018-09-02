@@ -199,7 +199,9 @@ namespace Birdee
 		{
 			newparams.push_back(std::move(TemplateParameter(param.type == nullptr ? nullptr : param.type->Copy(), param.name)));
 		}
-		return make_unique<TemplateParameters<T>>(std::move(newparams));
+		auto ret = make_unique<TemplateParameters<T>>(std::move(newparams));
+		ret->mod = mod;
+		return std::move(ret);
 	}
 
 	unique_ptr<StatementAST> Birdee::BasicTypeExprAST::Copy()

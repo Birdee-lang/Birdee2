@@ -48,19 +48,21 @@ public:
 		unordered_map<string, ExprAST*> exprmap;
 		SourcePos pos;
 		bool isClass;
-		TemplateEnv():pos(0,0,0){};
-		TemplateEnv(SourcePos pos, bool isClass): pos(pos), isClass(isClass) {}
+		ImportedModule* imported_mod;
+		TemplateEnv():pos(0,0,0), isClass(false),imported_mod(nullptr){};
+		TemplateEnv(SourcePos pos, bool isClass, ImportedModule* imported_mod): pos(pos), isClass(isClass) , imported_mod(imported_mod){}
 		TemplateEnv& operator = (TemplateEnv&& v)
 		{
 			typemap = std::move(v.typemap);
 			exprmap = std::move(v.exprmap);
 			pos = v.pos;
+			imported_mod = v.imported_mod;
 			isClass = v.isClass;
+			return *this;
 		}
-		TemplateEnv(TemplateEnv&& v):pos(v.pos), isClass(v.isClass)
+		TemplateEnv(TemplateEnv&& v):pos(0,0,0)
 		{
-			typemap = std::move(v.typemap);
-			exprmap = std::move(v.exprmap);
+			*this = std::move(v);
 		}
 	};
 	vector<TemplateEnv> template_stack;
@@ -158,9 +160,9 @@ public:
 	}
 
 	TemplateEnv CreateTemplateEnv(const vector<TemplateArgument>& template_args,
-		const vector<TemplateParameter>& parameters, bool isClass, SourcePos pos)
+		const vector<TemplateParameter>& parameters, bool isClass, ImportedModule* mod,SourcePos pos)
 	{
-		TemplateEnv env(pos, isClass);
+		TemplateEnv env(pos, isClass,mod);
 		for (int i = 0; i<template_args.size(); i++)
 		{
 			if (template_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
@@ -172,9 +174,9 @@ public:
 	}
 
 	void SetTemplateEnv(const vector<TemplateArgument>& template_args,
-		const vector<TemplateParameter>& parameters, SourcePos pos)
+		const vector<TemplateParameter>& parameters, ImportedModule* mod, SourcePos pos)
 	{
-		TemplateEnv env = CreateTemplateEnv(template_args, parameters,false, pos);
+		TemplateEnv env = CreateTemplateEnv(template_args, parameters,false, mod, pos);
 		template_stack.push_back(std::move(env));
 	}
 
@@ -184,9 +186,9 @@ public:
 	}
 
 	void SetClassTemplateEnv(const vector<TemplateArgument>& template_args,
-		const vector<TemplateParameter>& parameters, SourcePos pos)
+		const vector<TemplateParameter>& parameters, ImportedModule* mod, SourcePos pos)
 	{
-		TemplateEnv env = CreateTemplateEnv(template_args, parameters, true, pos);
+		TemplateEnv env = CreateTemplateEnv(template_args, parameters, true, mod, pos);
 		template_class_stack.push_back(std::move(env));
 	}
 
@@ -217,7 +219,34 @@ public:
 		class_stack.pop_back();
 	}
 
-	
+	bool isInTemplateOfOtherModule()
+	{
+		return (!template_stack.empty() && template_stack.back().imported_mod) 
+			|| (!template_class_stack.empty() && template_class_stack.back().imported_mod);
+	}
+
+	VariableSingleDefAST* GetGlobalFromImportedTemplate(const string& name)
+	{
+		//we just need to check the module variable env of template stack for function
+		auto check_template_module = [&](vector<TemplateEnv>& vec) -> Birdee::VariableSingleDefAST*
+		{
+			if (!vec.empty() && vec.back().imported_mod)
+			{
+				auto& dimmap = vec.back().imported_mod->dimmap;
+				auto var = dimmap.find(name);
+				if (var != dimmap.end())
+				{
+					return var->second.get();
+				}
+			}
+			return nullptr;
+		};
+		auto v = check_template_module(template_stack);
+		if (v)
+			return v;
+		return check_template_module(template_class_stack); //will return null if not in template
+	}
+
 
 	unique_ptr<ResolvedIdentifierExprAST> ResolveNameNoThrow(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
@@ -229,9 +258,20 @@ public:
 		auto template_arg = FindAndCopyTemplateArgument(name);
 		if (template_arg)
 			return std::move(template_arg);
-		auto global_itr = top_level_bb.find(name);
-		if(global_itr!=top_level_bb.end())
-			return make_unique<LocalVarExprAST>(global_itr->second, pos);
+
+		bool isInOtherModule = isInTemplateOfOtherModule();
+		if (isInOtherModule)
+		{//if in template of another module, search global vars from the module
+			auto ret = GetGlobalFromImportedTemplate(name);
+			if (ret)
+				return make_unique<LocalVarExprAST>(ret, pos);
+		}
+		else
+		{
+			auto global_itr = top_level_bb.find(name);
+			if (global_itr != top_level_bb.end())
+				return make_unique<LocalVarExprAST>(global_itr->second, pos);
+		}
 
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
@@ -251,10 +291,36 @@ public:
 				return make_unique<LocalVarExprAST>(&(global_dim->second.get()));
 			}
 		}*/
-		auto func = cu.funcmap.find(name);
-		if (func != cu.funcmap.end())
+
+		//if we are in a template && the template is imported from other modules
+		auto check_template_module = [&](vector<TemplateEnv>& v)->unique_ptr<ResolvedFuncExprAST>
 		{
-			return make_unique<ResolvedFuncExprAST>(&(func->second.get()),pos);
+			if (!template_stack.empty() && template_stack.back().imported_mod)
+			{
+				auto& funcmap = template_stack.back().imported_mod->funcmap;
+				auto var = funcmap.find(name);
+				if (var != funcmap.end())
+				{
+					return make_unique<ResolvedFuncExprAST>(var->second.get(), pos);
+				}
+			}
+			return nullptr;
+		};
+		if (isInOtherModule)
+		{
+			auto module_func = check_template_module(template_stack);
+			if (module_func)
+				return std::move(module_func);
+			else if (module_func = check_template_module(template_class_stack))
+				return std::move(module_func);
+		}
+		else
+		{
+			auto func = cu.funcmap.find(name);
+			if (func != cu.funcmap.end())
+			{
+				return make_unique<ResolvedFuncExprAST>(&(func->second.get()), pos);
+			}
 		}
 
 		auto ret1 = FindImportByName(cu.imported_dimmap, name);
@@ -270,6 +336,7 @@ public:
 			out_import = package;
 			return nullptr;
 		}
+		out_import = nullptr;
 		return nullptr;
 	}
 
@@ -306,7 +373,7 @@ std::string Birdee::GetTemplateStackTrace()
 }
 
 template <typename T,typename T2>
-T GetItemByName(const unordered_map<T2, T>& M,
+const T& GetItemByName(const unordered_map<T2, T>& M,
 	const string& name, SourcePos pos)
 {
 	auto itr = M.find(name);
@@ -557,12 +624,26 @@ namespace Birdee
 				*this = rtype;
 				return;
 			}
-			auto itr = cu.classmap.find(ty->name);
-			if (itr == cu.classmap.end())
-				this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
+			//if we are in a template and it is imported from another modules
+			if (!scope_mgr.template_stack.empty() && scope_mgr.template_stack.back().imported_mod)
+			{
+				auto& classmap = scope_mgr.template_stack.back().imported_mod->classmap;
+				this->class_ast = GetItemByName(classmap, ty->name, pos).get();
+			}
+			else if (!scope_mgr.template_class_stack.empty() && scope_mgr.template_class_stack.back().imported_mod)
+			{
+				auto& classmap = scope_mgr.template_class_stack.back().imported_mod->classmap;
+				this->class_ast = GetItemByName(classmap, ty->name, pos).get();
+			}
 			else
-				this->class_ast= &(itr->second.get());
-			//fix-me: should find function proto
+			{
+				auto itr = cu.classmap.find(ty->name);
+				if (itr == cu.classmap.end())
+					this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
+				else
+					this->class_ast = &(itr->second.get());
+				//fix-me: should find function proto
+			}
 		}
 		else if (type.type == tok_package)
 		{
@@ -848,7 +929,7 @@ namespace Birdee
 	Will not Take the ownership of the pointer v
 	*/
 	static void Phase1ForTemplateInstance(FunctionAST* func, const vector<TemplateArgument>& v,
-		const vector<TemplateParameter>& parameters,SourcePos pos)
+		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
 		func->Proto->Name += GetTemplateArgumentString(v);
 		ClassAST* cls_template=nullptr;
@@ -858,7 +939,7 @@ namespace Birdee
 			if (func->Proto->cls->template_instance_args)//if the function is defined in a template class, push the template environment
 			{
 				scope_mgr.SetClassTemplateEnv(*cls_template->template_instance_args,
-					*cls_template->template_instance_parameters, pos);
+					*cls_template->template_instance_parameters, mod, pos);
 			}
 			else
 				scope_mgr.SetEmptyClassTemplateEnv();
@@ -868,9 +949,10 @@ namespace Birdee
 		{
 			scope_mgr.SetEmptyClassTemplateEnv();
 		}
-		scope_mgr.SetTemplateEnv(v, parameters, pos);
+		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
 		auto basic_blocks_backup = std::move(scope_mgr.basic_blocks);
+		scope_mgr.basic_blocks = vector <ScopeManager::BasicBlock>();
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
@@ -887,12 +969,12 @@ namespace Birdee
 	Takes the ownership of the pointer v
 	*/
 	static void Phase1ForTemplateInstance(ClassAST* cls, vector<TemplateArgument>& v,
-		const vector<TemplateParameter>& parameters, SourcePos pos)
+		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
 		cls->template_instance_args = unique_ptr<vector<TemplateArgument>>(&v);
 		cls->template_instance_parameters = &parameters;
 		cls->name += GetTemplateArgumentString(v);
-		scope_mgr.SetClassTemplateEnv(v, parameters, pos);
+		scope_mgr.SetClassTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
 		for (auto& funcdef : cls->funcs)
 		{
@@ -912,7 +994,7 @@ namespace Birdee
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
-		Phase1ForTemplateInstance(ret, *v, params, pos);
+		Phase1ForTemplateInstance(ret, *v, params, mod, pos);
 		return ret;
 	}
 	template<typename T>

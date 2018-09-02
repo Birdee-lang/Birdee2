@@ -166,6 +166,8 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 	{
 		auto var = StartParseTemplate(itr.get<string>(),tok_func);
 		auto func = ParseFunction(nullptr);
+		BirdeeAssert(func->template_param.get(), "func->template_param");
+		func->template_param->mod = &mod;
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
@@ -180,6 +182,8 @@ void BuildGlobalTemplateClassFromJson(const json& globals, int module_idx, Impor
 	{
 		auto var = StartParseTemplate(itr.get<string>(), tok_class);
 		auto cls = ParseClass();
+		BirdeeAssert(cls->template_param.get(), "cls->template_param");
+		cls->template_param->mod = &mod;
 		SwitchTokenizer(std::move(var));
 		cu.imported_class_templates.push_back(cls.get());
 		cls->package_name_idx = module_idx;
@@ -187,7 +191,7 @@ void BuildGlobalTemplateClassFromJson(const json& globals, int module_idx, Impor
 	}
 }
 
-void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx)
+void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx, ImportedModule& mod)
 {
 	ret->name = json_cls["name"].get<string>();
 	ret->package_name_idx = module_idx;
@@ -217,6 +221,8 @@ void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx
 		{
 			Tokenizer old = StartParseTemplate(templ->get<string>(),tok_func);
 			funcdef = ParseFunction(ret);
+			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
+			funcdef->template_param->mod = &mod;
 			cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
@@ -297,7 +303,7 @@ void BuildClassFromJson(const json& cls, ImportedModule& mod)
 	{
 		if ((*itr)->name.size() == 0) // if it is a placeholder
 		{
-			BuildSingleClassFromJson((*itr), json_cls, cu.imported_module_names.size() - 1);
+			BuildSingleClassFromJson((*itr), json_cls, cu.imported_module_names.size() - 1,mod);
 		}
 		//fix-me: check if the imported type is the same as the existing type
 		itr++;
@@ -312,7 +318,7 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 	{
 		if ((*itr)->name.size() == 0) // if it is a placeholder
 		{
-			BuildSingleClassFromJson((*itr), json_cls, -2); //orphan classes, module index=-2
+			BuildSingleClassFromJson((*itr), json_cls, -2,mod); //orphan classes, module index=-2
 		}
 		//fix-me: check if the imported type is the same as the existing type
 		itr++;

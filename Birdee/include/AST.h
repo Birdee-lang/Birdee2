@@ -833,6 +833,7 @@ namespace Birdee {
 		vector<TemplateParameter> params;
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
 		string source; //no need to copy this field
+		ImportedModule* mod = nullptr;
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
