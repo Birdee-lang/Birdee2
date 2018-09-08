@@ -928,7 +928,7 @@ namespace Birdee
 	/*
 	Will not Take the ownership of the pointer v
 	*/
-	static void Phase1ForTemplateInstance(FunctionAST* func, const vector<TemplateArgument>& v,
+	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, const vector<TemplateArgument>& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
 		func->Proto->Name += GetTemplateArgumentString(v);
@@ -939,7 +939,7 @@ namespace Birdee
 			if (func->Proto->cls->template_instance_args)//if the function is defined in a template class, push the template environment
 			{
 				scope_mgr.SetClassTemplateEnv(*cls_template->template_instance_args,
-					*cls_template->template_instance_parameters, mod, pos);
+					cls_template->template_source_class->template_param->params, mod, pos);
 			}
 			else
 				scope_mgr.SetEmptyClassTemplateEnv();
@@ -953,6 +953,7 @@ namespace Birdee
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
 		auto basic_blocks_backup = std::move(scope_mgr.basic_blocks);
 		scope_mgr.basic_blocks = vector <ScopeManager::BasicBlock>();
+		func->isTemplateInstance = true;
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
@@ -968,11 +969,11 @@ namespace Birdee
 	/*
 	Takes the ownership of the pointer v
 	*/
-	static void Phase1ForTemplateInstance(ClassAST* cls, vector<TemplateArgument>& v,
+	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, vector<TemplateArgument>& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
 		cls->template_instance_args = unique_ptr<vector<TemplateArgument>>(&v);
-		cls->template_instance_parameters = &parameters;
+		cls->template_source_class = src_cls;
 		cls->name += GetTemplateArgumentString(v);
 		scope_mgr.SetClassTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
@@ -994,7 +995,7 @@ namespace Birdee
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
-		Phase1ForTemplateInstance(ret, *v, params, mod, pos);
+		Phase1ForTemplateInstance(ret, source_template, *v, params, mod, pos);
 		return ret;
 	}
 	template<typename T>

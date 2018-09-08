@@ -851,6 +851,7 @@ namespace Birdee {
 	public:
 		unique_ptr<TemplateParameters<FunctionAST>> template_param;
 		bool isDeclare;
+		bool isTemplateInstance = false;
 		bool isImported=false;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
@@ -982,7 +983,7 @@ namespace Birdee {
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
 		unique_ptr< vector<TemplateArgument>> template_instance_args;
-		const vector<TemplateParameter>* template_instance_parameters = nullptr;
+		ClassAST* template_source_class = nullptr;
 		unique_ptr<TemplateParameters<ClassAST>> template_param;
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
@@ -997,7 +998,7 @@ namespace Birdee {
 			: name(name) {
 			Pos = pos;
 		}
-
+		bool isTemplateInstance() { return template_instance_args != nullptr; }
 		bool isTemplate() { return template_param != nullptr && template_param->params.size() != 0; }
 		string GetUniqueName();
 		void PreGenerate();

@@ -1,4 +1,5 @@
 #pragma once
+#include <typeinfo.h>
 namespace Birdee
 {
 	template<typename Derived, typename Base, typename Del>
@@ -33,6 +34,14 @@ namespace Birdee
 	bool instance_of(Base* p)
 	{
 		if (Derived *result = dynamic_cast<Derived *>(p)) {
+			return true;
+		}
+		return false;
+	}
+	template<typename Derived, typename Base>
+	bool isa(Base* p)
+	{
+		if (typeid(p)==typeid(Derived)) {
 			return true;
 		}
 		return false;

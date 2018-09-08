@@ -215,7 +215,9 @@ namespace Birdee
 	{
 		if (isDeclare)
 			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declared function");
-		return make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, Pos);
+		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, Pos);
+		ret->isTemplateInstance = isTemplateInstance;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<ClassAST> Birdee::ClassAST::CopyNoTemplate()
@@ -244,6 +246,8 @@ namespace Birdee
 			nfuncs.push_back(std::move(def));
 			idx++;
 		}
+		clsdef->template_source_class = template_source_class;
+		assert(clsdef->template_instance_args==nullptr);
 		cur_cls = old_cls;
 		return std::move(clsdef);
 	}

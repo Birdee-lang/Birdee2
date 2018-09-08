@@ -29,9 +29,12 @@ extern std::vector<std::string> Birdee::source_paths;
 
 /*
 fix-me: Load template class & functions & instances
-link templates with instances by name (remember find them in orphans)
-Template class' template functions are not included in the metadata of class template instances, which are already included in the class template.
-remember to restore the functions in the cls template instances!
+link templates to instances by name (for every new template source imported, remember find instances in orphans)
+link instances to templates sources by name (remember find them in orphans)
+<del>Template class' template functions are not included in the metadata of class template instances, which are already included in the class template.
+<del>remember to restore the functions in the cls template instances!
+test if serializing imported template instance classes really works!!!!!!!!!!!! (check if function templates in the template instances are properly dumped)
+import template class instance
 */
 
 
@@ -168,6 +171,7 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 		auto func = ParseFunction(nullptr);
 		BirdeeAssert(func->template_param.get(), "func->template_param");
 		func->template_param->mod = &mod;
+		func->template_param->source = itr.get<string>();
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
@@ -184,6 +188,7 @@ void BuildGlobalTemplateClassFromJson(const json& globals, int module_idx, Impor
 		auto cls = ParseClass();
 		BirdeeAssert(cls->template_param.get(), "cls->template_param");
 		cls->template_param->mod = &mod;
+		cls->template_param->source = itr.get<string>();
 		SwitchTokenizer(std::move(var));
 		cu.imported_class_templates.push_back(cls.get());
 		cls->package_name_idx = module_idx;
@@ -223,6 +228,7 @@ void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx
 			funcdef = ParseFunction(ret);
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
 			funcdef->template_param->mod = &mod;
+			funcdef->template_param->source = templ->get<string>();
 			cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));

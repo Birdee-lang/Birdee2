@@ -24,6 +24,7 @@ using namespace Birdee;
 static unordered_map<ClassAST*, int> class_idx_map;
 static json imported_class;
 static long NextImportedIndex = MAX_CLASS_DEF_COUNT;
+static json* defined_classes=nullptr;
 
 static const char* GetAccessModifierName(AccessModifier acc)
 {
@@ -40,6 +41,92 @@ static const char* GetAccessModifierName(AccessModifier acc)
 
 json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name);
 
+json ConvertTypeToIndex(ResolvedType& type);
+
+json BuildTemplateArgumentJson(TemplateArgument& arg)
+{
+	auto json_arg = json();
+	if (arg.kind == TemplateArgument::TEMPLATE_ARG_TYPE)
+	{
+		json_arg["kind"] = "type";
+		json_arg["type"] = ConvertTypeToIndex(arg.type);
+	}
+	else if (arg.kind == TemplateArgument::TEMPLATE_ARG_EXPR)
+	{
+		json_arg["kind"] = "expr";
+		if (isa<NumberExprAST>(arg.expr.get()))
+		{
+			NumberExprAST* numast = static_cast<NumberExprAST *>(arg.expr.get());
+			json_arg["exprtype"] = numast->resolved_type.GetString();
+			std::stringstream buf;
+			buf << numast->Val.v_ulong;
+			json_arg["value"] = buf.str();
+		}
+		else if (isa<StringLiteralAST>(arg.expr.get()))
+		{
+			StringLiteralAST* strast= static_cast<StringLiteralAST *>(arg.expr.get());
+			json_arg["exprtype"] = "string";
+			json_arg["value"] = strast->Val;
+		}
+		else
+		{
+			std::cerr << "Bad TemplateArgument::expr type\n";
+			abort();
+		}
+	}
+	else
+	{
+		std::cerr << "Bad TemplateArgument::kind\n";
+		abort();
+	}
+	return json_arg;
+}
+
+int ConvertClassToIndex(ClassAST* class_ast)
+{
+	auto itr = class_idx_map.find(class_ast);
+	if (itr != class_idx_map.end())
+	{
+		return itr->second;
+	}
+	else
+	{
+		if (class_ast->isTemplateInstance())
+		{
+			assert(class_ast->template_source_class);
+			if (class_ast->template_source_class->package_name_idx == -1) // if the template is defined in the current package
+			{
+				int retidx = defined_classes->size();
+				class_idx_map[class_ast] = retidx;
+				defined_classes->push_back(json());
+				auto& the_class = defined_classes->back();
+				the_class["source"] = ConvertClassToIndex(class_ast->template_source_class);
+				auto args = json::array();
+				for (auto& arg : *class_ast->template_instance_args)
+				{
+					args.push_back(BuildTemplateArgumentJson(arg));
+				}
+				the_class["arguments"] = args;
+				//class_ast->template_instance_args
+				return retidx;
+			}
+			//else: if the template is defined in an imported package, fall through to the next lines of codes
+			//will put the class in the orphan classes
+		}
+		int current_idx = NextImportedIndex;
+		if (NextImportedIndex == MAX_CLASS_COUNT)
+		{
+			std::cerr << "Too many classes imported\n";
+			abort();
+		}
+		NextImportedIndex++;
+		class_idx_map[class_ast] = current_idx;
+		auto json = BuildSingleClassJson(*class_ast, true);
+		BirdeeAssert(class_ast->package_name_idx != -1, "expecting package_name_idx!=-1");
+		imported_class.push_back(std::move(json));
+		return current_idx;
+	}
+}
 json ConvertTypeToIndex(ResolvedType& type)
 {
 	json ret;
@@ -81,27 +168,7 @@ json ConvertTypeToIndex(ResolvedType& type)
 		break;
 	case tok_class:
 	{
-		auto itr = class_idx_map.find(type.class_ast);
-		if (itr != class_idx_map.end())
-		{
-			ret["base"] = itr->second;
-		}
-		else
-		{
-			int current_idx = NextImportedIndex;
-			if (NextImportedIndex == MAX_CLASS_COUNT)
-			{
-				std::cerr << "Too many classes imported\n";
-				abort();
-			}
-			NextImportedIndex++;
-			class_idx_map[type.class_ast] = current_idx;
-			auto json = BuildSingleClassJson(*type.class_ast,true);
-			BirdeeAssert(type.class_ast->package_name_idx!=-1 , "package_name_idx!=-1 of class should not be null");
-			imported_class.push_back(std::move(json));
-			ret["base"] = current_idx;		
-		}
-		
+		ret["base"] = ConvertClassToIndex(type.class_ast);
 		break;
 	}
 	default:
@@ -125,6 +192,10 @@ json BuildFunctionJson(FunctionAST* func)
 {
 	std::unique_ptr<VariableDefAST> Args;
 	json ret;
+	if (func->isTemplateInstance)
+	{
+		return ret;
+	}
 	ret["name"] = func->GetName();
 	json args = json::array();
 	for (auto& arg : func->Proto->resolved_args)
@@ -135,26 +206,21 @@ json BuildFunctionJson(FunctionAST* func)
 	ret["return"] = ConvertTypeToIndex(func->Proto->resolved_type);
 	return ret;
 }
-
-json BuildClassJson(json& out_template_arr)
+void BuildAndPushFunctionJson(json& arr, FunctionAST* func)
 {
-	json arr=json::array();
-	out_template_arr = json::array();
+	json ret = BuildFunctionJson(func);
+	if (!ret.empty())
+	{
+		arr.push_back(std::move(ret));
+	}
+}
+
+void BuildClassJson(json& arr)
+{
 	int idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
-		if (itr.second.get().isTemplate())
-		{
-			for (auto& instance : (itr.second.get().template_param->instances))
-			{
-				class_idx_map[instance.second.get()] = idx++;
-			}
-			out_template_arr.push_back(itr.second.get().template_param->source);
-		}
-		else
-		{
-			class_idx_map[&itr.second.get()] = idx++;
-		}
+		class_idx_map[&itr.second.get()] = idx++;
 	}
 	if (class_idx_map.size() > MAX_CLASS_DEF_COUNT)
 	{
@@ -163,17 +229,8 @@ json BuildClassJson(json& out_template_arr)
 	}
 	for (auto itr : Birdee::cu.classmap)
 	{
-		if (itr.second.get().isTemplate())
-		{
-			for (auto& instance : (itr.second.get().template_param->instances))
-			{
-				arr.push_back(BuildSingleClassJson(*instance.second.get(), false));
-			}
-		}
-		else
-			arr.push_back(BuildSingleClassJson(itr.second,false));
+		arr.push_back(BuildSingleClassJson(itr.second,false));
 	}
-	return arr;
 }
 
 json BuildGlobalVaribleJson()
@@ -198,12 +255,12 @@ json BuildGlobalFuncJson(json& func_template)
 		{
 			for (auto& instance : (itr.second.get().template_param->instances))
 			{
-				arr.push_back(BuildFunctionJson(instance.second.get()));
+				BuildAndPushFunctionJson(arr,instance.second.get());
 			}
 			func_template.push_back(itr.second.get().template_param->source);
 		}
 		else
-			arr.push_back(BuildFunctionJson(&itr.second.get()));
+			BuildAndPushFunctionJson(arr,&itr.second.get());
 	}
 	return arr;
 }
@@ -212,43 +269,68 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 {
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
-	json json_fields = json::array();
-	for (auto& field : cls.fields)
+	if (cls.isTemplate())
 	{
-		json json_field;
-		json_field["access"] = GetAccessModifierName(field.access);
-		json_field["def"] = BuildVariableJson(field.decl.get());
-		json_fields.push_back(json_field);
+		assert(!cls.template_param->source.empty());
+		json_cls["template"] = cls.template_param->source;
 	}
-	json_cls["fields"] = std::move(json_fields);
-
-	json json_funcs = json::array();
-	for (auto& func : cls.funcs)
+	else
 	{
-		if (func.decl->isDeclare)
-			continue;
-		json json_func;
-		auto access = GetAccessModifierName(func.access);
-		json_func["access"] = access;
-		if (func.decl->isTemplate())
+		json json_fields = json::array();
+		for (auto& field : cls.fields)
 		{
-			for (auto& instance : (func.decl->template_param->instances))
-			{
-				json json_instance;
-				json_instance["access"] = access;
-				json_instance["def"] = BuildFunctionJson(instance.second.get());
-				json_funcs.push_back(json_instance);
-			}
-			if (func.decl->template_param->source.empty()) //if is empty, then this function template is in a template class, just skip
-				continue;
-			json_func["template"] = func.decl->template_param->source;
+			json json_field;
+			json_field["access"] = GetAccessModifierName(field.access);
+			json_field["def"] = BuildVariableJson(field.decl.get());
+			json_fields.push_back(json_field);
 		}
-		else
-			json_func["def"] = BuildFunctionJson(func.decl.get());
+		json_cls["fields"] = std::move(json_fields);
 
-		json_funcs.push_back(json_func);
+		json json_funcs = json::array();
+		for (auto& func : cls.funcs)
+		{
+			if (func.decl->isDeclare)
+				continue;
+			json json_func;
+			auto access = GetAccessModifierName(func.access);
+			json_func["access"] = access;
+			if (func.decl->isTemplate())
+			{
+				/*for (auto& instance : (func.decl->template_param->instances))
+				{
+					json json_instance;
+					json_instance["access"] = access;
+					json_instance["def"] = BuildFunctionJson(instance.second.get());
+					json_funcs.push_back(json_instance);
+				}*/
+				//if is empty, then this function template is in a template class, 
+				//find the source code in the template source
+				if (func.decl->template_param->source.empty())
+				{
+					assert(cls.isTemplateInstance());
+					auto funcmap = cls.template_source_class->funcmap;
+					auto itr = funcmap.find(func.decl->GetName());
+					assert(itr != funcmap.end());
+					auto func_ast = cls.template_source_class->funcs[itr->second].decl.get();
+					assert(func_ast->isTemplate());
+					assert(!func_ast->template_param->source.empty());
+					json_func["template"] = func_ast->template_param->source;
+				}
+				else
+					json_func["template"] = func.decl->template_param->source;
+			}
+			else
+			{
+				auto funcjson = BuildFunctionJson(func.decl.get());
+				if (funcjson.empty()) //if the function is a template instance, skip
+					continue;
+				json_func["def"] = std::move(funcjson);
+			}
+			json_funcs.push_back(json_func);
+		}
+		json_cls["funcs"] = json_funcs;
 	}
-	json_cls["funcs"] = json_funcs;
+
 	return json_cls;
 }
 
@@ -262,9 +344,9 @@ void SeralizeMetadata(std::ostream& out)
 	outjson["Type"] = "Birdee Module Metadata";
 	outjson["Version"] = META_DATA_VERSION;
 	outjson["Package"] = cu.symbol_prefix.substr(0, cu.symbol_prefix.size() - 1);
-	json cls_template;
-	outjson["Classes"] = BuildClassJson(cls_template);
-	outjson["ClassTemplates"] = cls_template;
+	outjson["Classes"] = json::array();
+	defined_classes = &outjson["Classes"];
+	BuildClassJson(outjson["Classes"]);
 	outjson["Variables"] = BuildGlobalVaribleJson();
 	json func_template;
 	outjson["Functions"] = BuildGlobalFuncJson(func_template);
