@@ -93,9 +93,9 @@ int ConvertClassToIndex(ClassAST* class_ast)
 	{
 		if (class_ast->isTemplateInstance())
 		{
-			assert(class_ast->template_source_class);
-			if (class_ast->template_source_class->package_name_idx == -1) // if the template is defined in the current package
+			if (class_ast->package_name_idx == -1) // if the template is defined in the current package
 			{
+				assert(class_ast->template_source_class);
 				int retidx = defined_classes->size();
 				class_idx_map[class_ast] = retidx;
 				defined_classes->push_back(json());
@@ -121,9 +121,18 @@ int ConvertClassToIndex(ClassAST* class_ast)
 		}
 		NextImportedIndex++;
 		class_idx_map[class_ast] = current_idx;
-		auto json = BuildSingleClassJson(*class_ast, true);
+		auto outjson = BuildSingleClassJson(*class_ast, true);
 		BirdeeAssert(class_ast->package_name_idx != -1, "expecting package_name_idx!=-1");
-		imported_class.push_back(std::move(json));
+		if (class_ast->isTemplateInstance())
+		{ //if it is a template instance of an imported template, also put the template args
+			auto args = json::array();
+			for (auto& arg : *class_ast->template_instance_args)
+			{
+				args.push_back(BuildTemplateArgumentJson(arg));
+			}
+			outjson["template_arguments"] = args;
+		}
+		imported_class.push_back(std::move(outjson));
 		return current_idx;
 	}
 }

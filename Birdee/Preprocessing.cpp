@@ -986,18 +986,31 @@ namespace Birdee
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.RestoreClassTemplateEnv();
 	}
+
+	static void NoOpForTemplateInstance(ClassAST* dummy, vector<TemplateArgument>* v)
+	{
+		delete v;
+	}
+
+	static void NoOpForTemplateInstance(FunctionAST* dummy, vector<TemplateArgument>* v)
+	{}
+
 	template<typename T>
 	T * Birdee::TemplateParameters<T>::GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(*v);
 		if (ins != instances.end())
+		{
+			NoOpForTemplateInstance(source_template, v);
 			return ins->second.get();
+		}
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
 		Phase1ForTemplateInstance(ret, source_template, *v, params, mod, pos);
 		return ret;
 	}
+
 	template<typename T>
 	void Birdee::TemplateParameters<T>::ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos)
 	{

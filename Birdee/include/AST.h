@@ -9,6 +9,7 @@
 #include "SourcePos.h"
 #include "Util.h"
 #include "TokenDef.h"
+#include <assert.h>
 
 namespace Birdee
 {
@@ -288,7 +289,7 @@ namespace Birdee {
 		The classes that are referenced by an imported class, but the packages of the 
 		referenced classes are not yet imported. The mapping from qualified names of classes to AST
 		*/
-		unordered_map<string, unique_ptr<ClassAST>> orphan_class;
+		map<string, unique_ptr<ClassAST>> orphan_class;
 
 		vector<string> imported_module_names;
 		/*
@@ -838,6 +839,11 @@ namespace Birdee {
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
 		T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
+		void AddImpl(vector<TemplateArgument>& v, unique_ptr<T> impl)
+		{
+			assert(instances.find(v) == instances.end());
+			instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(v), std::move(impl)));
+		}
 		TemplateParameters(vector<TemplateParameter>&& params) : params(std::move(params)){};
 		TemplateParameters(vector<TemplateParameter>&& params, string&& source) : params(std::move(params)), source(std::move(source)){};
 		TemplateParameters() {}

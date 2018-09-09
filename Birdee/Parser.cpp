@@ -857,12 +857,14 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 }
 
 
-std::unique_ptr<ClassAST> ParseClass()
+void ParseClassInPlace(ClassAST* ret)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
 	CompileExpect(tok_identifier, "Expected an identifier for class name");
-	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
+	//std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
+	ret->name = name;
+	ret->Pos = pos;
 	bool is_top_level_template = false;
 	if (tokenizer.CurTok == tok_left_index)
 	{
@@ -923,7 +925,7 @@ std::unique_ptr<ClassAST> ParseClass()
 			else if (tokenizer.CurTok == tok_func)
 			{
 				tokenizer.GetNextToken(); //eat function
-				funcs.push_back(MemberFunctionDef(access, ParseFunction(ret.get())));
+				funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
 				classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 				funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 					funcs.size() - 1));
@@ -939,7 +941,7 @@ std::unique_ptr<ClassAST> ParseClass()
 			break;
 		case tok_func:
 			tokenizer.GetNextToken(); //eat function
-			funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret.get())));
+			funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
 			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
@@ -948,7 +950,7 @@ std::unique_ptr<ClassAST> ParseClass()
 		case tok_declare:
 			tokenizer.GetNextToken(); //eat declare
 			CompileExpect(tok_func, "Expected a function after declare");
-			funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret.get())));
+			funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret)));
 			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
@@ -966,9 +968,14 @@ std::unique_ptr<ClassAST> ParseClass()
 done:
 	if (is_top_level_template)
 		ret->template_param->source = std::move(tokenizer.StopRecording());
+	//return std::move(ret);
+}
+std::unique_ptr<ClassAST> ParseClass()
+{
+	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(string(), SourcePos(0,0,0));
+	ParseClassInPlace(ret.get());
 	return std::move(ret);
 }
-
 void ParsePackageName(vector<string>& ret)
 {
 	CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
