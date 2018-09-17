@@ -827,18 +827,71 @@ namespace Birdee {
 		TemplateParameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
 	};
 
+	struct SourceStringHolder
+	{
+		enum
+		{
+			HOLDER_STRING,
+			HOLDER_STRING_VIEW
+		}type;
+
+		string heldstr;
+		union
+		{
+			struct {
+				uint32_t start;
+				uint32_t len;
+			}view;
+		};
+		void set(string&& str)
+		{
+			type = HOLDER_STRING;
+			heldstr = std::move(str);
+		}
+		void set(const string& prefix, uint32_t start, uint32_t len)
+		{
+			type = HOLDER_STRING_VIEW;
+			heldstr = prefix;
+			view.start = start; view.len = len;
+		}
+		SourceStringHolder()
+		{
+			set(string());
+		}
+		const string& get() const
+		{
+			assert(type == HOLDER_STRING);
+			return heldstr;
+		}
+		string get(const string& orig)
+		{
+			assert(type == HOLDER_STRING_VIEW);
+			return heldstr + orig.substr(view.start,view.len);
+		}
+		bool empty()
+		{
+			return heldstr.empty();
+		}
+	};
 	template<typename T>
 	struct TemplateParameters
 	{
 
 		vector<TemplateParameter> params;
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
-		string source; //no need to copy this field
+		SourceStringHolder source; //no need to copy this field
 		ImportedModule* mod = nullptr;
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
 		T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
+		T* Get(vector<TemplateArgument>& v)
+		{
+			auto f = instances.find(v);
+			if (f == instances.end())
+				return nullptr;
+			return f->second.get();
+		}
 		void AddImpl(vector<TemplateArgument>& v, unique_ptr<T> impl)
 		{
 			assert(instances.find(v) == instances.end());

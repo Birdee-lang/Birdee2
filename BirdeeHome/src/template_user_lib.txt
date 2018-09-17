@@ -1,0 +1,14 @@
+import templates:list
+
+#check if list[int] is linked to list[T]
+class template_user_int
+	public function get() as list[int]
+		return new list[int]
+	end function
+end
+
+class template_user_byte
+	public function get() as list[byte]
+		return new list[byte]
+	end function
+end

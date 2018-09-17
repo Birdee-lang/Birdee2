@@ -1,0 +1,12 @@
+import templates
+import template_user_lib:*
+#check if the instances are linked to the templates? import before/after
+
+
+dim a = (new template_user_byte).get()
+a.push_back(0)
+dim t as templates.list[byte]
+
+#check if list[byte] is correctly exported
+dim b = (new template_user_int).get()
+b.push_back(0)

@@ -22,7 +22,7 @@ using namespace Birdee;
 //fix-me: generate: pre-generate extern for var/class/func
 
 static unordered_map<ClassAST*, int> class_idx_map;
-static json imported_class;
+static vector<json> imported_class;
 static long NextImportedIndex = MAX_CLASS_DEF_COUNT;
 static json* defined_classes=nullptr;
 
@@ -121,6 +121,8 @@ int ConvertClassToIndex(ClassAST* class_ast)
 		}
 		NextImportedIndex++;
 		class_idx_map[class_ast] = current_idx;
+		int out_idx = imported_class.size();
+		imported_class.push_back(json());
 		auto outjson = BuildSingleClassJson(*class_ast, true);
 		BirdeeAssert(class_ast->package_name_idx != -1, "expecting package_name_idx!=-1");
 		if (class_ast->isTemplateInstance())
@@ -132,7 +134,7 @@ int ConvertClassToIndex(ClassAST* class_ast)
 			}
 			outjson["template_arguments"] = args;
 		}
-		imported_class.push_back(std::move(outjson));
+		imported_class[out_idx] = std::move(outjson);
 		return current_idx;
 	}
 }
@@ -266,7 +268,7 @@ json BuildGlobalFuncJson(json& func_template)
 			{
 				BuildAndPushFunctionJson(arr,instance.second.get());
 			}
-			func_template.push_back(itr.second.get().template_param->source);
+			func_template.push_back(itr.second.get().template_param->source.get());
 		}
 		else
 			BuildAndPushFunctionJson(arr,&itr.second.get());
@@ -281,7 +283,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	if (cls.isTemplate())
 	{
 		assert(!cls.template_param->source.empty());
-		json_cls["template"] = cls.template_param->source;
+		json_cls["template"] = cls.template_param->source.get();
 	}
 	else
 	{
@@ -298,8 +300,6 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 		json json_funcs = json::array();
 		for (auto& func : cls.funcs)
 		{
-			if (func.decl->isDeclare)
-				continue;
 			json json_func;
 			auto access = GetAccessModifierName(func.access);
 			json_func["access"] = access;
@@ -314,19 +314,16 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 				}*/
 				//if is empty, then this function template is in a template class, 
 				//find the source code in the template source
-				if (func.decl->template_param->source.empty())
+				auto& source = func.decl->template_param->source;
+				assert(!source.empty());
+				if (source.type==SourceStringHolder::HOLDER_STRING_VIEW)
 				{
 					assert(cls.isTemplateInstance());
-					auto funcmap = cls.template_source_class->funcmap;
-					auto itr = funcmap.find(func.decl->GetName());
-					assert(itr != funcmap.end());
-					auto func_ast = cls.template_source_class->funcs[itr->second].decl.get();
-					assert(func_ast->isTemplate());
-					assert(!func_ast->template_param->source.empty());
-					json_func["template"] = func_ast->template_param->source;
+					auto& srcmap = cls.template_source_class->template_param->source.get(); //get the template class's source
+					json_func["template"] = source.get(srcmap);
 				}
 				else
-					json_func["template"] = func.decl->template_param->source;
+					json_func["template"] = source.get();
 			}
 			else
 			{
@@ -348,7 +345,7 @@ void SeralizeMetadata(std::ostream& out)
 	json outjson;
 	imported_class.clear();
 	class_idx_map.clear();
-	imported_class = json::array();
+	imported_class.clear();
 	NextImportedIndex = MAX_CLASS_DEF_COUNT;
 	outjson["Type"] = "Birdee Module Metadata";
 	outjson["Version"] = META_DATA_VERSION;

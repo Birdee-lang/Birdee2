@@ -191,8 +191,10 @@
     <Text Include="..\BirdeeHome\src\birdee.txt" />
     <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt" />
     <Text Include="..\BirdeeHome\src\templates.txt" />
+    <Text Include="..\BirdeeHome\src\template_user_lib.txt" />
     <Text Include="..\BirdeeHome\src\test.txt" />
     <Text Include="..\BirdeeHome\src\test2.txt" />
+    <Text Include="..\BirdeeHome\src\template_test.txt" />
     <Text Include="llvm.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

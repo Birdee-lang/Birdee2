@@ -172,7 +172,7 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 		auto func = ParseFunction(nullptr);
 		BirdeeAssert(func->template_param.get(), "func->template_param");
 		func->template_param->mod = &mod;
-		func->template_param->source = itr.get<string>();
+		func->template_param->source.set( itr.get<string>());
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
@@ -187,7 +187,7 @@ void BuildTemplateClassFromJson(const json& itr,ClassAST* cls, int module_idx, I
 	ParseClassInPlace(cls);
 	BirdeeAssert(cls->template_param.get(), "cls->template_param");
 	cls->template_param->mod = &mod;
-	cls->template_param->source = itr.get<string>();
+	cls->template_param->source.set( itr.get<string>());
 	SwitchTokenizer(std::move(var));
 	cu.imported_class_templates.push_back(cls);
 	cls->package_name_idx = module_idx;
@@ -283,7 +283,7 @@ void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx
 			funcdef = ParseFunction(ret);
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
 			funcdef->template_param->mod = &mod;
-			funcdef->template_param->source = templ->get<string>();
+			funcdef->template_param->source.set(templ->get<string>());
 			cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
@@ -297,10 +297,13 @@ void BuildSingleClassFromJson(ClassAST* ret,const json& json_cls, int module_idx
 		ret->funcmap[str] = idx;
 		idx++;
 	}
-	auto templ_args = json_cls.find("template_arguments");
-	if (templ_args != json_cls.end())
+	if (ret->template_instance_args == nullptr) //if we have already put the argument, we can skip
 	{
-		ret->template_instance_args = unique_ptr<vector<TemplateArgument>>(BuildTemplateArgsFromJson(*templ_args));
+		auto templ_args = json_cls.find("template_arguments");
+		if (templ_args != json_cls.end())
+		{
+			ret->template_instance_args = unique_ptr<vector<TemplateArgument>>(BuildTemplateArgsFromJson(*templ_args));
+		}
 	}
 }
 
@@ -366,13 +369,25 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 				auto node = cu.imported_packages.Contains(name, idx);
 				if (node)
 				{//if the package is imported
-					auto itr = node->mod->classmap.find(name.substr(idx + 1));
+					BirdeeAssert(templ_idx > idx, "Invalid template instance class name");
+					auto itr = node->mod->classmap.find(name.substr(idx + 1, templ_idx-1-idx));
 					BirdeeAssert(itr != node->mod->classmap.end(), "Module imported, but cannot find the class");
 					auto src = itr->second.get();
 					BirdeeAssert(src->isTemplate(), "The source must be a template");
 					//add to the existing template's instances
-					classdef = src->template_param->GetOrCreate(
-						BuildTemplateArgsFromJson(json_cls["template_arguments"]), src, SourcePos(source_paths.size() - 1, 0, 0));
+					auto pargs = BuildTemplateArgsFromJson(json_cls["template_arguments"]);
+					classdef = src->template_param->Get(*pargs); //find if we have an instance?
+					if (classdef)
+					{ //if have an instance, do nothing
+						delete pargs;
+					}
+					else
+					{ //if no instance, add a placeholder to the instance set
+						auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //placeholder
+						classdef = newclass.get();
+						classdef->template_instance_args = unique_ptr<vector<TemplateArgument>>(pargs);
+						src->template_param->AddImpl(*pargs, std::move(newclass));
+					}
 				}
 				else
 				{//if the template itself is not imported, make it an orphan

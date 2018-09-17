@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="资源文件\template">
+      <UniqueIdentifier>{11403173-2793-41c1-a73e-b3846d1e6ae0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -98,7 +101,13 @@
       <Filter>资源文件</Filter>
     </Text>
     <Text Include="..\BirdeeHome\src\templates.txt">
-      <Filter>资源文件</Filter>
+      <Filter>资源文件\template</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\template_user_lib.txt">
+      <Filter>资源文件\template</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\template_test.txt">
+      <Filter>资源文件\template</Filter>
     </Text>
   </ItemGroup>
 </Project>

@@ -791,7 +791,8 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	auto pos = tokenizer.GetSourcePos();
 	unique_ptr<TemplateParameters<FunctionAST>> template_param;
 	std::string name;
-	bool is_top_level_template = false;
+	int view_pos = 0; //the string view position within the parent template,0 if is top level template
+	bool is_template = false;
 	if (tokenizer.CurTok == tok_identifier)
 	{
 		name = tokenizer.IdentifierStr;
@@ -799,10 +800,14 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	}
 	if (tokenizer.CurTok == tok_left_index)
 	{
+		is_template = true;
 		if (!tokenizer.is_recording)
 		{
-			is_top_level_template = true;
 			tokenizer.StartRecording(string("function ") + name + " [");
+		}
+		else
+		{
+			view_pos=tokenizer.GetTemplateSourcePosition()-1;
 		}
 		tokenizer.GetNextToken();
 		template_param = make_unique<TemplateParameters<FunctionAST>>();
@@ -824,8 +829,17 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	//parse function body
 	ParseBasicBlock(body, tok_func);
 	current_func_proto = nullptr;
-	if (is_top_level_template)
-		template_param->source = std::move(tokenizer.StopRecording());
+	if (is_template)
+	{
+		if (!view_pos)
+			template_param->source.set(tokenizer.StopRecording());
+		else
+		{
+			auto curlen = tokenizer.GetTemplateSourcePosition();
+			assert(curlen > view_pos);
+			template_param->source.set(string("function ") + name + " [", view_pos, curlen - 1 - view_pos);
+		}
+	}
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
@@ -865,13 +879,18 @@ void ParseClassInPlace(ClassAST* ret)
 	//std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
 	ret->name = name;
 	ret->Pos = pos;
-	bool is_top_level_template = false;
+	int view_pos = 0;
+	bool is_template = false;
 	if (tokenizer.CurTok == tok_left_index)
 	{
+		is_template = true;
 		if (!tokenizer.is_recording)
 		{
-			is_top_level_template = true;
 			tokenizer.StartRecording(string("class ") + name + " [");
+		}
+		else
+		{
+			view_pos = tokenizer.GetTemplateSourcePosition()-1;
 		}
 		tokenizer.GetNextToken();
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
@@ -966,8 +985,17 @@ void ParseClassInPlace(ClassAST* ret)
 		}
 	}
 done:
-	if (is_top_level_template)
-		ret->template_param->source = std::move(tokenizer.StopRecording());
+	if (is_template)
+	{
+		if (!view_pos)
+			ret->template_param->source.set(tokenizer.StopRecording());
+		else
+		{
+			auto curlen = tokenizer.GetTemplateSourcePosition();
+			assert(curlen > view_pos);
+			ret->template_param->source.set(string("class ") + name + " [", view_pos, curlen - 1 - view_pos);
+		}
+	}
 	//return std::move(ret);
 }
 std::unique_ptr<ClassAST> ParseClass()

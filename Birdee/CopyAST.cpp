@@ -201,6 +201,8 @@ namespace Birdee
 		}
 		auto ret = make_unique<TemplateParameters<T>>(std::move(newparams));
 		ret->mod = mod;
+		assert(source.type == SourceStringHolder::HOLDER_STRING_VIEW);
+		ret->source.set(source.heldstr,source.view.start, source.view.len);
 		return std::move(ret);
 	}
 

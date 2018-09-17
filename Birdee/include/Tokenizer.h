@@ -178,6 +178,10 @@ namespace Birdee
 			assert(is_recording == false);
 			is_recording = true;
 		}
+		int GetTemplateSourcePosition()
+		{
+			return template_source.size();
+		}
 
 		std::string&& StopRecording()
 		{
