@@ -1,5 +1,5 @@
 #pragma once
-#include <typeinfo.h>
+#include <typeinfo>
 namespace Birdee
 {
 	template<typename Derived, typename Base, typename Del>

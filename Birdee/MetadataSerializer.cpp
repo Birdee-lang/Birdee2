@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 #include <nlohmann/fifo_map.hpp>
 
+#include <iomanip>
 #include "Metadata.h"
 #include <iostream>
 #include <ostream>
