@@ -50,6 +50,7 @@ namespace Birdee
 		tok_break,
 		tok_continue,
 		tok_at,
+		tok_script,
 
 		//type
 		tok_int,

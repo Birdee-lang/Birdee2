@@ -351,6 +351,30 @@ namespace Birdee
 				ParseString();
 				return tok_string_literal;
 			}
+			if (LastChar == '{') {
+				IdentifierStr="";
+				LastChar = GetChar();
+				if(LastChar != '@')
+					throw TokenizerError(line,pos,"Expect \'@\' after \'{\'");
+				LastChar = GetChar();
+				for(;;)
+				{
+					if(LastChar==EOF)
+						throw TokenizerError(line, pos, "Unexpected end of file: expected @}");
+					else if(LastChar=='}' && IdentifierStr.back()=='@')
+					{
+						IdentifierStr.pop_back();
+						LastChar = GetChar();
+						break;
+					}
+					else
+					{
+						IdentifierStr+=(char)LastChar;
+						LastChar = GetChar();
+					}
+				}
+				return tok_script;
+			}
 
 			if (LastChar == '#') {
 				// Comment until end of line.

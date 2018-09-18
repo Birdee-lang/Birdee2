@@ -33,7 +33,7 @@ Birdee Language compiler and runtime. Birdee language aims to help construct rob
 
 ## Building Birdee on Ubuntu
 
-Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14) and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you may need to update your g++ to make it support C++14.
+Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11 and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
 
 Then, install LLVM. You may refer to [LLVM's apt site](https://apt.llvm.org/) for instructions. Here we provide commands for installing LLVM on Ubuntu 14.04. You need first add the following lines to /etc/apt/sources.list:
 
@@ -57,6 +57,11 @@ Then fetch Birdee's source code and download other dependencies:
 ```bash
 git clone https://github.com/Menooker/Birdee2
 cd Birdee2
+mkdir depencency
+cd depencency
+git init
+git remote add -f origin https://github.com/pybind/pybind11
+git checkout origin/master include/pybind11
 mkdir -p dependency/include/nlohmann
 cd dependency/include/nlohmann
 wget https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp
