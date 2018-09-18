@@ -22,7 +22,7 @@
 #include "llvm/IR/Verifier.h"
 
 #include "CompileError.h"
-#include "AST.h"
+#include "BdAST.h"
 #include <cassert>
 #include "CastAST.h"
 

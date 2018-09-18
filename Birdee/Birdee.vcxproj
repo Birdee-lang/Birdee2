@@ -76,7 +76,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\Menooker\lib\llvm-build\include;D:\Menooker\lib\llvm-6.0.0.src\include;$(SolutionDir)dependency\include;$(ProjectDir)include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Menooker\lib\llvm-build\include;D:\Menooker\lib\llvm-6.0.0.src\include;$(SolutionDir)dependency\pyinclude;$(SolutionDir)dependency\include;$(ProjectDir)include;$(IncludePath)</IncludePath>
     <TargetName>birdeec</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -117,8 +117,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>LLVMLTO.lib;LLVMPasses.lib;LLVMObjCARCOpts.lib;LLVMMIRParser.lib;LLVMSymbolize.lib;LLVMDebugInfoPDB.lib;LLVMDebugInfoDWARF.lib;LLVMCoverage.lib;LLVMTableGen.lib;LLVMDlltoolDriver.lib;LLVMOrcJIT.lib;LLVMObjectYAML.lib;LLVMLibDriver.lib;LLVMOption.lib;LLVMWindowsManifest.lib;LLVMFuzzMutate.lib;LLVMX86Disassembler.lib;LLVMX86AsmParser.lib;LLVMX86CodeGen.lib;LLVMGlobalISel.lib;LLVMSelectionDAG.lib;LLVMAsmPrinter.lib;LLVMDebugInfoCodeView.lib;LLVMDebugInfoMSF.lib;LLVMX86Desc.lib;LLVMMCDisassembler.lib;LLVMX86Info.lib;LLVMX86AsmPrinter.lib;LLVMX86Utils.lib;LLVMMCJIT.lib;LLVMLineEditor.lib;LLVMInterpreter.lib;LLVMExecutionEngine.lib;LLVMRuntimeDyld.lib;LLVMCodeGen.lib;LLVMTarget.lib;LLVMCoroutines.lib;LLVMipo.lib;LLVMInstrumentation.lib;LLVMVectorize.lib;LLVMScalarOpts.lib;LLVMLinker.lib;LLVMIRReader.lib;LLVMAsmParser.lib;LLVMInstCombine.lib;LLVMTransformUtils.lib;LLVMBitWriter.lib;LLVMAnalysis.lib;LLVMProfileData.lib;LLVMObject.lib;LLVMMCParser.lib;LLVMMC.lib;LLVMBitReader.lib;LLVMCore.lib;LLVMBinaryFormat.lib;LLVMSupport.lib;LLVMDemangle.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>D:\Menooker\lib\llvm-build\Debug\lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>python3.lib;LLVMLTO.lib;LLVMPasses.lib;LLVMObjCARCOpts.lib;LLVMMIRParser.lib;LLVMSymbolize.lib;LLVMDebugInfoPDB.lib;LLVMDebugInfoDWARF.lib;LLVMCoverage.lib;LLVMTableGen.lib;LLVMDlltoolDriver.lib;LLVMOrcJIT.lib;LLVMObjectYAML.lib;LLVMLibDriver.lib;LLVMOption.lib;LLVMWindowsManifest.lib;LLVMFuzzMutate.lib;LLVMX86Disassembler.lib;LLVMX86AsmParser.lib;LLVMX86CodeGen.lib;LLVMGlobalISel.lib;LLVMSelectionDAG.lib;LLVMAsmPrinter.lib;LLVMDebugInfoCodeView.lib;LLVMDebugInfoMSF.lib;LLVMX86Desc.lib;LLVMMCDisassembler.lib;LLVMX86Info.lib;LLVMX86AsmPrinter.lib;LLVMX86Utils.lib;LLVMMCJIT.lib;LLVMLineEditor.lib;LLVMInterpreter.lib;LLVMExecutionEngine.lib;LLVMRuntimeDyld.lib;LLVMCodeGen.lib;LLVMTarget.lib;LLVMCoroutines.lib;LLVMipo.lib;LLVMInstrumentation.lib;LLVMVectorize.lib;LLVMScalarOpts.lib;LLVMLinker.lib;LLVMIRReader.lib;LLVMAsmParser.lib;LLVMInstCombine.lib;LLVMTransformUtils.lib;LLVMBitWriter.lib;LLVMAnalysis.lib;LLVMProfileData.lib;LLVMObject.lib;LLVMMCParser.lib;LLVMMC.lib;LLVMBitReader.lib;LLVMCore.lib;LLVMBinaryFormat.lib;LLVMSupport.lib;LLVMDemangle.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -159,7 +159,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="include\abort.h" />
-    <ClInclude Include="include\AST.h" />
+    <ClInclude Include="include\BdAST.h" />
     <ClInclude Include="include\CastAST.h" />
     <ClInclude Include="include\CompileError.h" />
     <ClInclude Include="include\Metadata.h" />
@@ -180,6 +180,7 @@
     <ClCompile Include="NumberCast.cpp" />
     <ClCompile Include="Parser.cpp" />
     <ClCompile Include="Preprocessing.cpp" />
+    <ClCompile Include="PythonBinding.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
