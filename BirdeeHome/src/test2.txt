@@ -1,23 +1,10 @@
-import templates
-
-
-#dim lst = new templates.list_node2
-#lst.get_and_add[string]("3.14")
-
-function fuck()
-	templates.get_and_add[float](3.14)
-end
-
-dim lst2 = new templates.list[int]
-
-
-dim a as int
-function get_and_add[T2](v as T2) as T2
-	a=1
-	return v
-end
-
-get_and_add[int](1)
-
-
-
+{@
+cnt=0
+def counter():
+	global cnt
+	cnt+=1
+	return str(cnt)
+@}
+dim a  = {@expr(f"{counter()}")@}
+dim b  = {@expr(f"{counter()}")@}
+dim c  = {@expr(f"\"{counter()}\"")@}

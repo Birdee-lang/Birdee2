@@ -574,6 +574,11 @@ DIType * Birdee::PrototypeAST::GenerateDebugType()
 	return DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(dargs));
 }
 
+Value * Birdee::ScriptAST::Generate()
+{
+	return expr? expr->Generate():nullptr;
+}
+
 void Birdee::ClassAST::PreGenerate()
 {
 	if (isTemplate())

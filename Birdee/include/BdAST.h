@@ -1151,5 +1151,21 @@ namespace Birdee {
 
 	};
 
+	class ScriptAST : public ExprAST
+	{
+	public:
+		unique_ptr<ExprAST> expr;
+		string script;
+		virtual Value* Generate();
+		virtual void Phase1();
+		virtual unique_ptr<StatementAST> Copy();
+		virtual void print(int level) {
+			ExprAST::print(level);
+			std::cout << "script " << script<<"\n";
+		}
+		ScriptAST(const string& str):script(str) {}
+		virtual llvm::Value* GetLValue(bool checkHas) { return expr?expr->GetLValue(checkHas):nullptr; }
+	};
+
 }
 

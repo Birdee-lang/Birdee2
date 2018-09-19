@@ -466,6 +466,10 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	case tok_eof:
 		return nullptr;
 		break;
+	case tok_script:
+		firstexpr = make_unique<ScriptAST>(tokenizer.IdentifierStr);
+		tokenizer.GetNextToken();
+		break;
 	default:
 		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
 		{

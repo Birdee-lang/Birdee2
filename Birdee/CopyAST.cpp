@@ -297,5 +297,12 @@ namespace Birdee
 	{
 		return make_unique<MemberExprAST>(ToExpr(Obj->Copy()),member);
 	}
-
+	unique_ptr<StatementAST> Birdee::ScriptAST::Copy()
+	{
+		auto ret = make_unique<ScriptAST>(script);
+		ret->Pos = Pos;
+		if (expr)
+			ret->expr = ToExpr(expr->Copy());
+		return std::move(ret);
+	}
 }
