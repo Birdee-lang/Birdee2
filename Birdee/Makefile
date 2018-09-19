@@ -1,5 +1,5 @@
 birdeec: Birdee.o CodeGen.o NumberCast.o Preprocessing.o Parser.o MetadataSerializer.o MetadataDeserializer.o CopyAST.o PythonBinding.o
-	$(CXX) -o $(BIN_DIR)/$@ $(CXXFLAGS) -Wl,--start-group $^ -lLLVM-6.0 $(LIBS) -Wl,--end-group
+	$(CXX) -o $(BIN_DIR)/$@ $(CXXFLAGS) -Wl,--start-group $^ -lLLVM-6.0 $(LIBS) $(PYLIBS) -Wl,--end-group
 .PHONY:clean
 clean:
 	# If .o does not exist, don't stop
