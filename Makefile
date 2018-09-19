@@ -10,8 +10,9 @@ INC_DIR=$(PWD_DIR)/Birdee/include
 INC_DIR2=$(PWD_DIR)/dependency/include
 BIN_DIR=$(PWD_DIR)/bin
 
+PYLIBS ?= $(shell python3-config --libs)
 CXX ?= g++
-CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2)
+CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) `python3 -m pybind11 --includes`
 LIBS ?= -pthread
 
 ##

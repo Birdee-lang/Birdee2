@@ -49,6 +49,8 @@ Run the following command:
 wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update
 sudo apt-get install llvm-6.0
+sudo apt-get install python3-dev
+pip3 install pybind11
 sudo ln -s -r /usr/include/llvm-6.0/llvm /usr/include/llvm
 sudo ln -s -r /usr/include/llvm-c-6.0/llvm-c/ /usr/include/llvm-c
 ```
