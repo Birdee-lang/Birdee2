@@ -35,6 +35,10 @@ T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
 }
 
 static FunctionAST* cur_func=nullptr;
+FunctionAST* GetCurrentPreprocessedFunction()
+{
+	return cur_func;
+}
 class ScopeManager
 {
 public:

@@ -272,6 +272,7 @@ namespace Birdee {
 		string symbol_prefix;
 		string homepath;
 		bool is_corelib=false;
+		bool is_print_ir = false;
 		bool expose_main = false;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
@@ -906,8 +907,8 @@ namespace Birdee {
 
 	/// FunctionAST - This class represents a function definition itself.
 	class FunctionAST : public ExprAST {
-		ASTBasicBlock Body;
 	public:
+		ASTBasicBlock Body;
 		unique_ptr<TemplateParameters<FunctionAST>> template_param;
 		bool isDeclare;
 		bool isTemplateInstance = false;

@@ -5,6 +5,24 @@ def counter():
 	cnt+=1
 	return str(cnt)
 @}
+function aaa()
+	dim v as int
+end
+
+function bbb()
+	dim c as int
+end
+
 dim a  = {@expr(f"{counter()}")@}
 dim b  = {@expr(f"{counter()}")@}
 dim c  = {@expr(f"\"{counter()}\"")@}
+
+{@
+top=get_top_level()
+print(type(top))
+for func in top:
+	if isinstance(func,FunctionAST):
+		print(func.proto.prefix+func.proto.name)
+		for substmt in func.body:
+			print("\t"+str(type(substmt)))
+@}

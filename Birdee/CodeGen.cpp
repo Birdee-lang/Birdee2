@@ -514,8 +514,8 @@ void Birdee::CompileUnit::Generate()
 
 	//verifyModule(*module);
 
-
-	module->print(errs(), nullptr);
+	if(cu.is_print_ir)
+		module->print(errs(), nullptr);
 
 	auto Filename = cu.targetpath;
 	std::error_code EC;
