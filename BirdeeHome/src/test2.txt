@@ -23,6 +23,9 @@ print(type(top))
 for func in top:
 	if isinstance(func,FunctionAST):
 		print(func.proto.prefix+func.proto.name)
+		print(func.body[0].pos)
 		for substmt in func.body:
-			print("\t"+str(type(substmt)))
+			print("\t"+str(type(substmt)) +" " + substmt.pos.__str__())
+			print(f"\t{substmt.pos}")
+		
 @}

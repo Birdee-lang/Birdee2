@@ -68,6 +68,64 @@ static vector<std::reference_wrapper<StatementAST>> GetBasicBlock(std::vector<st
 	return ret;
 }
 
+template <class T>
+struct UniquePtrVectorIterator
+{
+	size_t idx;
+	std::vector < std::unique_ptr<T>>* vec;
+
+	UniquePtrVectorIterator(std::vector<std::unique_ptr<T>>* vec, size_t idx) :vec(vec), idx(idx) {}
+
+	UniquePtrVectorIterator(std::vector<std::unique_ptr<T>>* vec) :vec(vec) { idx = vec->size(); }
+
+	UniquePtrVectorIterator& operator =(const UniquePtrVectorIterator& other)
+	{
+		vec = other.vec;
+		idx = other.idx;
+	}
+
+	bool operator ==(const UniquePtrVectorIterator& other) const
+	{
+		return other.vec == vec && other.idx == idx;
+	}
+	bool operator !=(const UniquePtrVectorIterator& other) const
+	{
+		return !(*this==other);
+	}
+	UniquePtrVectorIterator& operator ++()
+	{
+		idx++;
+		return *this;
+	}
+	std::reference_wrapper<T> operator*() const
+	{
+		return *(*vec)[idx].get();
+	}
+};
+
+//"StatementASTList"
+template <class T>
+void RegisiterUniquePtrVector(py::module& m,const char* name)
+{
+	py::class_<std::vector<std::unique_ptr<T>>>(m, name)
+		.def(py::init<>())
+		.def("pop_back", &StatementASTList::pop_back)
+		/* There are multiple versions of push_back(), etc. Select the right ones. */
+		//.def("push_back", (void (StatementASTList::*)(unique_ptr<StatementAST> &&)) &StatementASTList::push_back)
+		//.def("back", (unique_ptr<StatementAST> &(StatementASTList::*)()) &StatementASTList::back)
+		.def("__getitem__", [](const std::vector<std::unique_ptr<T>> &v, int idx) { return std::reference_wrapper<T>(* (v[idx].get())); })
+		//.def("__setitem__", [](const StatementASTList &v, int idx) { return v[idx].get(); })
+		.def("__len__", [](const std::vector<std::unique_ptr<T>> &v) { return v.size(); })
+		.def("__iter__", [](std::vector<std::unique_ptr<T>> &v) {
+		return py::make_iterator(UniquePtrVectorIterator<T>(&v, 0), UniquePtrVectorIterator<T>(&v));
+	}, py::keep_alive<0, 1>());
+
+
+}
+using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
+
+PYBIND11_MAKE_OPAQUE(StatementASTList);
+
 PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	// `m` is a `py::module` which is used to bind functions and classes
 	m.def("expr", CompileExpr);
@@ -77,7 +135,7 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("source_idx", &SourcePos::source_idx)
 		.def_readwrite("line", &SourcePos::line)
 		.def_readwrite("pos", &SourcePos::pos)
-		.def("ToString", &SourcePos::ToString);
+		.def("__str__", &SourcePos::ToString);
 	py::class_<ResolvedType>(m, "ResolvedType")
 		.def("GetString", &ResolvedType::GetString);
 		
@@ -85,6 +143,9 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("pos", &StatementAST::Pos);
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
 		.def_readwrite("resolved_type", &ExprAST::resolved_type);
+
+	RegisiterUniquePtrVector<StatementAST>(m, "StatementASTList");
+
 
 	py::class_<PrototypeAST>(m, "PrototypeAST")
 		.def_property_readonly("prefix", [](const PrototypeAST& ths) {
@@ -97,7 +158,7 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 
 	py::class_<FunctionAST, ExprAST>(m, "FunctionAST")
 		.def_property_readonly("body", [](FunctionAST& ths) {
-			return GetBasicBlock(ths.Body.body);
+			return &(ths.Body.body);
 		})
 		.def_property_readonly("proto", [](FunctionAST& ths) {
 			return std::reference_wrapper<PrototypeAST>(*ths.Proto.get());
