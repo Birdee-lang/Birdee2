@@ -5,6 +5,7 @@
 #include "CompileError.h"
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
+#include <sstream>
 
 namespace py = pybind11;
 
@@ -103,6 +104,37 @@ struct UniquePtrVectorIterator
 	}
 };
 
+
+static py::object GetNumberLiteral(NumberExprAST& ths)
+{
+	switch (ths.Val.type)
+	{
+	case tok_byte:
+		return py::int_(ths.Val.v_int);
+		break;
+	case tok_int:
+		return py::int_(ths.Val.v_int);
+		break;
+	case tok_long:
+		return py::int_(ths.Val.v_long);
+		break;
+	case tok_uint:
+		return py::int_(ths.Val.v_uint);
+		break;
+	case tok_ulong:
+		return py::int_(ths.Val.v_ulong);
+		break;
+	case tok_float:
+		return py::float_(ths.Val.v_double);
+		break;
+	case tok_double:
+		return py::float_(ths.Val.v_double);
+		break;
+	}
+	abort();
+	return py::int_(0);
+}
+
 //"StatementASTList"
 template <class T>
 void RegisiterUniquePtrVector(py::module& m,const char* name)
@@ -131,6 +163,22 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	m.def("expr", CompileExpr);
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
 	m.def("get_top_level", []() {return GetBasicBlock(cu.toplevel); });
+
+	py::enum_<Token>(m, "BasicType")
+		.value("class_", tok_class)
+		.value("null_", tok_null)
+		.value("func", tok_func)
+		.value("void", tok_void)
+		.value("byte", tok_byte)
+		.value("int_", tok_int)
+		.value("long", tok_long)
+		.value("ulong", tok_ulong)
+		.value("uint", tok_uint)
+		.value("float_", tok_float)
+		.value("double", tok_double)
+		.value("boolean", tok_boolean)
+		.value("pointer", tok_pointer);
+
 	py::class_<SourcePos>(m, "SourcePos")
 		.def_readwrite("source_idx", &SourcePos::source_idx)
 		.def_readwrite("line", &SourcePos::line)
@@ -141,6 +189,7 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos);
+		//.def("run", [](StatementAST&) {});
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
 		.def_readwrite("resolved_type", &ExprAST::resolved_type);
 
@@ -167,9 +216,37 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("is_template_instance", &FunctionAST::isTemplateInstance)
 		.def_readwrite("is_imported", &FunctionAST::isImported)
 		.def_readwrite("link_name", &FunctionAST::link_name);
-	
-	//unique_ptr<TemplateParameters<FunctionAST>> template_param;
+		//unique_ptr<TemplateParameters<FunctionAST>> template_param;
 	//std::unique_ptr<PrototypeAST> Proto;
 
+	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
+		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
+	py::class_<NumberExprAST, ResolvedIdentifierExprAST>(m,"NumberExprAST")
+		.def("__str__", [](NumberExprAST& ths) {
+			std::stringstream buf;
+			ths.ToString(buf);
+			return buf.str();
+		})
+		.def_property("value", GetNumberLiteral, [](NumberExprAST& ths,py::object& obj) {
+			if (py::isinstance<py::int_>(obj))
+			{
+				ths.Val.v_long = obj.cast<uint64_t>();
+			}
+			else if (py::isinstance<py::float_>(obj))
+			{
+				ths.Val.v_double = obj.cast<double>();
+			}
+			else
+			{
+				abort();
+			}
+		})
+		.def_property("type", [](NumberExprAST& ths) {return ths.Val.type; },[](NumberExprAST& ths, Token tok) {ths.Val.type = tok; });
+
+	//BasicTypeExprAST
+	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
+		.def_property_readonly("expr", [](ReturnAST& ths) {return std::reference_wrapper<ExprAST>(*ths.Val); });
+	py::class_<StringLiteralAST, ResolvedIdentifierExprAST>(m, "StringLiteralAST")
+		.def_readwrite("value",&StringLiteralAST::Val);
 
 }

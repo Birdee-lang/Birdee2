@@ -9,6 +9,9 @@ function aaa()
 	dim v as int
 end
 
+1234
+1.234f
+
 function bbb()
 	dim c as int
 end
@@ -27,5 +30,11 @@ for func in top:
 		for substmt in func.body:
 			print("\t"+str(type(substmt)) +" " + substmt.pos.__str__())
 			print(f"\t{substmt.pos}")
+	if isinstance(func,NumberExprAST):
+		print(func.value)
+		if func.type==BasicType.int_:
+			func.value=431
+		if func.type==BasicType.float_:
+			func.value=4.31
 		
 @}

@@ -368,8 +368,8 @@ namespace Birdee {
 
 	class PrototypeAST;
 	class ReturnAST : public StatementAST {
-		std::unique_ptr<ExprAST> Val;
 	public:
+		std::unique_ptr<ExprAST> Val;
 		Value* Generate();
 		virtual void Phase1();
 		ReturnAST(std::unique_ptr<ExprAST>&& val, SourcePos pos) : Val(std::move(val)){ Pos = pos; };
