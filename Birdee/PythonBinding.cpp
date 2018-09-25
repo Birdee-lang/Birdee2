@@ -135,13 +135,15 @@ static py::object GetNumberLiteral(NumberExprAST& ths)
 	return py::int_(0);
 }
 
+
+using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
 //"StatementASTList"
 template <class T>
 void RegisiterUniquePtrVector(py::module& m,const char* name)
 {
 	py::class_<std::vector<std::unique_ptr<T>>>(m, name)
 		.def(py::init<>())
-		.def("pop_back", &StatementASTList::pop_back)
+		.def("pop_back", &std::vector<std::unique_ptr<T>>::pop_back)
 		/* There are multiple versions of push_back(), etc. Select the right ones. */
 		//.def("push_back", (void (StatementASTList::*)(unique_ptr<StatementAST> &&)) &StatementASTList::push_back)
 		//.def("back", (unique_ptr<StatementAST> &(StatementASTList::*)()) &StatementASTList::back)
@@ -154,7 +156,6 @@ void RegisiterUniquePtrVector(py::module& m,const char* name)
 
 
 }
-using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
 
 PYBIND11_MAKE_OPAQUE(StatementASTList);
 
