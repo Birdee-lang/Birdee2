@@ -458,10 +458,10 @@ namespace Birdee {
 
 	/// IfBlockAST - Expression class for If block.
 	class IfBlockAST : public StatementAST {
+	public:
 		std::unique_ptr<ExprAST> cond;
 		ASTBasicBlock iftrue;
 		ASTBasicBlock iffalse;
-	public:
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
@@ -484,14 +484,14 @@ namespace Birdee {
 	};
 	/// ForBlockAST - Expression class for For block.
 	class ForBlockAST : public StatementAST {
-		std::unique_ptr<StatementAST> init;
-		ExprAST* loop_var;
-		std::unique_ptr<ExprAST> till;
-		bool including;
-		bool isdim;
+	public:
+		std::unique_ptr<StatementAST> init; //the code that initialize the loop variable
+		ExprAST* loop_var; //the variable definition, if isdim, this member has no meaning
+		std::unique_ptr<ExprAST> till; //the end of the loop
+		bool including; //if inclusive --- "to" or "till"
+		bool isdim; //if isdim, "init" will be a VariableSingleDefAST, and loop_var is meaningless.
 		ASTBasicBlock block;
 		std::unique_ptr<StatementAST> Copy();
-	public:
 		void Phase1();
 		llvm::Value* Generate();
 		ForBlockAST(std::unique_ptr<StatementAST>&& init, std::unique_ptr<ExprAST>&& till,

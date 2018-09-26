@@ -154,6 +154,19 @@ void RegisiterUniquePtrVector(py::module& m,const char* name)
 
 
 }
+
+template <class T>
+std::reference_wrapper<T> GetRef(std::unique_ptr<T>& v)
+{
+	return std::reference_wrapper<T>(*v.get());
+}
+
+template <class T>
+std::reference_wrapper<T> GetRef(T* v)
+{
+	return std::reference_wrapper<T>(*v);
+}
+
 using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
 
 PYBIND11_MAKE_OPAQUE(StatementASTList);
@@ -191,7 +204,8 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("pos", &StatementAST::Pos);
 		//.def("run", [](StatementAST&) {});
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
-		.def_readwrite("resolved_type", &ExprAST::resolved_type);
+		.def_readwrite("resolved_type", &ExprAST::resolved_type)
+		.def("is_lvalue", [](ExprAST& ths)->bool {return (bool)ths.GetLValue(true); });
 
 	RegisiterUniquePtrVector<StatementAST>(m, "StatementASTList");
 
@@ -245,8 +259,39 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 
 	//BasicTypeExprAST
 	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
-		.def_property_readonly("expr", [](ReturnAST& ths) {return std::reference_wrapper<ExprAST>(*ths.Val); });
+		.def_property_readonly("expr", [](ReturnAST& ths) {return GetRef(ths.Val); });
 	py::class_<StringLiteralAST, ResolvedIdentifierExprAST>(m, "StringLiteralAST")
 		.def_readwrite("value",&StringLiteralAST::Val);
+	py::class_< IdentifierExprAST, ExprAST>(m, "IdentifierExprAST")
+		.def_readwrite("name", &IdentifierExprAST::Name)
+		.def_property_readonly("impl", [](IdentifierExprAST& ths) {return GetRef(ths.impl); });
+	py::class_< ResolvedFuncExprAST, ResolvedIdentifierExprAST>(m, "ResolvedFuncExprAST")
+		.def_property_readonly("def", [](ResolvedFuncExprAST& ths) {return GetRef(ths.def); });
+	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST");
+	py::class_< BoolLiteralExprAST, ExprAST>(m, "BoolLiteralExprAST");
+	py::class_< IfBlockAST, StatementAST>(m,"IFBlockAST")
+		.def_property_readonly("cond", [](IfBlockAST& ths) {return GetRef(ths.cond); })
+		.def_property_readonly("if_true", [](IfBlockAST& ths) {return &ths.iftrue.body; })
+		.def_property_readonly("if_false", [](IfBlockAST& ths) {return &ths.iffalse.body; });
+	py::class_< ForBlockAST, StatementAST>(m, "ForBlockAST")
+		.def_property_readonly("init_value", [](ForBlockAST& ths) {return GetRef(ths.init); })
+		.def_property_readonly("loop_var", [](ForBlockAST& ths) {return GetRef(ths.loop_var); })
+		.def_property_readonly("till", [](ForBlockAST& ths) {return GetRef(ths.till); })
+		.def_readwrite("inclusive", &ForBlockAST::including)
+		.def_readwrite("is_dim", &ForBlockAST::isdim)
+		.def_property_readonly("block", [](ForBlockAST& ths) {return &ths.block.body; });
+
+	enum LoopControlType
+	{
+		BREAK = tok_break,
+		CONTINUE = tok_continue
+	};
+	py::enum_<LoopControlType>(m, "LoopControlType")
+		.value("BREAK", LoopControlType::BREAK)
+		.value("CONTINUE", LoopControlType::CONTINUE);
+	py::class_< LoopControlAST, StatementAST>(m, "LoopControlAST")
+		.def_readwrite("type",(LoopControlType LoopControlAST::*)&LoopControlAST::tok);
+
+
 
 }
