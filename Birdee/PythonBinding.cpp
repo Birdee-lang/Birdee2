@@ -156,7 +156,17 @@ void RegisiterUniquePtrVector(py::module& m,const char* name)
 
 
 }
-using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
+template <class T>
+std::reference_wrapper<T> GetRef(std::unique_ptr<T>& v)
+{
+	return std::reference_wrapper<T>(*v.get());
+}
+
+template <class T>
+std::reference_wrapper<T> GetRef(T* v)
+{
+	return std::reference_wrapper<T>(*v);
+}
 
 PYBIND11_MAKE_OPAQUE(StatementASTList);
 
