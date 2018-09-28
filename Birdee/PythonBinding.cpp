@@ -60,15 +60,10 @@ void Birdee::ScriptAST::Phase1()
 	}
 }
 
-static vector<std::reference_wrapper<StatementAST>> GetBasicBlock(std::vector<std::unique_ptr<StatementAST>>& ths) {
-	vector<std::reference_wrapper<StatementAST>> ret;
-	for (auto& v : ths)
-	{
-		ret.push_back(*v.get());
-	}
-	return ret;
-}
-
+ 
+//T can be clazz*/clazz/unique_ptr<clazz>
+//"type" is the referenced type
+//ToRef returns the "reference" to clazz
 template<class T>
 struct RefConverter
 {
@@ -101,10 +96,18 @@ struct RefConverter<std::unique_ptr<T>>
 	}
 };
 
+
+//Converts some object reference/pointer/unique_ptr into reference_wrapper
 template <class T>
-auto GetRef(T v)
+auto GetRef(T& v)
 {
-	return std::reference_wrapper<RefConverter<T>::type>(RefConverter<T>::ToRef(v));
+	return std::reference_wrapper<T>(v);
+}
+
+template <class T>
+auto GetRef(T* v)
+{
+	return std::reference_wrapper<T>(*v);
 }
 
 template <class T>
@@ -113,32 +116,35 @@ auto GetRef(std::unique_ptr<T>& v)
 	return std::reference_wrapper<T>(*v);
 }
 
+//the iterator class for std::vector binding for python. 
+//T can be clazz*/clazz/unique_ptr<clazz>
+//will return reference_wrapper<clazz> for each access
 template <class T>
-struct UniquePtrVectorIterator
+struct VectorIterator
 {
 	size_t idx;
 	std::vector <T>* vec;
 	using type = typename RefConverter<T>::type;
 
-	UniquePtrVectorIterator(std::vector<T>* vec, size_t idx) :vec(vec), idx(idx) {}
+	VectorIterator(std::vector<T>* vec, size_t idx) :vec(vec), idx(idx) {}
 
-	UniquePtrVectorIterator(std::vector<T>* vec) :vec(vec) { idx = vec->size(); }
+	VectorIterator(std::vector<T>* vec) :vec(vec) { idx = vec->size(); }
 
-	UniquePtrVectorIterator& operator =(const UniquePtrVectorIterator& other)
+	VectorIterator& operator =(const VectorIterator& other)
 	{
 		vec = other.vec;
 		idx = other.idx;
 	}
 
-	bool operator ==(const UniquePtrVectorIterator& other) const
+	bool operator ==(const VectorIterator& other) const
 	{
 		return other.vec == vec && other.idx == idx;
 	}
-	bool operator !=(const UniquePtrVectorIterator& other) const
+	bool operator !=(const VectorIterator& other) const
 	{
 		return !(*this==other);
 	}
-	UniquePtrVectorIterator& operator ++()
+	VectorIterator& operator ++()
 	{
 		idx++;
 		return *this;
@@ -186,18 +192,20 @@ static py::object GetNumberLiteral(NumberExprAST& ths)
 
 
 using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
-//"StatementASTList"
+
+//registers the vector type & iterator
+//T can be clazz*/clazz/unique_ptr<clazz>
 template <class T>
-void RegisiterUniquePtrVector(py::module& m,const char* name)
+void RegisiterObjectVector(py::module& m,const char* name)
 {
 	py::class_<std::vector<T>>(m, name)
 		.def(py::init<>())
 		.def("pop_back", &std::vector<T>::pop_back)
-		.def("__getitem__", [](std::vector<T> &v, int idx) { return UniquePtrVectorIterator<T>::access(v,idx); })
+		.def("__getitem__", [](std::vector<T> &v, int idx) { return VectorIterator<T>::access(v,idx); })
 		//.def("__setitem__", [](const StatementASTList &v, int idx) { return v[idx].get(); })
 		.def("__len__", [](const std::vector<T> &v) { return v.size(); })
 		.def("__iter__", [](std::vector<T> &v) {
-			return py::make_iterator(UniquePtrVectorIterator<T>(&v, 0), UniquePtrVectorIterator<T>(&v));
+			return py::make_iterator(VectorIterator<T>(&v, 0), VectorIterator<T>(&v));
 		}, py::keep_alive<0, 1>());
 
 
@@ -208,9 +216,12 @@ PYBIND11_MAKE_OPAQUE(StatementASTList);
 
 PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	// `m` is a `py::module` which is used to bind functions and classes
+
+	RegisiterObjectVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
+
 	m.def("expr", CompileExpr);
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
-	m.def("get_top_level", []() {return GetBasicBlock(cu.toplevel); });
+	m.def("get_top_level", []() {return GetRef(cu.toplevel); });
 
 	py::enum_<Token>(m, "BasicType")
 		.value("class_", tok_class)
@@ -241,8 +252,6 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
 		.def_readwrite("resolved_type", &ExprAST::resolved_type)
 		.def("is_lvalue", [](ExprAST& ths)->bool {return (bool)ths.GetLValue(true); });
-
-	RegisiterUniquePtrVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
 
 
 	py::class_<PrototypeAST>(m, "PrototypeAST")
@@ -330,5 +339,15 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_property_readonly("func", [](BinaryExprAST& ths) {return GetRef(ths.func); })
 		.def_property_readonly("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); })
 		.def_property_readonly("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); });
+
+	auto templ_arg_cls = py::class_< TemplateArgument>(m, "TemplateArgument");
+	py::enum_ < TemplateArgument::TemplateArgumentType>(templ_arg_cls, "TemplateArgumentType")
+		.value("TEMPLATE_ARG_TYPE", TemplateArgument::TemplateArgumentType::TEMPLATE_ARG_TYPE)
+		.value("TEMPLATE_ARG_EXPR", TemplateArgument::TemplateArgumentType::TEMPLATE_ARG_EXPR);
+	templ_arg_cls
+		.def_readwrite("kind", &TemplateArgument::kind)
+		.def_readwrite("resolved_type", &TemplateArgument::type)
+		.def_property_readonly("expr", [](TemplateArgument& ths) {return GetRef(ths.expr); });
+
 
 }

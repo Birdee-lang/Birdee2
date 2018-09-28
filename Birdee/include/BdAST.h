@@ -575,7 +575,7 @@ namespace Birdee {
 	};
 	struct TemplateArgument
 	{
-		enum {
+		enum TemplateArgumentType {
 			TEMPLATE_ARG_TYPE,
 			TEMPLATE_ARG_EXPR
 		}kind;
