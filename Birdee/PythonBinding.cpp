@@ -69,15 +69,60 @@ static vector<std::reference_wrapper<StatementAST>> GetBasicBlock(std::vector<st
 	return ret;
 }
 
+template<class T>
+struct RefConverter
+{
+	using type = T;
+	static T& ToRef(T& v)
+	{
+		return v;
+	}
+
+};
+
+template<class T>
+struct RefConverter<T*>
+{
+	using type = T;
+	static T& ToRef(T* v)
+	{
+		return *v;
+	}
+};
+
+
+template<class T>
+struct RefConverter<std::unique_ptr<T>>
+{
+	using type = T;
+	static T& ToRef(std::unique_ptr<T>& v)
+	{
+		return *v.get();
+	}
+};
+
+template <class T>
+auto GetRef(T v)
+{
+	return std::reference_wrapper<RefConverter<T>::type>(RefConverter<T>::ToRef(v));
+}
+
+template <class T>
+auto GetRef(std::unique_ptr<T>& v)
+{
+	return std::reference_wrapper<T>(*v);
+}
+
 template <class T>
 struct UniquePtrVectorIterator
 {
 	size_t idx;
-	std::vector < std::unique_ptr<T>>* vec;
+	std::vector <T>* vec;
+	using type = typename RefConverter<T>::type;
 
-	UniquePtrVectorIterator(std::vector<std::unique_ptr<T>>* vec, size_t idx) :vec(vec), idx(idx) {}
+	UniquePtrVectorIterator(std::vector<T>* vec, size_t idx) :vec(vec), idx(idx) {}
 
-	UniquePtrVectorIterator(std::vector<std::unique_ptr<T>>* vec) :vec(vec) { idx = vec->size(); }
+	UniquePtrVectorIterator(std::vector<T>* vec) :vec(vec) { idx = vec->size(); }
 
 	UniquePtrVectorIterator& operator =(const UniquePtrVectorIterator& other)
 	{
@@ -98,9 +143,13 @@ struct UniquePtrVectorIterator
 		idx++;
 		return *this;
 	}
-	std::reference_wrapper<T> operator*() const
+	static std::reference_wrapper<type> access(std::vector<T>& arr, int accidx)
 	{
-		return *(*vec)[idx].get();
+		return RefConverter<T>::ToRef(arr[accidx]);
+	}
+	std::reference_wrapper<type> operator*() const
+	{
+		return access(*vec,idx);
 	}
 };
 
@@ -141,32 +190,19 @@ using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
 template <class T>
 void RegisiterUniquePtrVector(py::module& m,const char* name)
 {
-	py::class_<std::vector<std::unique_ptr<T>>>(m, name)
+	py::class_<std::vector<T>>(m, name)
 		.def(py::init<>())
-		.def("pop_back", &std::vector<std::unique_ptr<T>>::pop_back)
-		/* There are multiple versions of push_back(), etc. Select the right ones. */
-		//.def("push_back", (void (StatementASTList::*)(unique_ptr<StatementAST> &&)) &StatementASTList::push_back)
-		//.def("back", (unique_ptr<StatementAST> &(StatementASTList::*)()) &StatementASTList::back)
-		.def("__getitem__", [](const std::vector<std::unique_ptr<T>> &v, int idx) { return std::reference_wrapper<T>(* (v[idx].get())); })
+		.def("pop_back", &std::vector<T>::pop_back)
+		.def("__getitem__", [](std::vector<T> &v, int idx) { return UniquePtrVectorIterator<T>::access(v,idx); })
 		//.def("__setitem__", [](const StatementASTList &v, int idx) { return v[idx].get(); })
-		.def("__len__", [](const std::vector<std::unique_ptr<T>> &v) { return v.size(); })
-		.def("__iter__", [](std::vector<std::unique_ptr<T>> &v) {
-		return py::make_iterator(UniquePtrVectorIterator<T>(&v, 0), UniquePtrVectorIterator<T>(&v));
-	}, py::keep_alive<0, 1>());
+		.def("__len__", [](const std::vector<T> &v) { return v.size(); })
+		.def("__iter__", [](std::vector<T> &v) {
+			return py::make_iterator(UniquePtrVectorIterator<T>(&v, 0), UniquePtrVectorIterator<T>(&v));
+		}, py::keep_alive<0, 1>());
 
 
 }
-template <class T>
-std::reference_wrapper<T> GetRef(std::unique_ptr<T>& v)
-{
-	return std::reference_wrapper<T>(*v.get());
-}
 
-template <class T>
-std::reference_wrapper<T> GetRef(T* v)
-{
-	return std::reference_wrapper<T>(*v);
-}
 
 PYBIND11_MAKE_OPAQUE(StatementASTList);
 
@@ -206,7 +242,7 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("resolved_type", &ExprAST::resolved_type)
 		.def("is_lvalue", [](ExprAST& ths)->bool {return (bool)ths.GetLValue(true); });
 
-	RegisiterUniquePtrVector<StatementAST>(m, "StatementASTList");
+	RegisiterUniquePtrVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
 
 
 	py::class_<PrototypeAST>(m, "PrototypeAST")
@@ -290,7 +326,9 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.value("CONTINUE", LoopControlType::CONTINUE);
 	py::class_< LoopControlAST, StatementAST>(m, "LoopControlAST")
 		.def_readwrite("type",(LoopControlType LoopControlAST::*)&LoopControlAST::tok);
-
-
+	py::class_< BinaryExprAST, ExprAST>(m, "BinaryExprAST")
+		.def_property_readonly("func", [](BinaryExprAST& ths) {return GetRef(ths.func); })
+		.def_property_readonly("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); })
+		.def_property_readonly("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); });
 
 }
