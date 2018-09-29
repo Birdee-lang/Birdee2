@@ -399,6 +399,6 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type);
 
 	py::class_< LocalVarExprAST, ResolvedIdentifierExprAST>(m, "LocalVarExprAST")
-		.def_property_readonly("def", [](LocalVarExprAST& ths) {return GetRef(ths.def); });
+		.def_property_readonly("vardef", [](LocalVarExprAST& ths) {return GetRef(ths.def); });
 
 }

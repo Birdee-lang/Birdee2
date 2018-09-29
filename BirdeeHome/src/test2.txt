@@ -4,9 +4,26 @@ def counter():
 	global cnt
 	cnt+=1
 	return str(cnt)
+def init_safety_check(func):
+	vars=set()
+	for stmt in func.body:
+		if isinstance(stmt,VariableSingleDefAST):
+			if not stmt.value:
+				vars.add(stmt)
+		elif isinstance(stmt,BinaryExprAST):
+			if stmt.op==BinaryOp.BIN_ASSIGN and isinstance(stmt.lhs,IdentifierExprAST) and isinstance(stmt.lhs.impl,LocalVarExprAST):
+				var=stmt.lhs.impl.vardef
+				print(var)
+				if var in vars:
+					vars.remove(var)
+	print(vars)
+	for v in vars:
+		print("Variable not intialized: ", v.name, "at", v.pos)
 @}
 function aaa()
 	dim v as int
+	dim g as int
+	g=2
 end
 
 1234
@@ -30,6 +47,7 @@ for func in top:
 		for substmt in func.body:
 			print("\t"+str(type(substmt)) +" " + substmt.pos.__str__())
 			print(f"\t{substmt.pos}")
+		init_safety_check(func)
 	if isinstance(func,NumberExprAST):
 		print(func.value)
 		if func.type==BasicType.int_:
