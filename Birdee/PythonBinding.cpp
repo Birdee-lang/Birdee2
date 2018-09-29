@@ -6,6 +6,7 @@
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
 #include <sstream>
+#include "OpEnums.h"
 
 namespace py = pybind11;
 
@@ -151,7 +152,7 @@ struct VectorIterator
 	}
 	static std::reference_wrapper<type> access(std::vector<T>& arr, int accidx)
 	{
-		return RefConverter<T>::ToRef(arr[accidx]);
+		return GetRef(arr[accidx]);
 	}
 	std::reference_wrapper<type> operator*() const
 	{
@@ -192,6 +193,10 @@ static py::object GetNumberLiteral(NumberExprAST& ths)
 
 
 using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
+PYBIND11_MAKE_OPAQUE(StatementASTList);
+PYBIND11_MAKE_OPAQUE(std::vector<TemplateArgument>);
+PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<ExprAST>>);
+PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<VariableSingleDefAST>>);
 
 //registers the vector type & iterator
 //T can be clazz*/clazz/unique_ptr<clazz>
@@ -212,12 +217,14 @@ void RegisiterObjectVector(py::module& m,const char* name)
 }
 
 
-PYBIND11_MAKE_OPAQUE(StatementASTList);
 
 PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	// `m` is a `py::module` which is used to bind functions and classes
 
 	RegisiterObjectVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
+	RegisiterObjectVector<std::unique_ptr<ExprAST>>(m, "ExprASTList");
+	RegisiterObjectVector<TemplateArgument>(m, "TemplateArgumentList");
+	RegisiterObjectVector< std::unique_ptr<VariableSingleDefAST>>(m, "VariableSingleDefASTList");
 
 	m.def("expr", CompileExpr);
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
@@ -259,7 +266,8 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 			return ths.prefix_idx==-1 ? cu.symbol_prefix : cu.imported_module_names[ths.prefix_idx];
 		})
 		.def_readwrite("name", &PrototypeAST::Name)
-		.def_readwrite("return_type", &PrototypeAST::resolved_type);
+		.def_readwrite("return_type", &PrototypeAST::resolved_type)
+		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); });
 	//ClassAST * cls;
 	//vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 
@@ -325,20 +333,38 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("is_dim", &ForBlockAST::isdim)
 		.def_property_readonly("block", [](ForBlockAST& ths) {return &ths.block.body; });
 
-	enum LoopControlType
-	{
-		BREAK = tok_break,
-		CONTINUE = tok_continue
-	};
 	py::enum_<LoopControlType>(m, "LoopControlType")
 		.value("BREAK", LoopControlType::BREAK)
 		.value("CONTINUE", LoopControlType::CONTINUE);
 	py::class_< LoopControlAST, StatementAST>(m, "LoopControlAST")
 		.def_readwrite("type",(LoopControlType LoopControlAST::*)&LoopControlAST::tok);
+
+#define SET_VALUE(A) value(#A,BinaryOp::A)
+	py::enum_ < BinaryOp>(m, "BinaryOp")
+		.SET_VALUE(BIN_MUL)
+		.SET_VALUE(BIN_DIV)
+		.SET_VALUE(BIN_MOD)
+		.SET_VALUE(BIN_ADD)
+		.SET_VALUE(BIN_MINUS)
+		.SET_VALUE(BIN_LT)
+		.SET_VALUE(BIN_GT)
+		.SET_VALUE(BIN_LE)
+		.SET_VALUE(BIN_GE)
+		.SET_VALUE(BIN_EQ)
+		.SET_VALUE(BIN_NE)
+		.SET_VALUE(BIN_CMP_EQ)
+		.SET_VALUE(BIN_AND)
+		.SET_VALUE(BIN_XOR)
+		.SET_VALUE(BIN_OR)
+		.SET_VALUE(BIN_LOGIC_AND)
+		.SET_VALUE(BIN_LOGIC_OR)
+		.SET_VALUE(BIN_ASSIGN);
+#undef SET_VALUE
 	py::class_< BinaryExprAST, ExprAST>(m, "BinaryExprAST")
 		.def_property_readonly("func", [](BinaryExprAST& ths) {return GetRef(ths.func); })
 		.def_property_readonly("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); })
-		.def_property_readonly("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); });
+		.def_property_readonly("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); })
+		.def_readwrite("op", (BinaryOp BinaryExprAST::*)&BinaryExprAST::Op);
 
 	auto templ_arg_cls = py::class_< TemplateArgument>(m, "TemplateArgument");
 	py::enum_ < TemplateArgument::TemplateArgumentType>(templ_arg_cls, "TemplateArgumentType")
@@ -348,6 +374,31 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("kind", &TemplateArgument::kind)
 		.def_readwrite("resolved_type", &TemplateArgument::type)
 		.def_property_readonly("expr", [](TemplateArgument& ths) {return GetRef(ths.expr); });
+	
+	py::class_< FunctionTemplateInstanceExprAST, ExprAST>(m, "FunctionTemplateInstanceExprAST")
+		.def_property_readonly("template_args", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.template_args); })
+		.def_property_readonly("expr", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.expr); });
 
+	py::class_< IndexExprAST, ExprAST>(m, "IndexExprAST")
+		.def_property_readonly("expr", [](IndexExprAST& ths) {return GetRef(ths.Expr); })
+		.def_property_readonly("index", [](IndexExprAST& ths) {return GetRef(ths.Index); })
+		.def_property_readonly("template_inst", [](IndexExprAST& ths) {return GetRef(ths.instance); })
+		.def("is_template_instance",&IndexExprAST::isTemplateInstance);
+
+	py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
+		.def_property_readonly("expr", [](AddressOfExprAST& ths) {return GetRef(ths.expr); })
+		.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of);
+
+	py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
+		.def_property_readonly("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); })
+		.def_property_readonly("args", [](CallExprAST& ths) {return GetRef(ths.Args); });
+
+	py::class_< VariableSingleDefAST, StatementAST>(m, "VariableSingleDefAST")
+		.def_readwrite("name", &VariableSingleDefAST::name)
+		.def_property_readonly("value", [](VariableSingleDefAST& ths) {return GetRef(ths.val); })
+		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type);
+
+	py::class_< LocalVarExprAST, ResolvedIdentifierExprAST>(m, "LocalVarExprAST")
+		.def_property_readonly("def", [](LocalVarExprAST& ths) {return GetRef(ths.def); });
 
 }

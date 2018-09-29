@@ -586,8 +586,8 @@ namespace Birdee {
 		TemplateArgument Copy() const;
 		TemplateArgument(ResolvedType type) :kind(TEMPLATE_ARG_TYPE),type(type), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
-		//TemplateArgument(TemplateArgument&& other): kind(other.kind), type(type), expr(std::move(other.expr)) {  };
-		//TemplateArgument& operator = (TemplateArgument&&) = default;
+		TemplateArgument(TemplateArgument&& other) :kind(other.kind), expr(std::move(other.expr)), type(other.type) {}
+		TemplateArgument& operator = (TemplateArgument&&) = default;
 		bool operator < (const TemplateArgument&) const;
 	};
 
@@ -614,9 +614,9 @@ namespace Birdee {
 		}
 	};
 	class AddressOfExprAST : public ExprAST {
-		std::unique_ptr<ExprAST> expr;
-		bool is_address_of;
 	public:
+		std::unique_ptr<ExprAST> expr;
+		bool is_address_of; //true for addressof, false for pointerof
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
@@ -633,10 +633,9 @@ namespace Birdee {
 	};
 	/// CallExprAST - Expression class for function calls.
 	class CallExprAST : public ExprAST {
+	public:
 		std::unique_ptr<ExprAST> Callee;
 		std::vector<std::unique_ptr<ExprAST>> Args;
-
-	public:
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
@@ -669,11 +668,9 @@ namespace Birdee {
 
 
 	class VariableSingleDefAST : public VariableDefAST {
-
 		std::unique_ptr<Type> type;
-		std::unique_ptr<ExprAST> val;
-		
 	public:
+		std::unique_ptr<ExprAST> val;
 		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
 		llvm::Value* Generate();
@@ -742,8 +739,8 @@ namespace Birdee {
 	};
 
 	class LocalVarExprAST : public ResolvedIdentifierExprAST {
-		VariableSingleDefAST* def;
 	public:
+		VariableSingleDefAST* def;
 		std::unique_ptr<StatementAST> Copy();
 		bool isMutable() { return true; }
 		LocalVarExprAST(VariableSingleDefAST* def, SourcePos pos) :def(def) { Pos = pos; Phase1(); }

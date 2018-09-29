@@ -54,6 +54,9 @@
     <ClInclude Include="include\BdAST.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\OpEnums.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

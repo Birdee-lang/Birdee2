@@ -163,6 +163,7 @@
     <ClInclude Include="include\CastAST.h" />
     <ClInclude Include="include\CompileError.h" />
     <ClInclude Include="include\Metadata.h" />
+    <ClInclude Include="include\OpEnums.h" />
     <ClInclude Include="include\SourcePos.h" />
     <ClInclude Include="include\TemplateUtil.h" />
     <ClInclude Include="include\TokenDef.h" />
