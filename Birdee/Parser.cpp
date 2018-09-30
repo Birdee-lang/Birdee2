@@ -619,12 +619,26 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 	SourcePos pos(tokenizer.source_idx,0, 0);
 	while (true)
 	{
-
+		vector<string> anno;
+		while (tokenizer.CurTok == tok_annotation)
+		{
+			anno.push_back(tokenizer.IdentifierStr);
+			tokenizer.GetNextToken();
+			while (tokenizer.CurTok == tok_newline)
+				tokenizer.GetNextToken();
+		}
+		auto push_expr = [&anno, &body](std::unique_ptr<StatementAST>&& st)
+		{
+			if (anno.size())
+				body.body.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
+			else
+				body.body.push_back(std::move(st));
+		};
 		switch (tokenizer.CurTok)
 		{
 		case tok_continue:
 		case tok_break:
-			body.body.push_back(make_unique<LoopControlAST>(tokenizer.CurTok));
+			push_expr(make_unique<LoopControlAST>(tokenizer.CurTok));
 			tokenizer.GetNextToken();
 			break;
 		case tok_newline:
@@ -633,14 +647,14 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			break;
 		case tok_dim:
 			tokenizer.GetNextToken(); //eat dim
-			body.body.push_back(std::move(ParseDim()));
+			push_expr(std::move(ParseDim()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after variable definition");
 			break;
 		case tok_return:
 			tokenizer.GetNextToken(); //eat return
 			pos = tokenizer.GetSourcePos();
 			assert(current_func_proto && "Current func proto is empty!");
-			body.body.push_back(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
+			push_expr(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
 			break;
 		case tok_func:
@@ -648,13 +662,13 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			tokenizer.GetNextToken(); //eat function
 			auto func = ParseFunction(nullptr);
 			CompileAssert(!func->isTemplate(), "Cannot define function template in basic blocks");
-			body.body.push_back(std::move(func));
+			push_expr(std::move(func));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after function definition");
 			break;
 		}
 		case tok_for:
 			tokenizer.GetNextToken(); //eat function
-			body.body.push_back(std::move(ParseFor()));
+			push_expr(std::move(ParseFor()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
 			break;
 		case tok_end:
@@ -672,14 +686,14 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			break;
 		case tok_if:
 			tokenizer.GetNextToken(); //eat if
-			body.body.push_back(std::move(ParseIf()));
+			push_expr(std::move(ParseIf()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
 		default:
 			firstexpr = ParseExpressionUnknown();
 			CompileExpect({ tok_eof,tok_newline }, "Expect a new line after expression");
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");
-			body.body.push_back(std::move(firstexpr));
+			push_expr(std::move(firstexpr));
 		}
 	}
 done:
@@ -1274,7 +1288,7 @@ int ParseTopLevel()
 		{
 			anno.push_back(tokenizer.IdentifierStr);
 			tokenizer.GetNextToken();
-			CompileExpect({ tok_newline,tok_eof },"Expected a new line");
+			while(tokenizer.CurTok==tok_newline) tokenizer.GetNextToken();
 		}
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{

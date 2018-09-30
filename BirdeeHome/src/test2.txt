@@ -11,7 +11,6 @@ def init_safety_check(func):
 		if isinstance(stmt,BinaryExprAST):
 			if stmt.op==BinaryOp.BIN_ASSIGN and isinstance(stmt.lhs,IdentifierExprAST) and isinstance(stmt.lhs.impl,LocalVarExprAST):
 				var=stmt.lhs.impl.vardef
-				print("remove",var.name)
 				if var in vars:
 					vars.remove(var)
 				stmt.rhs.run(check)
@@ -31,6 +30,9 @@ def init_safety_check(func):
 				check(stmt)
 		else:
 			check(stmt)
+
+def print_name(var):
+	print(var.name)
 @}
 
 @init_safety_check
@@ -46,10 +48,10 @@ end
 1.234f
 
 function bbb()
-	dim c as int
+	@print_name dim c as int
 end
 
-dim a  = {@expr(f"{counter()}")@}
+@print_name dim a  = {@expr(f"{counter()}")@}
 dim b  = {@expr(f"{counter()}")@}
 dim c  = {@expr(f"\"{counter()}\"")@}
 
