@@ -1329,3 +1329,8 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 	}
 	return nullptr;
 }
+
+Value * Birdee::AnnotationStatementAST::Generate()
+{
+	return impl->Generate();
+}

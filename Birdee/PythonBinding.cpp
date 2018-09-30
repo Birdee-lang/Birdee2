@@ -19,15 +19,18 @@ extern FunctionAST* GetCurrentPreprocessedFunction();
 struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
+	py::module main_module;
 	BirdeePyContext()
 	{
+		main_module = py::module::import("__main__");
 		py::module::import("birdeec");
 		py::exec("from birdeec import *");
 	}
 };
-static void InitPython()
+static BirdeePyContext& InitPython()
 {
 	static BirdeePyContext context;
+	return context;
 }
 
 static unique_ptr<ExprAST> outexpr=nullptr;
@@ -61,7 +64,6 @@ void Birdee::ScriptAST::Phase1()
 	}
 }
 
- 
 //T can be clazz*/clazz/unique_ptr<clazz>
 //"type" is the referenced type
 //ToRef returns the "reference" to clazz
@@ -192,6 +194,23 @@ static py::object GetNumberLiteral(NumberExprAST& ths)
 }
 
 
+void Birdee::AnnotationStatementAST::Phase1()
+{
+	impl->Phase1();
+	auto& main_module = InitPython().main_module;
+	try
+	{
+		for (auto& func_name : anno)
+		{
+			main_module.attr(func_name.c_str())(GetRef(impl));
+		}
+	}
+	catch (py::error_already_set& e)
+	{
+		throw CompileError(Pos.line, Pos.pos, string("\nScript exception:\n") + e.what());
+	}
+}
+
 using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
 PYBIND11_MAKE_OPAQUE(StatementASTList);
 PYBIND11_MAKE_OPAQUE(std::vector<TemplateArgument>);
@@ -260,6 +279,10 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("resolved_type", &ExprAST::resolved_type)
 		.def("is_lvalue", [](ExprAST& ths)->bool {return (bool)ths.GetLValue(true); });
 
+	py::class_<AnnotationStatementAST, StatementAST>(m, "AnnotationStatementAST")
+		.def_readwrite("anno",&AnnotationStatementAST::anno)
+		.def_property_readonly("impl", [](AnnotationStatementAST& ths) {return GetRef(ths.impl); })
+		.def("run", [](AnnotationStatementAST& ths, py::object& func) {func(GetRef(ths.impl)); });
 
 	py::class_<PrototypeAST>(m, "PrototypeAST")
 		.def_property_readonly("prefix", [](const PrototypeAST& ths) {

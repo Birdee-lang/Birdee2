@@ -305,4 +305,10 @@ namespace Birdee
 			ret->expr = ToExpr(expr->Copy());
 		return std::move(ret);
 	}
+
+	unique_ptr<StatementAST> Birdee::AnnotationStatementAST::Copy()
+	{
+		vector<string> anno_cp = anno;
+		return make_unique<AnnotationStatementAST>(std::move(anno_cp),impl->Copy());
+	}
 }

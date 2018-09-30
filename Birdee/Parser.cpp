@@ -1267,10 +1267,22 @@ int ParseTopLevel()
 	ParsePackage();
 	ParseImports();
 	
-
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
 	{
-
+		vector<string> anno;
+		while (tokenizer.CurTok == tok_annotation)
+		{
+			anno.push_back(tokenizer.IdentifierStr);
+			tokenizer.GetNextToken();
+			CompileExpect({ tok_newline,tok_eof },"Expected a new line");
+		}
+		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
+		{
+			if (anno.size())
+				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
+			else
+				out.push_back(std::move(st));
+		};
 		switch (tokenizer.CurTok)
 		{
 		case tok_newline:
@@ -1279,7 +1291,7 @@ int ParseTopLevel()
 			break;
 		case tok_dim:
 			tokenizer.GetNextToken(); //eat dim
-			out.push_back(std::move(ParseDim(true)));
+			push_expr(ParseDim(true));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after variable definition");
 			break;
 		case tok_eof:
@@ -1288,7 +1300,7 @@ int ParseTopLevel()
 		case tok_for:
 		{
 			tokenizer.GetNextToken(); //eat function
-			out.push_back(ParseFor());
+			push_expr(ParseFor());
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
 			break;
 		}
@@ -1300,7 +1312,7 @@ int ParseTopLevel()
 			std::reference_wrapper<FunctionAST> funcref = *funcast;
 			CompileCheckGlobalConflict(funcast->Pos, funcname);
 			cu.funcmap.insert(std::make_pair(funcname, funcref));
-			out.push_back(std::move(funcast));
+			push_expr(std::move(funcast));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after function definition");
 			break;
 		}
@@ -1313,12 +1325,12 @@ int ParseTopLevel()
 			std::reference_wrapper<FunctionAST> funcref = *funcast;
 			CompileCheckGlobalConflict(funcast->Pos, funcname);
 			cu.funcmap.insert(std::make_pair(funcname, funcref));
-			out.push_back(std::move(funcast));
+			push_expr(std::move(funcast));
 			break;
 		}
 		case tok_if:
 			tokenizer.GetNextToken(); //eat if
-			out.push_back(std::move(ParseIf()));
+			push_expr(std::move(ParseIf()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
 		case tok_class:
@@ -1329,7 +1341,7 @@ int ParseTopLevel()
 			std::reference_wrapper<ClassAST> classref = *classdef;
 			CompileCheckGlobalConflict(classdef->Pos, clscname);
 			cu.classmap.insert(std::make_pair(clscname, classref));
-			out.push_back(std::move(classdef));
+			push_expr(std::move(classdef));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after class definition");
 			break;
 		}
@@ -1340,7 +1352,7 @@ int ParseTopLevel()
 			//if (!firstexpr)
 			//	break;
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");
-			out.push_back(std::move(firstexpr));
+			push_expr(std::move(firstexpr));
 		}
 	}
 

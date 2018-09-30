@@ -51,6 +51,7 @@ namespace Birdee
 		tok_continue,
 		tok_at,
 		tok_script,
+		tok_annotation,
 
 		//type
 		tok_int,

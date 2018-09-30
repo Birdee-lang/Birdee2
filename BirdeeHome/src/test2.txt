@@ -6,7 +6,7 @@ def counter():
 	return str(cnt)
 def init_safety_check(func):
 	vars=set()
-
+	print("checking",func)
 	def check(stmt):
 		if isinstance(stmt,BinaryExprAST):
 			if stmt.op==BinaryOp.BIN_ASSIGN and isinstance(stmt.lhs,IdentifierExprAST) and isinstance(stmt.lhs.impl,LocalVarExprAST):
@@ -32,6 +32,8 @@ def init_safety_check(func):
 		else:
 			check(stmt)
 @}
+
+@init_safety_check
 function aaa()
 	dim v as int
 	v=1
@@ -51,6 +53,7 @@ dim a  = {@expr(f"{counter()}")@}
 dim b  = {@expr(f"{counter()}")@}
 dim c  = {@expr(f"\"{counter()}\"")@}
 
+##
 {@
 top=get_top_level()
 print(type(top))
@@ -71,3 +74,4 @@ for func in top:
 			func.value=4.31'''
 		
 @}
+##

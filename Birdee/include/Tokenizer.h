@@ -408,7 +408,14 @@ namespace Birdee
 				if (LastChar != EOF)
 					return gettok();
 			}
-
+			if (LastChar == '@')
+			{
+				LastChar = GetChar();
+				Token ret = gettok();
+				if(ret!=tok_identifier)
+					throw TokenizerError(line, pos, "Expected an identifier after \'@\'");
+				return tok_annotation;
+			}
 			// Check for end of file.  Don't eat the EOF.
 			if (LastChar == EOF)
 				return tok_eof;

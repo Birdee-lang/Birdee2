@@ -259,7 +259,16 @@ namespace Birdee {
 			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
 		}
 	};
-
+	class AnnotationStatementAST : public StatementAST {
+	public:
+		std::vector<std::string> anno;
+		unique_ptr< StatementAST> impl;
+		AnnotationStatementAST(vector<string>&& anno, unique_ptr< StatementAST>&& impl)
+			:anno(std::move(anno)), impl(std::move(impl)) {}
+		virtual Value* Generate();
+		virtual void Phase1();
+		unique_ptr<StatementAST> Copy();
+	};
 
 	class CompileUnit
 	{
