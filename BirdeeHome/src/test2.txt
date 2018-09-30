@@ -6,24 +6,38 @@ def counter():
 	return str(cnt)
 def init_safety_check(func):
 	vars=set()
+
+	def check(stmt):
+		if isinstance(stmt,BinaryExprAST):
+			if stmt.op==BinaryOp.BIN_ASSIGN and isinstance(stmt.lhs,IdentifierExprAST) and isinstance(stmt.lhs.impl,LocalVarExprAST):
+				var=stmt.lhs.impl.vardef
+				print("remove",var.name)
+				if var in vars:
+					vars.remove(var)
+				stmt.rhs.run(check)
+			else:
+				stmt.lhs.run(check)
+		elif isinstance(stmt,LocalVarExprAST):
+			var=stmt.vardef
+			if var in vars:
+				print("Variable used before initialized:", var.name, "at", stmt.pos)
+		else:
+			stmt.run(check)
 	for stmt in func.body:
 		if isinstance(stmt,VariableSingleDefAST):
 			if not stmt.value:
 				vars.add(stmt)
-		elif isinstance(stmt,BinaryExprAST):
-			if stmt.op==BinaryOp.BIN_ASSIGN and isinstance(stmt.lhs,IdentifierExprAST) and isinstance(stmt.lhs.impl,LocalVarExprAST):
-				var=stmt.lhs.impl.vardef
-				print(var)
-				if var in vars:
-					vars.remove(var)
-	print(vars)
-	for v in vars:
-		print("Variable not intialized: ", v.name, "at", v.pos)
+			else:
+				check(stmt)
+		else:
+			check(stmt)
 @}
 function aaa()
 	dim v as int
+	v=1
 	dim g as int
-	g=2
+	println(int2str(g))
+	println(int2str(v))
 end
 
 1234
@@ -42,17 +56,18 @@ top=get_top_level()
 print(type(top))
 for func in top:
 	if isinstance(func,FunctionAST):
-		print(func.proto.prefix+func.proto.name)
-		print(func.body[0].pos)
-		for substmt in func.body:
+		#print(func.proto.prefix+func.proto.name)
+		#print(func.body[0].pos)
+		'''for substmt in func.body:
 			print("\t"+str(type(substmt)) +" " + substmt.pos.__str__())
-			print(f"\t{substmt.pos}")
+			print(f"\t{substmt.pos}")'''
 		init_safety_check(func)
-	if isinstance(func,NumberExprAST):
+
+	'''if isinstance(func,NumberExprAST):
 		print(func.value)
 		if func.type==BasicType.int_:
 			func.value=431
 		if func.type==BasicType.float_:
-			func.value=4.31
+			func.value=4.31'''
 		
 @}

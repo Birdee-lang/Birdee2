@@ -281,9 +281,13 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("is_declare", &FunctionAST::isDeclare)
 		.def_readwrite("is_template_instance", &FunctionAST::isTemplateInstance)
 		.def_readwrite("is_imported", &FunctionAST::isImported)
+		.def("run", [](FunctionAST& ths, py::object& func) {
+			for (auto& v : ths.Body.body)
+				func(GetRef(v));
+		})
 		.def_readwrite("link_name", &FunctionAST::link_name);
+
 		//unique_ptr<TemplateParameters<FunctionAST>> template_param;
-	//std::unique_ptr<PrototypeAST> Proto;
 
 	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
@@ -307,37 +311,58 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 				abort();
 			}
 		})
-		.def_property("type", [](NumberExprAST& ths) {return ths.Val.type; },[](NumberExprAST& ths, Token tok) {ths.Val.type = tok; });
+		.def_property("type", [](NumberExprAST& ths) {return ths.Val.type; },[](NumberExprAST& ths, Token tok) {ths.Val.type = tok; })
+		.def("run", [](NumberExprAST& ths, py::object& func) {});
 
 	//BasicTypeExprAST
 	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
-		.def_property_readonly("expr", [](ReturnAST& ths) {return GetRef(ths.Val); });
+		.def_property_readonly("expr", [](ReturnAST& ths) {return GetRef(ths.Val); })
+		.def("run", [](ReturnAST& ths, py::object& func) {func(GetRef(ths.Val)); });
 	py::class_<StringLiteralAST, ResolvedIdentifierExprAST>(m, "StringLiteralAST")
-		.def_readwrite("value",&StringLiteralAST::Val);
+		.def_readwrite("value",&StringLiteralAST::Val)
+		.def("run", [](StringLiteralAST& ths, py::object& func) { });
 	py::class_< IdentifierExprAST, ExprAST>(m, "IdentifierExprAST")
 		.def_readwrite("name", &IdentifierExprAST::Name)
-		.def_property_readonly("impl", [](IdentifierExprAST& ths) {return GetRef(ths.impl); });
+		.def_property_readonly("impl", [](IdentifierExprAST& ths) {return GetRef(ths.impl); })
+		.def("run", [](IdentifierExprAST& ths, py::object& func) {func(GetRef(ths.impl)); });
 	py::class_< ResolvedFuncExprAST, ResolvedIdentifierExprAST>(m, "ResolvedFuncExprAST")
-		.def_property_readonly("def", [](ResolvedFuncExprAST& ths) {return GetRef(ths.def); });
-	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST");
-	py::class_< BoolLiteralExprAST, ExprAST>(m, "BoolLiteralExprAST");
+		.def_property_readonly("funcdef", [](ResolvedFuncExprAST& ths) {return GetRef(ths.def); })
+		.def("run", [](ResolvedFuncExprAST& ths, py::object& func) { });
+	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST")
+		.def("run", [](ThisExprAST& ths, py::object& func) {});
+	py::class_< BoolLiteralExprAST, ExprAST>(m, "BoolLiteralExprAST")
+		.def("run", [](BoolLiteralExprAST& ths, py::object& func) {});
 	py::class_< IfBlockAST, StatementAST>(m,"IFBlockAST")
 		.def_property_readonly("cond", [](IfBlockAST& ths) {return GetRef(ths.cond); })
-		.def_property_readonly("if_true", [](IfBlockAST& ths) {return &ths.iftrue.body; })
-		.def_property_readonly("if_false", [](IfBlockAST& ths) {return &ths.iffalse.body; });
+		.def_property_readonly("if_true", [](IfBlockAST& ths) {return GetRef(ths.iftrue.body); })
+		.def_property_readonly("if_false", [](IfBlockAST& ths) {return GetRef(ths.iffalse.body); })
+		.def("run", [](IfBlockAST& ths, py::object& func) {
+			func(GetRef(ths.cond));
+			for (auto& v : ths.iftrue.body)
+				func(GetRef(v));
+			for (auto& v : ths.iffalse.body)
+				func(GetRef(v));
+		});
 	py::class_< ForBlockAST, StatementAST>(m, "ForBlockAST")
 		.def_property_readonly("init_value", [](ForBlockAST& ths) {return GetRef(ths.init); })
 		.def_property_readonly("loop_var", [](ForBlockAST& ths) {return GetRef(ths.loop_var); })
 		.def_property_readonly("till", [](ForBlockAST& ths) {return GetRef(ths.till); })
 		.def_readwrite("inclusive", &ForBlockAST::including)
 		.def_readwrite("is_dim", &ForBlockAST::isdim)
-		.def_property_readonly("block", [](ForBlockAST& ths) {return &ths.block.body; });
+		.def_property_readonly("block", [](ForBlockAST& ths) {return &ths.block.body; })
+		.def("run", [](ForBlockAST& ths, py::object& func) {
+			func(GetRef(ths.init));
+			func(GetRef(ths.till));
+			for (auto& v : ths.block.body)
+				func(GetRef(v));
+		});
 
 	py::enum_<LoopControlType>(m, "LoopControlType")
 		.value("BREAK", LoopControlType::BREAK)
 		.value("CONTINUE", LoopControlType::CONTINUE);
 	py::class_< LoopControlAST, StatementAST>(m, "LoopControlAST")
-		.def_readwrite("type",(LoopControlType LoopControlAST::*)&LoopControlAST::tok);
+		.def_readwrite("type",(LoopControlType LoopControlAST::*)&LoopControlAST::tok)
+		.def("run", [](LoopControlAST& ths, py::object& func) {});
 
 #define SET_VALUE(A) value(#A,BinaryOp::A)
 	py::enum_ < BinaryOp>(m, "BinaryOp")
@@ -364,7 +389,8 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_property_readonly("func", [](BinaryExprAST& ths) {return GetRef(ths.func); })
 		.def_property_readonly("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); })
 		.def_property_readonly("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); })
-		.def_readwrite("op", (BinaryOp BinaryExprAST::*)&BinaryExprAST::Op);
+		.def_readwrite("op", (BinaryOp BinaryExprAST::*)&BinaryExprAST::Op)
+		.def("run", [](BinaryExprAST& ths, py::object& func) {func(GetRef(ths.LHS)); func(GetRef(ths.RHS)); });
 
 	auto templ_arg_cls = py::class_< TemplateArgument>(m, "TemplateArgument");
 	py::enum_ < TemplateArgument::TemplateArgumentType>(templ_arg_cls, "TemplateArgumentType")
@@ -377,28 +403,46 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	
 	py::class_< FunctionTemplateInstanceExprAST, ExprAST>(m, "FunctionTemplateInstanceExprAST")
 		.def_property_readonly("template_args", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.template_args); })
-		.def_property_readonly("expr", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.expr); });
+		.def_property_readonly("expr", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.expr); })
+		.def_property_readonly("instance", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.instance); })
+		.def("run", [](FunctionTemplateInstanceExprAST& ths, py::object& func) {func(GetRef(ths.expr));});
 
 	py::class_< IndexExprAST, ExprAST>(m, "IndexExprAST")
 		.def_property_readonly("expr", [](IndexExprAST& ths) {return GetRef(ths.Expr); })
 		.def_property_readonly("index", [](IndexExprAST& ths) {return GetRef(ths.Index); })
 		.def_property_readonly("template_inst", [](IndexExprAST& ths) {return GetRef(ths.instance); })
-		.def("is_template_instance",&IndexExprAST::isTemplateInstance);
+		.def("is_template_instance",&IndexExprAST::isTemplateInstance)
+		.def("run", [](IndexExprAST& ths, py::object& func) {
+			if (ths.Expr)
+				func(GetRef(ths.Expr));
+			if (ths.Index)
+				func(GetRef(ths.Index));
+			if (ths.instance)
+				func(GetRef(ths.instance));
+		});
 
 	py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
 		.def_property_readonly("expr", [](AddressOfExprAST& ths) {return GetRef(ths.expr); })
-		.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of);
+		.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of)
+		.def("run", [](AddressOfExprAST& ths, py::object& func) {func(GetRef(ths.expr)); });
 
 	py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
 		.def_property_readonly("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); })
-		.def_property_readonly("args", [](CallExprAST& ths) {return GetRef(ths.Args); });
+		.def_property_readonly("args", [](CallExprAST& ths) {return GetRef(ths.Args); })
+		.def("run", [](CallExprAST& ths, py::object& func) {
+			func(GetRef(ths.Callee));
+			for (auto& v : ths.Args)
+				func(GetRef(v));
+		});
 
 	py::class_< VariableSingleDefAST, StatementAST>(m, "VariableSingleDefAST")
 		.def_readwrite("name", &VariableSingleDefAST::name)
 		.def_property_readonly("value", [](VariableSingleDefAST& ths) {return GetRef(ths.val); })
-		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type);
+		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type)
+		.def("run", [](VariableSingleDefAST& ths, py::object& func) {if (ths.val)func(GetRef(ths.val)); });
 
 	py::class_< LocalVarExprAST, ResolvedIdentifierExprAST>(m, "LocalVarExprAST")
-		.def_property_readonly("vardef", [](LocalVarExprAST& ths) {return GetRef(ths.def); });
+		.def_property_readonly("vardef", [](LocalVarExprAST& ths) {return GetRef(ths.def); })
+		.def("run", [](LocalVarExprAST& ths, py::object& func) { });
 
 }

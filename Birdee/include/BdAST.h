@@ -592,8 +592,8 @@ namespace Birdee {
 	};
 
 	class FunctionTemplateInstanceExprAST : public ExprAST {
-		FunctionAST* instance=nullptr;
 	public:
+		FunctionAST* instance = nullptr;
 		vector<unique_ptr<ExprAST>> raw_template_args;
 		vector<TemplateArgument> template_args;
 		std::unique_ptr<ExprAST> expr;
