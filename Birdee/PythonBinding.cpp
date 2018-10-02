@@ -216,6 +216,7 @@ PYBIND11_MAKE_OPAQUE(StatementASTList);
 PYBIND11_MAKE_OPAQUE(std::vector<TemplateArgument>);
 PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<ExprAST>>);
 PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<VariableSingleDefAST>>);
+PYBIND11_MAKE_OPAQUE(std::vector<TemplateParameter>);
 
 //registers the vector type & iterator
 //T can be clazz*/clazz/unique_ptr<clazz>
@@ -235,7 +236,17 @@ void RegisiterObjectVector(py::module& m,const char* name)
 
 }
 
+template <class T>
+void RegisiterTemplateParametersClass(py::module& m, const char* name)
+{
+	py::class_<TemplateParameters<T>>(m, name)
+		//.def_property_readonly("params", [](TemplateParameters<T>& ths) {return GetRef(ths.params); })
+		//fix-me: add instances, fix source.get()
+		.def_property_readonly("source", [](TemplateParameters<T>& ths) {return ths.source.get(); });
 
+}
+struct TemplateParameterFake
+{};
 
 PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	// `m` is a `py::module` which is used to bind functions and classes
@@ -244,6 +255,7 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	RegisiterObjectVector<std::unique_ptr<ExprAST>>(m, "ExprASTList");
 	RegisiterObjectVector<TemplateArgument>(m, "TemplateArgumentList");
 	RegisiterObjectVector< std::unique_ptr<VariableSingleDefAST>>(m, "VariableSingleDefASTList");
+	RegisiterObjectVector<TemplateParameter>(m, "TemplateParameterList");
 
 	m.def("expr", CompileExpr);
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
@@ -292,7 +304,24 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("return_type", &PrototypeAST::resolved_type)
 		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); });
 	//ClassAST * cls;
-	//vector<unique_ptr<VariableSingleDefAST>> resolved_args;
+
+	py::class_ < TemplateParameter>(m, "TemplateParameter")
+		.def_property_readonly("type", [](TemplateParameter& ths) {
+			if (ths.type == nullptr)
+				return tok_null;
+			if (ths.type->type == tok_identifier)
+				return tok_class;
+			else
+				return ths.type->type;
+		})
+	.def_readwrite("name", &TemplateParameter::name);
+
+	//py::class_<TemplateParameters<FunctionAST>> does not seem to work?
+	py::class_<TemplateParameterFake>(m, "TemplateParameters_FunctionAST")
+		.def_property_readonly("params", [](TemplateParameterFake* ths) {return GetRef(((TemplateParameters<FunctionAST>*)ths)->params); })
+		//fix-me: add instances, fix source.get()
+		.def_property_readonly("source", [](TemplateParameterFake* ths) {return ((TemplateParameters<FunctionAST>*)ths)->source.get(); });
+
 
 	py::class_<FunctionAST, ExprAST>(m, "FunctionAST")
 		.def_property_readonly("body", [](FunctionAST& ths) {
@@ -308,9 +337,8 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 			for (auto& v : ths.Body.body)
 				func(GetRef(v));
 		})
-		.def_readwrite("link_name", &FunctionAST::link_name);
-
-		//unique_ptr<TemplateParameters<FunctionAST>> template_param;
+		.def_readwrite("link_name", &FunctionAST::link_name)
+		.def_property_readonly("template_param", [](FunctionAST& ths) {return GetRef(*(TemplateParameterFake*)ths.template_param.get()); });
 
 	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
@@ -468,4 +496,6 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_property_readonly("vardef", [](LocalVarExprAST& ths) {return GetRef(ths.def); })
 		.def("run", [](LocalVarExprAST& ths, py::object& func) { });
 
+
+	
 }

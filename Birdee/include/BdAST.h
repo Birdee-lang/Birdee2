@@ -832,6 +832,7 @@ namespace Birdee {
 		string name;
 		bool isTypeParameter() const { return type == nullptr; }
 		TemplateParameter(unique_ptr<Type>&& type, const string& name) :type(std::move(type)), name(name) {}
+		TemplateParameter(TemplateParameter&& other) :type(std::move(other.type)), name(std::move(other.name)) {}
 	};
 
 	struct SourceStringHolder
