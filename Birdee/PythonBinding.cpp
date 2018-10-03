@@ -3,66 +3,27 @@
 #include "BdAST.h"
 #include "Tokenizer.h"
 #include "CompileError.h"
-#include <pybind11/embed.h>
-#include <pybind11/stl.h>
 #include <sstream>
 #include "OpEnums.h"
+#include <pybind11/embed.h>
+#include <pybind11/stl.h>
 
-namespace py = pybind11;
 
 
 using namespace Birdee;
-extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
-extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
+namespace py = pybind11;
+
 extern FunctionAST* GetCurrentPreprocessedFunction();
-
-struct BirdeePyContext
-{
-	py::scoped_interpreter guard;
-	py::module main_module;
-	BirdeePyContext()
-	{
-		main_module = py::module::import("__main__");
-		py::module::import("birdeec");
-		py::exec("from birdeec import *");
-	}
-};
-static BirdeePyContext& InitPython()
-{
-	static BirdeePyContext context;
-	return context;
-}
-
-static unique_ptr<ExprAST> outexpr=nullptr;
-static void CompileExpr(char* cmd) {
-	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(cmd)), -1);
-	toknzr.GetNextToken();
-	auto old_tok = SwitchTokenizer(std::move(toknzr));
-	outexpr = ParseExpressionUnknown();
-	SwitchTokenizer(std::move(old_tok));
-}
+extern py::object GetNumberLiteral(NumberExprAST& ths);
 
 
 
-void Birdee::ScriptAST::Phase1()
-{
-	InitPython();
-	try
-	{
-		py::exec(script.c_str());
-	}
-	catch (py::error_already_set& e)
-	{
-		throw CompileError(Pos.line, Pos.pos, string("\nScript exception:\n") + e.what());
-	}
-	expr = std::move(outexpr);
-	outexpr = nullptr;
-	if (expr)
-	{
-		expr->Phase1();
-		resolved_type = expr->resolved_type;
-	}
-}
+using StatementASTList = std::vector<std::unique_ptr<Birdee::StatementAST>>;
+PYBIND11_MAKE_OPAQUE(StatementASTList);
+PYBIND11_MAKE_OPAQUE(std::vector<Birdee::TemplateArgument>);
+PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<Birdee::ExprAST>>);
+PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<Birdee::VariableSingleDefAST>>);
+PYBIND11_MAKE_OPAQUE(std::vector<Birdee::TemplateParameter>);
 
 //T can be clazz*/clazz/unique_ptr<clazz>
 //"type" is the referenced type
@@ -145,7 +106,7 @@ struct VectorIterator
 	}
 	bool operator !=(const VectorIterator& other) const
 	{
-		return !(*this==other);
+		return !(*this == other);
 	}
 	VectorIterator& operator ++()
 	{
@@ -158,95 +119,53 @@ struct VectorIterator
 	}
 	std::reference_wrapper<type> operator*() const
 	{
-		return access(*vec,idx);
+		return access(*vec, idx);
 	}
 };
 
 
-static py::object GetNumberLiteral(NumberExprAST& ths)
-{
-	switch (ths.Val.type)
-	{
-	case tok_byte:
-		return py::int_(ths.Val.v_int);
-		break;
-	case tok_int:
-		return py::int_(ths.Val.v_int);
-		break;
-	case tok_long:
-		return py::int_(ths.Val.v_long);
-		break;
-	case tok_uint:
-		return py::int_(ths.Val.v_uint);
-		break;
-	case tok_ulong:
-		return py::int_(ths.Val.v_ulong);
-		break;
-	case tok_float:
-		return py::float_(ths.Val.v_double);
-		break;
-	case tok_double:
-		return py::float_(ths.Val.v_double);
-		break;
-	}
-	abort();
-	return py::int_(0);
-}
-
-
-void Birdee::AnnotationStatementAST::Phase1()
-{
-	impl->Phase1();
-	auto& main_module = InitPython().main_module;
-	try
-	{
-		for (auto& func_name : anno)
-		{
-			main_module.attr(func_name.c_str())(GetRef(impl));
-		}
-	}
-	catch (py::error_already_set& e)
-	{
-		throw CompileError(Pos.line, Pos.pos, string("\nScript exception:\n") + e.what());
-	}
-}
-
-using StatementASTList = std::vector<std::unique_ptr<StatementAST>>;
-PYBIND11_MAKE_OPAQUE(StatementASTList);
-PYBIND11_MAKE_OPAQUE(std::vector<TemplateArgument>);
-PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<ExprAST>>);
-PYBIND11_MAKE_OPAQUE(std::vector<std::unique_ptr<VariableSingleDefAST>>);
-PYBIND11_MAKE_OPAQUE(std::vector<TemplateParameter>);
-
 //registers the vector type & iterator
 //T can be clazz*/clazz/unique_ptr<clazz>
 template <class T>
-void RegisiterObjectVector(py::module& m,const char* name)
+void RegisiterObjectVector(py::module& m, const char* name)
 {
 	py::class_<std::vector<T>>(m, name)
 		.def(py::init<>())
 		.def("pop_back", &std::vector<T>::pop_back)
-		.def("__getitem__", [](std::vector<T> &v, int idx) { return VectorIterator<T>::access(v,idx); })
+		.def("__getitem__", [](std::vector<T> &v, int idx) { return VectorIterator<T>::access(v, idx); })
 		//.def("__setitem__", [](const StatementASTList &v, int idx) { return v[idx].get(); })
 		.def("__len__", [](const std::vector<T> &v) { return v.size(); })
 		.def("__iter__", [](std::vector<T> &v) {
-			return py::make_iterator(VectorIterator<T>(&v, 0), VectorIterator<T>(&v));
-		}, py::keep_alive<0, 1>());
+		return py::make_iterator(VectorIterator<T>(&v, 0), VectorIterator<T>(&v));
+	}, py::keep_alive<0, 1>());
 
 
 }
+
+
+//py::class_<TemplateParameters<FunctionAST>> does not seem to work? We need a fake class to bypass the bug
+template <class T>
+struct TemplateParameterFake
+{
+	TemplateParameters<T>* get()
+	{
+		return (TemplateParameters<T>*)this;
+	}
+};
 
 template <class T>
 void RegisiterTemplateParametersClass(py::module& m, const char* name)
 {
-	py::class_<TemplateParameters<T>>(m, name)
-		//.def_property_readonly("params", [](TemplateParameters<T>& ths) {return GetRef(ths.params); })
+	py::class_<TemplateParameterFake<T>>(m, name)
+		.def_property_readonly("params", [](TemplateParameterFake<T>* ths) {return GetRef(ths->get()->params); })
 		//fix-me: add instances, fix source.get()
-		.def_property_readonly("source", [](TemplateParameters<T>& ths) {return ths.source.get(); });
+		.def_property_readonly("source", [](TemplateParameterFake<T>* ths) {return ths->get()->source.get(); });
 
 }
-struct TemplateParameterFake
-{};
+
+
+
+extern void CompileExpr(char* cmd);
 
 PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 	// `m` is a `py::module` which is used to bind functions and classes
@@ -259,6 +178,13 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 
 	m.def("expr", CompileExpr);
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
+	m.def("get_func", [](const std::string& name) {
+		auto itr = cu.funcmap.find(name);
+		if (itr == cu.funcmap.end())
+			return GetRef((FunctionAST*)nullptr);
+		else
+			return itr->second;
+	});
 	m.def("get_top_level", []() {return GetRef(cu.toplevel); });
 
 	py::enum_<Token>(m, "BasicType")
@@ -316,12 +242,8 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		})
 	.def_readwrite("name", &TemplateParameter::name);
 
-	//py::class_<TemplateParameters<FunctionAST>> does not seem to work?
-	py::class_<TemplateParameterFake>(m, "TemplateParameters_FunctionAST")
-		.def_property_readonly("params", [](TemplateParameterFake* ths) {return GetRef(((TemplateParameters<FunctionAST>*)ths)->params); })
-		//fix-me: add instances, fix source.get()
-		.def_property_readonly("source", [](TemplateParameterFake* ths) {return ((TemplateParameters<FunctionAST>*)ths)->source.get(); });
-
+	RegisiterTemplateParametersClass<ClassAST>(m, "TemplateParameters_ClassAST");
+	RegisiterTemplateParametersClass<FunctionAST>(m, "TemplateParameters_FunctionAST");
 
 	py::class_<FunctionAST, ExprAST>(m, "FunctionAST")
 		.def_property_readonly("body", [](FunctionAST& ths) {
@@ -337,8 +259,9 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 			for (auto& v : ths.Body.body)
 				func(GetRef(v));
 		})
+		.def("is_template", &FunctionAST::isTemplate)
 		.def_readwrite("link_name", &FunctionAST::link_name)
-		.def_property_readonly("template_param", [](FunctionAST& ths) {return GetRef(*(TemplateParameterFake*)ths.template_param.get()); });
+		.def_property_readonly("template_param", [](FunctionAST& ths) {return GetRef(*(TemplateParameterFake<FunctionAST>*)ths.template_param.get()); });
 
 	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
@@ -492,10 +415,52 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m) {
 		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type)
 		.def("run", [](VariableSingleDefAST& ths, py::object& func) {if (ths.val)func(GetRef(ths.val)); });
 
+	py::class_< VariableMultiDefAST, StatementAST>(m, "VariableMultiDefAST")
+		.def_property_readonly("lst", [](VariableMultiDefAST& ths) {return GetRef(ths.lst); })
+		.def("run", [](VariableMultiDefAST& ths, py::object& func) {
+			for(auto& v:ths.lst)
+				func(GetRef(v));
+		});
+
 	py::class_< LocalVarExprAST, ResolvedIdentifierExprAST>(m, "LocalVarExprAST")
 		.def_property_readonly("vardef", [](LocalVarExprAST& ths) {return GetRef(ths.def); })
 		.def("run", [](LocalVarExprAST& ths, py::object& func) { });
 
+	py::enum_ < AccessModifier>(m, "AccessModifier")
+		.value("PUBLIC", AccessModifier::access_public)
+		.value("PRIVATE", AccessModifier::access_private);
 
+	py::class_ < FieldDef>(m,"FieldDef")
+		.def_readwrite("index",&FieldDef::index)
+		.def_readwrite("access", &FieldDef::access)
+		.def_property_readonly("decl", [](FieldDef& ths) {return GetRef(ths.decl); });
+
+	py::class_ < MemberFunctionDef>(m, "MemberFunctionDef")
+		.def_readwrite("access", &MemberFunctionDef::access)
+		.def_property_readonly("decl", [](MemberFunctionDef& ths) {return GetRef(ths.decl); });
 	
+	py::class_ < NewExprAST, ExprAST>(m, "NewExprAST")
+		.def_property_readonly("args", [](NewExprAST& ths) {return GetRef(ths.args); })
+		.def_property_readonly("func", [](NewExprAST& ths) {return GetRef(ths.func); })
+		.def("run", [](NewExprAST& ths, py::object& func) {
+			for (auto &v : ths.args)
+				func(GetRef(v));
+		});
+
+	py::class_ < ClassAST, StatementAST>(m, "ClassAST")
+		.def_readwrite("name", &ClassAST::name)
+		.def_property_readonly("fields", [](ClassAST& ths) {return GetRef(ths.fields); })
+		.def_property_readonly("funcs", [](ClassAST& ths) {return GetRef(ths.funcs); })
+		.def_property_readonly("template_instance_args", [](ClassAST& ths) {return GetRef(ths.template_instance_args); })
+		.def_property_readonly("template_source_class", [](ClassAST& ths) {return GetRef(ths.template_source_class); })
+		.def_property_readonly("template_param", [](ClassAST& ths) {return GetRef(*(TemplateParameterFake<ClassAST>*)ths.template_param.get()); })
+		.def("is_template_instance", &ClassAST::isTemplateInstance)
+		.def("is_template", &ClassAST::isTemplate)
+		.def("get_unique_name", &ClassAST::GetUniqueName)
+		.def("run", [](LocalVarExprAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
+
+//	unordered_map<reference_wrapper<const string>, int> fieldmap;
+//	unordered_map<reference_wrapper<const string>, int> funcmap;
+//	int package_name_idx = -1;
+
 }

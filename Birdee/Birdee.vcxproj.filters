@@ -89,6 +89,9 @@
     <ClCompile Include="PythonBinding.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="PythonBinding2.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="llvm.txt">

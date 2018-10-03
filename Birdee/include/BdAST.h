@@ -1023,9 +1023,9 @@ namespace Birdee {
 	class NewExprAST : public ExprAST {
 		std::unique_ptr<Type> ty;
 		string method;
+	public:
 		vector<std::unique_ptr<ExprAST>> args;
 		MemberFunctionDef* func = nullptr;
-	public:
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
@@ -1105,9 +1105,9 @@ namespace Birdee {
 
 	/// MemberExprAST - Expression class for function calls.
 	class MemberExprAST : public ResolvedIdentifierExprAST {
-		std::unique_ptr<ExprAST> Obj;
 		std::string member;
 	public:
+		std::unique_ptr<ExprAST> Obj;
 		vector<string> ToStringArray();
 		std::unique_ptr<StatementAST> Copy();
 		union
@@ -1120,7 +1120,7 @@ namespace Birdee {
 		llvm::Value* llvm_obj = nullptr;
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
-		enum
+		enum MemberType
 		{
 			member_error,
 			member_package,

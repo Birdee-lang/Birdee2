@@ -31,8 +31,10 @@ def init_safety_check(func):
 		else:
 			check(stmt)
 
-def print_name(var):
-	print(var.name)
+def parse_template(func):
+	print("is template?",func.is_template())
+	for param in func.template_param.params:
+		print("Param:",param.type,param.name)
 @}
 
 @init_safety_check
@@ -44,36 +46,8 @@ function aaa()
 	println(int2str(v))
 end
 
-1234
-1.234f
-
-function bbb()
-	@print_name dim c as int
+function add[T,base as int](v1 as T, v2 as T)
+	return v1+v2+base
 end
 
-@print_name dim a  = {@expr(f"{counter()}")@}
-dim b  = {@expr(f"{counter()}")@}
-dim c  = {@expr(f"\"{counter()}\"")@}
-
-##
-{@
-top=get_top_level()
-print(type(top))
-for func in top:
-	if isinstance(func,FunctionAST):
-		#print(func.proto.prefix+func.proto.name)
-		#print(func.body[0].pos)
-		'''for substmt in func.body:
-			print("\t"+str(type(substmt)) +" " + substmt.pos.__str__())
-			print(f"\t{substmt.pos}")'''
-		init_safety_check(func)
-
-	'''if isinstance(func,NumberExprAST):
-		print(func.value)
-		if func.type==BasicType.int_:
-			func.value=431
-		if func.type==BasicType.float_:
-			func.value=4.31'''
-		
-@}
-##
+{@parse_template(get_func("add"))@}
