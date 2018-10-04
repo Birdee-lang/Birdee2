@@ -48,7 +48,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos);
-		//.def("run", [](StatementAST&) {});
+
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
 		.def_readwrite("resolved_type", &ExprAST::resolved_type)
 		.def("is_lvalue", [](ExprAST& ths)->bool {return (bool)ths.GetLValue(true); });
@@ -64,8 +64,8 @@ void RegisiterClassForBinding2(py::module& m) {
 		})
 		.def_readwrite("name", &PrototypeAST::Name)
 		.def_readwrite("return_type", &PrototypeAST::resolved_type)
-		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); });
-	//ClassAST * cls;
+		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); })
+		.def_property_readonly("cls", [](const PrototypeAST& ths) {return GetRef(ths.cls); });
 
 	py::class_ < TemplateParameter>(m, "TemplateParameter")
 		.def_property_readonly("type", [](TemplateParameter& ths) {
