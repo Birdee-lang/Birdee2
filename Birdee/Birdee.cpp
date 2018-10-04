@@ -10,6 +10,9 @@ using namespace Birdee;
 extern int ParseTopLevel();
 extern void SeralizeMetadata(std::ostream& out);
 
+CompileError CompileError::last_error;
+TokenizerError TokenizerError::last_error(0,0,"");
+
 namespace Birdee
 {
 	std::vector<std::string> source_paths;
@@ -87,7 +90,29 @@ namespace Birdee
 	};
 }
 
+extern void ClearPreprocessingState();
+extern void RunGenerativeScript();
+void Birdee::CompileUnit::Clear()
+{
+	toplevel.clear();
+	classmap.clear();
+	funcmap.clear();
+	dimmap.clear();
 
+	imported_classmap.clear();
+	imported_funcmap.clear();
+	imported_dimmap.clear();
+
+	imported_class_templates.clear();
+	imported_func_templates.clear();
+	orphan_class.clear();
+
+	imported_module_names.clear();
+	imported_packages.map.clear();
+	imported_packages.mod = nullptr;
+	ClearPreprocessingState();
+	AbortGenerate();
+}
 
 
 Tokenizer tokenizer(nullptr,0);
@@ -150,6 +175,10 @@ void ParseParameters(int argc, char** argv)
 				string ret = args.Get();
 				cu.symbol_prefix = ret;
 			}
+			else if (cmd == "--script" || cmd== "-s")
+			{
+				cu.is_script_mode = true;
+			}
 			else if (cmd == "--printir")
 			{
 				cu.is_print_ir = true;
@@ -161,7 +190,7 @@ void ParseParameters(int argc, char** argv)
 			else
 				goto fail;
 		}
-		if (source == "" || target == "")
+		if ( source == "" || target == "")
 			goto fail;
 		//cut the source path into filename & dir path
 		size_t found;
@@ -176,6 +205,17 @@ void ParseParameters(int argc, char** argv)
 			cu.directory = source.substr(0, found);
 			cu.filename = source.substr(found + 1);
 		}
+		if (!cu.is_script_mode)
+		{
+			auto f = std::make_unique<FileStream>(source.c_str());
+			if (!f->Okay())
+			{
+				std::cerr << "Error when opening file " << source << "\n";
+				exit(3);
+			}
+			Birdee::source_paths.push_back(source);
+			tokenizer = Tokenizer(std::move(f), 0);
+		}
 		found = target.find_last_of('.');
 		if (found != string::npos)
 		{
@@ -186,14 +226,6 @@ void ParseParameters(int argc, char** argv)
 			cu.targetmetapath = target + ".bmm";
 		}
 		cu.targetpath = target;
-		auto f=std::make_unique<FileStream>(source.c_str());
-		if (!f->Okay())
-		{
-			std::cerr << "Error when opening file " << source << "\n";
-			exit(3);
-		}
-		Birdee::source_paths.push_back(source);
-		tokenizer = Tokenizer(std::move(f),0);
 		return;
 	}
 fail:
@@ -214,7 +246,13 @@ int main(int argc,char** argv)
 	}
 	else
 		cu.homepath = "./";
-	std::ofstream metaf(cu.targetmetapath, std::ios::out);
+
+	if (cu.is_script_mode)
+	{
+		RunGenerativeScript();
+		return 0;
+	}
+
 	try {
 		ParseTopLevel();
 		cu.Phase0();
@@ -235,6 +273,7 @@ int main(int argc,char** argv)
 	{
 		node->print(0);
 	}*/
+	std::ofstream metaf(cu.targetmetapath, std::ios::out);
 	SeralizeMetadata(metaf);
     return 0;
 }

@@ -31,28 +31,8 @@ using Birdee::CompileError;
 using std::unordered_map;
 using namespace Birdee;
 
-static LLVMContext context;
-IRBuilder<> builder(context);
 
-static Module* module;
-static std::unique_ptr<DIBuilder> DBuilder;
 
-static llvm::Type* ty_int=IntegerType::getInt32Ty(context);
-static llvm::Type* ty_long = IntegerType::getInt64Ty(context);
-
-struct DebugInfo {
-	DICompileUnit *cu;
-	std::vector<DIScope *> LexicalBlocks;
-	DIBasicType* GetIntType()
-	{
-		DIBasicType* ret = nullptr;
-		if (ret)
-			return ret;
-		ret = DBuilder->createBasicType("uint", 32, dwarf::DW_ATE_unsigned);
-		return ret;
-	}
-	void emitLocation(Birdee::StatementAST *AST);
-} dinfo;
 
 
 namespace std
@@ -130,7 +110,70 @@ struct LLVMHelper {
 		return nullptr;
 	}
 
-} helper;
+} ;
+
+static DIBuilder* GetDBuilder();
+struct DebugInfo {
+	DICompileUnit *cu;
+	std::vector<DIScope *> LexicalBlocks;
+	DIBasicType* GetIntType()
+	{
+		DIBasicType* ret = nullptr;
+		if (ret)
+			return ret;
+		ret = GetDBuilder()->createBasicType("uint", 32, dwarf::DW_ATE_unsigned);
+		return ret;
+	}
+	void emitLocation(Birdee::StatementAST *AST);
+};
+
+extern IRBuilder<> builder;
+struct GeneratorContext
+{
+	LLVMContext context;
+	Module* module = nullptr;
+	std::unique_ptr<DIBuilder> DBuilder = nullptr;
+
+	llvm::Type* ty_int;
+	llvm::Type* ty_long;
+
+	GeneratorContext()
+	{
+		ty_int = IntegerType::getInt32Ty(context);
+		ty_long = IntegerType::getInt64Ty(context);
+		builder.~IRBuilder<>();
+		new (&builder)IRBuilder<>(context);
+	}
+
+	~GeneratorContext()
+	{
+		delete module;
+	}
+	Function* malloc_obj_func = nullptr;
+	Function* malloc_arr_func = nullptr;
+	StructType* cls_string = nullptr;
+	DebugInfo dinfo;
+	unordered_map<reference_wrapper<const string>, GlobalVariable*> stringpool;
+	llvm::Type* byte_arr_ty = nullptr;
+	ClassAST* array_cls = nullptr;
+	LLVMHelper helper;
+};
+static GeneratorContext gen_context;
+IRBuilder<> builder(gen_context.context); //a bug? cannot put this into GeneratorContext
+
+DIBuilder* GetDBuilder()
+{
+	return gen_context.DBuilder.get();
+}
+#define context (gen_context.context)
+//#define builder (gen_context.builder)
+#define helper (gen_context.helper)
+#define module (gen_context.module)
+#define DBuilder (gen_context.DBuilder)
+#define ty_int (gen_context.ty_int)
+#define ty_long (gen_context.ty_long)
+#define dinfo  (gen_context.dinfo)
+
 
 void DebugInfo::emitLocation(Birdee::StatementAST *AST) {
 	DIScope *Scope;
@@ -353,11 +396,18 @@ void Birdee::CompileUnit::InitForGenerate()
 	InitializeNativeTargetAsmParser();
 	InitializeNativeTargetAsmPrinter();
 
-	module= new Module(name, context);
+	module = new Module(name, context);
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
 		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
 		"Birdee Compiler", 0, "", 0);
+}
+
+void Birdee::CompileUnit::AbortGenerate()
+{
+	gen_context.~GeneratorContext();
+	new (&gen_context) GeneratorContext();
+	InitForGenerate();
 }
 
 
@@ -655,25 +705,23 @@ DIType* Birdee::FunctionAST::PreGenerate()
 
 llvm::Function* GetMallocObj()
 {
-	static llvm::Function* func = nullptr;
-	if (!func)
+	if (!gen_context.malloc_obj_func)
 	{
 		auto fty = FunctionType::get(builder.getInt8PtrTy(), { builder.getInt32Ty() }, false);
-		func=Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocObj", module);
+		gen_context.malloc_obj_func = Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocObj", module);
 	}
-	return func;
+	return gen_context.malloc_obj_func;
 }
 
 llvm::Function* GetMallocArr()
 {
-	static llvm::Function* func = nullptr;
-	if (!func)
+	if (!gen_context.malloc_arr_func)
 	{
 		//base_size,dimension,[size1,size2....]
 		auto fty = FunctionType::get(builder.getInt8PtrTy(), { builder.getInt32Ty(),builder.getInt32Ty()}, true);
-		func = Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocArr", module);
+		gen_context.malloc_arr_func = Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocArr", module);
 	}
-	return func;
+	return gen_context.malloc_arr_func;
 }
 
 Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args,SourcePos pos)
@@ -828,9 +876,8 @@ llvm::Value * Birdee::LoopControlAST::Generate()
 
 StructType* GetStringType()
 {
-	static StructType* cls_string = nullptr;
-	if (cls_string)
-		return cls_string;
+	if (gen_context.cls_string)
+		return gen_context.cls_string;
 	return GetStringClass()->llvm_type;
 }
 
@@ -841,20 +888,18 @@ llvm::Value * Birdee::BoolLiteralExprAST::Generate()
 
 llvm::Value * Birdee::StringLiteralAST::Generate()
 {
-	static unordered_map<reference_wrapper<const string>, GlobalVariable*> stringpool;
 	dinfo.emitLocation(this);
-	auto itr = stringpool.find(Val);
-	if (itr != stringpool.end())
+	auto itr = gen_context.stringpool.find(Val);
+	if (itr != gen_context.stringpool.end())
 	{
 		return itr->second;
 	}
-	static llvm::Type* byte_arr_ty = nullptr;
-	if (!byte_arr_ty)
+	if (!gen_context.byte_arr_ty)
 	{
 		ResolvedType ty;
 		ty.type = tok_byte;
 		ty.index_level = 1;
-		byte_arr_ty = helper.GetType(ty);
+		gen_context.byte_arr_ty = helper.GetType(ty);
 	}
 	/*
 	Constant * str = ConstantDataArray::getString(context, Val);
@@ -891,7 +936,7 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 	ConstantInt* const_int64_6 = ConstantInt::get(context, APInt(64, 0));
 	const_ptr_5_indices.push_back(const_int64_6);
 	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, const_ptr_5_indices);
-	const_ptr_5 = ConstantExpr::getPointerCast(const_ptr_5, byte_arr_ty);
+	const_ptr_5 = ConstantExpr::getPointerCast(const_ptr_5, gen_context.byte_arr_ty);
 	//const_ptr_5->print(errs(), true);
 
 	Constant * obj = llvm::ConstantStruct::get(GetStringType(), {
@@ -900,7 +945,7 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 		});
 	GlobalVariable* vobj = new GlobalVariable(*module, GetStringType(), true, GlobalValue::PrivateLinkage, nullptr);
 	vobj->setInitializer(obj);
-	stringpool[Val] = vobj;
+	gen_context.stringpool[Val] = vobj;
 	return vobj;
 }
 
@@ -1037,11 +1082,10 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 	else if (kind == member_function)
 	{
 		llvm_obj = Obj->Generate();
-		static ClassAST* array_cls = nullptr;
-		if (!array_cls)
-			array_cls = GetArrayClass();
+		if (!gen_context.array_cls)
+			gen_context.array_cls = GetArrayClass();
 		if (Obj->resolved_type.index_level > 0)
-			llvm_obj = builder.CreatePointerCast(llvm_obj, array_cls->llvm_type->getPointerTo());
+			llvm_obj = builder.CreatePointerCast(llvm_obj, gen_context.array_cls->llvm_type->getPointerTo());
 		return func->decl->llvm_func;
 	}
 	else if (kind == member_imported_dim)

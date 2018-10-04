@@ -11,6 +11,7 @@ using namespace Birdee;
 
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
+extern int ParseTopLevel();
 extern FunctionAST* GetCurrentPreprocessedFunction();
 
 static unique_ptr<ExprAST> outexpr = nullptr;
@@ -18,11 +19,19 @@ struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
 	py::module main_module;
+	py::object orig_scope;
+	py::object copied_scope;
 	BirdeePyContext()
 	{
 		main_module = py::module::import("__main__");
+		if (cu.is_script_mode)
+		{
+			PyObject* newdict = PyDict_Copy(main_module.attr("__dict__").ptr());
+			copied_scope = py::cast<py::object>(newdict);
+		}
 		py::module::import("birdeec");
 		py::exec("from birdeec import *");
+		orig_scope = main_module.attr("__dict__");
 	}
 };
 static BirdeePyContext& InitPython()
@@ -31,13 +40,28 @@ static BirdeePyContext& InitPython()
 	return context;
 }
 
+void RunGenerativeScript()
+{
+	try
+	{
+		py::eval_file((cu.directory + "/" + cu.filename).c_str(), InitPython().copied_scope);
+	}
+	catch (py::error_already_set& e)
+	{
+		std::cerr<<e.what();
+	}
+	catch (std::runtime_error& e)
+	{
+		std::cerr << e.what();
+	}
+}
 
 void Birdee::ScriptAST::Phase1()
 {
-	InitPython();
+	auto& env=InitPython();
 	try
 	{
-		py::exec(script.c_str());
+		py::exec(script.c_str(),env.orig_scope);
 	}
 	catch (py::error_already_set& e)
 	{
@@ -61,9 +85,15 @@ static void CompileExpr(char* cmd) {
 }
 
 
-
-
-
+static int CompileTopLevel(char* src)
+{
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(src)), -1);
+	toknzr.GetNextToken();
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	int ret = ParseTopLevel();
+	SwitchTokenizer(std::move(old_tok));
+	return ret;
+}
 
 py::object GetNumberLiteral(NumberExprAST& ths)
 {
@@ -140,9 +170,38 @@ PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
 
 extern void RegisiterClassForBinding2(py::module& m);
 
-
 PYBIND11_EMBEDDED_MODULE(birdeec, m)
 {
+	if (cu.is_script_mode)
+	{
+		m.def("clear_compile_unit", []() {cu.Clear(); });
+		m.def("top_level", CompileTopLevel);
+		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
+	}
+
+	py::class_ < CompileError>(m, "CompileError")
+		.def_readwrite("linenumber", &CompileError::linenumber)
+		.def_readwrite("pos", &CompileError::pos)
+		.def_readwrite("msg", &CompileError::msg);
+	py::class_ < TokenizerError>(m, "TokenizerError")
+		.def_readwrite("linenumber", &TokenizerError::linenumber)
+		.def_readwrite("pos", &TokenizerError::pos)
+		.def_readwrite("msg", &TokenizerError::msg);
+
+	static py::exception<int> CompileErrorExc(m, "CompileException");
+	static py::exception<int> TokenizerErrorExc(m, "TokenizerException");
+	py::register_exception_translator([](std::exception_ptr p) {
+		try {
+			if (p) std::rethrow_exception(p);
+		}
+		catch (const CompileError &e) {
+			CompileErrorExc(e.msg.c_str());
+		}
+		catch (const TokenizerError &e) {
+			TokenizerErrorExc(e.msg.c_str());
+		}
+	});
+
 	m.def("expr", CompileExpr);
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
 	m.def("get_func", [](const std::string& name) {
@@ -153,6 +212,8 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m)
 			return itr->second;
 	});
 	m.def("get_top_level", []() {return GetRef(cu.toplevel); });
+	m.def("get_compile_error", []() {return GetRef(CompileError::last_error); });
+	m.def("get_tokenizer_error", []() {return GetRef(TokenizerError::last_error); });
 
 	RegisiterClassForBinding2(m);
 

@@ -122,4 +122,7 @@
       <Filter>资源文件\template</Filter>
     </Text>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\tests\scripttest.py" />
+  </ItemGroup>
 </Project>

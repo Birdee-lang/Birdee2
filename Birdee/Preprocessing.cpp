@@ -34,11 +34,7 @@ T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
 	return (itr->second.get());
 }
 
-static FunctionAST* cur_func=nullptr;
-FunctionAST* GetCurrentPreprocessedFunction()
-{
-	return cur_func;
-}
+
 class ScopeManager
 {
 public:
@@ -359,7 +355,30 @@ public:
 			return basic_blocks.back();
 	}
 
-}scope_mgr;
+};
+
+struct PreprocessingState
+{
+	ScopeManager _scope_mgr;
+	FunctionAST* _cur_func = nullptr;
+	ClassAST* array_cls = nullptr;
+	ClassAST* string_cls = nullptr;
+};
+
+#define scope_mgr (preprocessing_state._scope_mgr)
+#define cur_func (preprocessing_state._cur_func)
+
+static PreprocessingState preprocessing_state;
+FunctionAST* GetCurrentPreprocessedFunction()
+{
+	return cur_func;
+}
+
+void ClearPreprocessingState()
+{
+	preprocessing_state.~PreprocessingState();
+	new (&preprocessing_state) PreprocessingState();
+}
 
 
 std::string Birdee::GetTemplateStackTrace()
@@ -1265,9 +1284,12 @@ namespace Birdee
 		}
 		if (Obj->resolved_type.index_level>0)
 		{
-			static ClassAST* array_cls = nullptr;
+			ClassAST* array_cls = preprocessing_state.array_cls;
 			if (!array_cls)
+			{
 				array_cls = GetArrayClass();
+				preprocessing_state.array_cls = array_cls;
+			}
 			auto func = array_cls->funcmap.find(member);
 			if (func != array_cls->funcmap.end())
 			{
@@ -1364,9 +1386,10 @@ namespace Birdee
 	{
 		//fix-me: use the system package name of string
 		
-		static ClassAST& string_cls = *GetStringClass();
+		if(!preprocessing_state.string_cls)  
+			preprocessing_state.string_cls = GetStringClass();
 		resolved_type.type = tok_class;
-		resolved_type.class_ast = &string_cls;	
+		resolved_type.class_ast = preprocessing_state.string_cls;
 	}
 
 	void IfBlockAST::Phase1()

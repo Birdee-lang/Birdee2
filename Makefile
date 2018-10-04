@@ -12,7 +12,7 @@ BIN_DIR=$(PWD_DIR)/bin
 
 PYLIBS = $(shell python3-config --libs)
 CXX ?= g++
-CPPFLAGS ?= -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(shell python3 -m pybind11 --includes)
+CPPFLAGS ?= -fvisibility=hidden  -flto=thin -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(shell python3 -m pybind11 --includes)
 LIBS ?= -pthread
 
 ##

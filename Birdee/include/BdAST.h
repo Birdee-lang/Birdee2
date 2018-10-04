@@ -283,6 +283,7 @@ namespace Birdee {
 		bool is_corelib=false;
 		bool is_print_ir = false;
 		bool expose_main = false;
+		bool is_script_mode = false;
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
@@ -307,10 +308,12 @@ namespace Birdee {
 			whether AAA is a variable name or a package name.
 		*/
 		ImportTree imported_packages;
+		void Clear();
 		void Phase0();
 		void Phase1();
 		void InitForGenerate();
 		void Generate();
+		void AbortGenerate();
 	};
 	extern  CompileUnit cu;
 
