@@ -7,8 +7,8 @@ namespace Birdee
 	template <Token typefrom, Token typeto>
 	class CastNumberExpr : public ExprAST
 	{
-		unique_ptr<ExprAST> expr;
 	public:
+		unique_ptr<ExprAST> expr;
 		void Phase1() override {};
 		unique_ptr<StatementAST> Copy()
 		{

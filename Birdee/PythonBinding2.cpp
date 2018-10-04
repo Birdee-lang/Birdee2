@@ -1,16 +1,19 @@
 #include "BdAST.h"
 #include "Tokenizer.h"
 #include "CompileError.h"
-#include <pybind11/embed.h>
-#include <pybind11/stl.h>
+#include <BindingUtil.h>
 #include <sstream>
 #include "OpEnums.h"
+#include <CastAST.h>
 
 using namespace Birdee;
+
+
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
+extern FunctionAST* GetCurrentPreprocessedFunction();
 
-
+static unique_ptr<ExprAST> outexpr = nullptr;
 struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
@@ -27,16 +30,6 @@ static BirdeePyContext& InitPython()
 	static BirdeePyContext context;
 	return context;
 }
-
-static unique_ptr<ExprAST> outexpr = nullptr;
-void CompileExpr(char* cmd) {
-	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(cmd)), -1);
-	toknzr.GetNextToken();
-	auto old_tok = SwitchTokenizer(std::move(toknzr));
-	outexpr = ParseExpressionUnknown();
-	SwitchTokenizer(std::move(old_tok));
-}
-
 
 
 void Birdee::ScriptAST::Phase1()
@@ -58,6 +51,18 @@ void Birdee::ScriptAST::Phase1()
 		resolved_type = expr->resolved_type;
 	}
 }
+
+static void CompileExpr(char* cmd) {
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(cmd)), -1);
+	toknzr.GetNextToken();
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	outexpr = ParseExpressionUnknown();
+	SwitchTokenizer(std::move(old_tok));
+}
+
+
+
+
 
 
 py::object GetNumberLiteral(NumberExprAST& ths)
@@ -108,4 +113,170 @@ void Birdee::AnnotationStatementAST::Phase1()
 	}
 }
 
+namespace Birdee
+{
+	extern string GetTokenString(Token tok);
+}
 
+template<Token t1,Token t2>
+void RegisterNumCastClass(py::module& m)
+{
+	string name = string("CastNumberExpr_") + GetTokenString(t1) + "_" + GetTokenString(t2);
+	using T = Birdee::CastNumberExpr<t1, t2>;
+	py::class_<T, ExprAST>(m, name.c_str())
+		.def_property_readonly("expr", [](T& ths) {return GetRef(ths.expr); })
+		.def("run", [](T& ths, py::object& func) {func(GetRef(ths.expr)); });
+}
+
+//extern template class py::enum_<Token>;
+//extern template class py::class_<SourcePos>;
+//extern template class py::class_<ResolvedType>;
+//extern template class py::class_<StatementAST>;
+//extern template class py::class_<ExprAST, StatementAST>;
+//extern template class py::class_<ResolvedIdentifierExprAST, ExprAST>;
+
+PYBIND11_MAKE_OPAQUE(std::vector<FieldDef>);
+PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
+
+extern void RegisiterClassForBinding2(py::module& m);
+
+
+PYBIND11_EMBEDDED_MODULE(birdeec, m)
+{
+	m.def("expr", CompileExpr);
+	m.def("get_cur_func", GetCurrentPreprocessedFunction);
+	m.def("get_func", [](const std::string& name) {
+		auto itr = cu.funcmap.find(name);
+		if (itr == cu.funcmap.end())
+			return GetRef((FunctionAST*)nullptr);
+		else
+			return itr->second;
+	});
+	m.def("get_top_level", []() {return GetRef(cu.toplevel); });
+
+	RegisiterClassForBinding2(m);
+
+	RegisiterObjectVector<FieldDef>(m, "FieldDefList");
+	RegisiterObjectVector<MemberFunctionDef>(m, "MemberFunctionDefList");
+
+	py::enum_ < AccessModifier>(m, "AccessModifier")
+		.value("PUBLIC", AccessModifier::access_public)
+		.value("PRIVATE", AccessModifier::access_private);
+
+	py::class_ < FieldDef>(m, "FieldDef")
+		.def_readwrite("index", &FieldDef::index)
+		.def_readwrite("access", &FieldDef::access)
+		.def_property_readonly("decl", [](FieldDef& ths) {return GetRef(ths.decl); });
+
+	py::class_ < MemberFunctionDef>(m, "MemberFunctionDef")
+		.def_readwrite("access", &MemberFunctionDef::access)
+		.def_property_readonly("decl", [](MemberFunctionDef& ths) {return GetRef(ths.decl); });
+
+	py::class_ < NewExprAST, ExprAST>(m, "NewExprAST")
+		.def_property_readonly("args", [](NewExprAST& ths) {return GetRef(ths.args); })
+		.def_property_readonly("func", [](NewExprAST& ths) {return GetRef(ths.func); })
+		.def("run", [](NewExprAST& ths, py::object& func) {
+			for (auto &v : ths.args)
+				func(GetRef(v));
+		});
+
+	py::class_ < ClassAST, StatementAST>(m, "ClassAST")
+		.def_readwrite("name", &ClassAST::name)
+		.def_property_readonly("fields", [](ClassAST& ths) {return GetRef(ths.fields); })
+		.def_property_readonly("funcs", [](ClassAST& ths) {return GetRef(ths.funcs); })
+		.def_property_readonly("template_instance_args", [](ClassAST& ths) {return GetRef(ths.template_instance_args); })
+		.def_property_readonly("template_source_class", [](ClassAST& ths) {return GetRef(ths.template_source_class); })
+		.def_property_readonly("template_param", [](ClassAST& ths) {return GetRef(*(TemplateParameterFake<ClassAST>*)ths.template_param.get()); })
+		.def("is_template_instance", &ClassAST::isTemplateInstance)
+		.def("is_template", &ClassAST::isTemplate)
+		.def("get_unique_name", &ClassAST::GetUniqueName)
+		.def("run", [](LocalVarExprAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
+//	unordered_map<reference_wrapper<const string>, int> fieldmap;
+//	unordered_map<reference_wrapper<const string>, int> funcmap;
+//	int package_name_idx = -1;
+
+
+	auto member_cls = py::class_ < MemberExprAST, ResolvedIdentifierExprAST>(m, "MemberExprAST");
+	py::enum_ < MemberExprAST::MemberType>(member_cls, "AccessModifier")
+		.value("ERROR", MemberExprAST::MemberType::member_error)
+		.value("PACKAGE", MemberExprAST::MemberType::member_package)
+		.value("FIELD", MemberExprAST::MemberType::member_field)
+		.value("FUNCTION", MemberExprAST::MemberType::member_function)
+		.value("IMPORTED_DIM", MemberExprAST::MemberType::member_imported_dim)
+		.value("IMPORTED_FUNCTION", MemberExprAST::MemberType::member_imported_function);
+
+	member_cls
+		.def_property_readonly("func", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_function ? GetRef(ths.func) : GetNullRef<MemberFunctionDef>(); })
+		.def_property_readonly("field", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_field ? GetRef(ths.field) : GetNullRef<FieldDef>(); })
+		.def_property_readonly("imported_func", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_imported_function ? GetRef(ths.import_func) : GetNullRef<FunctionAST>(); })
+		.def_property_readonly("imported_dim", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_imported_dim ? GetRef(ths.import_dim) : GetNullRef<VariableSingleDefAST>(); })
+		.def("to_string_array",&MemberExprAST::ToStringArray)
+		.def_readwrite("kind",&MemberExprAST::kind)
+		.def_property_readonly("obj", [](MemberExprAST& ths) {return GetRef(ths.Obj); })
+		.def("run", [](MemberExprAST& ths, py::object& func) {func(GetRef(ths.Obj)); });
+
+	py::class_ < ScriptAST, ExprAST>(m, "ScriptAST")
+		.def_property_readonly("expr", [](ScriptAST& ths) {return GetRef(ths.expr); })
+		.def_readwrite("script", &ScriptAST::script)
+		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.expr)); });
+
+	RegisterNumCastClass<tok_int, tok_float>(m);
+	RegisterNumCastClass<tok_long, tok_float>(m);
+	RegisterNumCastClass<tok_byte, tok_float>(m);
+	RegisterNumCastClass<tok_int, tok_double>(m);
+	RegisterNumCastClass<tok_long, tok_double>(m);
+	RegisterNumCastClass<tok_byte, tok_double>(m);
+
+	RegisterNumCastClass<tok_uint, tok_float>(m);
+	RegisterNumCastClass<tok_ulong, tok_float>(m);
+	RegisterNumCastClass<tok_uint, tok_double>(m);
+	RegisterNumCastClass<tok_ulong, tok_double>(m);
+
+	RegisterNumCastClass<tok_double, tok_int>(m);
+	RegisterNumCastClass<tok_double, tok_long>(m);
+	RegisterNumCastClass<tok_double, tok_byte>(m);
+	RegisterNumCastClass<tok_float, tok_int>(m);
+	RegisterNumCastClass<tok_float, tok_long>(m);
+	RegisterNumCastClass<tok_float, tok_byte>(m);
+
+	RegisterNumCastClass<tok_double, tok_uint>(m);
+	RegisterNumCastClass<tok_double, tok_ulong>(m);
+	RegisterNumCastClass<tok_float, tok_uint>(m);
+	RegisterNumCastClass<tok_float, tok_ulong>(m);
+
+	RegisterNumCastClass<tok_float, tok_double>(m);
+	RegisterNumCastClass<tok_double, tok_float>(m);
+
+	RegisterNumCastClass<tok_int, tok_uint>(m);
+	RegisterNumCastClass<tok_long, tok_ulong>(m);
+
+	RegisterNumCastClass<tok_uint, tok_int>(m);
+	RegisterNumCastClass<tok_ulong, tok_long>(m);
+
+	/*RegisterNumCastClass<tok_ulong, tok_ulong);
+	RegisterNumCastClass<tok_long, tok_long);
+	RegisterNumCastClass<tok_byte, tok_byte);
+	RegisterNumCastClass<tok_uint, tok_uint);
+	RegisterNumCastClass<tok_int, tok_int);
+	RegisterNumCastClass<tok_float, tok_float);
+	RegisterNumCastClass<tok_double, tok_double);*/
+
+	RegisterNumCastClass<tok_int, tok_long>(m);
+	RegisterNumCastClass<tok_int, tok_byte>(m);
+	RegisterNumCastClass<tok_int, tok_ulong>(m);
+	RegisterNumCastClass<tok_uint, tok_long>(m);
+	RegisterNumCastClass<tok_uint, tok_byte>(m);
+	RegisterNumCastClass<tok_uint, tok_ulong>(m);
+	RegisterNumCastClass<tok_byte, tok_long>(m);
+	RegisterNumCastClass<tok_byte, tok_ulong>(m);
+	RegisterNumCastClass<tok_long, tok_byte>(m);
+	RegisterNumCastClass<tok_ulong, tok_byte>(m);
+
+	RegisterNumCastClass<tok_byte, tok_int>(m);
+	RegisterNumCastClass<tok_byte, tok_uint>(m);
+	RegisterNumCastClass<tok_long, tok_int>(m);
+	RegisterNumCastClass<tok_long, tok_uint>(m);
+	RegisterNumCastClass<tok_ulong, tok_int>(m);
+	RegisterNumCastClass<tok_ulong, tok_uint>(m);
+	
+}

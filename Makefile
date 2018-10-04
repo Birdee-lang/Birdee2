@@ -27,14 +27,14 @@ ${BIN_DIR}:
 	${MKDIR_P} ${BIN_DIR}
 
 compiler:
-	make -C $(COMPILER_DIR)
+	$(MAKE)  -C $(COMPILER_DIR)
 	
 runtime:
-	make -C $(RUNTIME_DIR)
+	$(MAKE)  -C $(RUNTIME_DIR)
 
 ##
 clean:
-	make -C $(COMPILER_DIR) clean
-	make -C $(RUNTIME_DIR) clean
+	$(MAKE)  -C $(COMPILER_DIR) clean
+	$(MAKE)  -C $(RUNTIME_DIR) clean
 	rm -rf ${BIN_DIR}
 

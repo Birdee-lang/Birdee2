@@ -31,10 +31,11 @@ def init_safety_check(func):
 		else:
 			check(stmt)
 
-def parse_template(func):
-	print("is template?",func.is_template())
-	for param in func.template_param.params:
-		print("Param:",param.type,param.name)
+def parse_class(cls):
+	print("is template?",cls.is_template())
+	for func in cls.funcs:
+		print("func:",func.access,func.decl)
+		func.access=AccessModifier.PUBLIC
 @}
 
 @init_safety_check
@@ -46,8 +47,14 @@ function aaa()
 	println(int2str(v))
 end
 
-function add[T,base as int](v1 as T, v2 as T)
-	return v1+v2+base
+@parse_class
+class myclass
+	private function add()
+		println("add")
+	end
 end
 
-{@parse_template(get_func("add"))@}
+(new myclass).add()
+
+
+
