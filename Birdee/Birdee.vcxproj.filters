@@ -16,6 +16,9 @@
     <Filter Include="资源文件\template">
       <UniqueIdentifier>{11403173-2793-41c1-a73e-b3846d1e6ae0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\tests">
+      <UniqueIdentifier>{118bd8ee-92bf-4acf-8b1a-acf62f9597e6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -123,6 +126,11 @@
     </Text>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\tests\scripttest.py" />
+    <None Include="..\tests\ast_write_test.py">
+      <Filter>资源文件\tests</Filter>
+    </None>
+    <None Include="..\tests\scripttest.py">
+      <Filter>资源文件\tests</Filter>
+    </None>
   </ItemGroup>
 </Project>

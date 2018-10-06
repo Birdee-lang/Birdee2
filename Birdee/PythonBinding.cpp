@@ -10,12 +10,12 @@
 
 using namespace Birdee;
 
-extern py::object GetNumberLiteral(NumberExprAST& ths);
-
 extern void CompileExpr(char* cmd);
 
 void RegisiterClassForBinding2(py::module& m) {
 	// `m` is a `py::module` which is used to bind functions and classes
+	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "UniquePtrStatementAST")
+		.def("get", &UniquePtr<unique_ptr<StatementAST>>::get);
 
 	RegisiterObjectVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
 	RegisiterObjectVector<std::unique_ptr<ExprAST>>(m, "ExprASTList");
@@ -24,19 +24,19 @@ void RegisiterClassForBinding2(py::module& m) {
 	RegisiterObjectVector<TemplateParameter>(m, "TemplateParameterList");
 
 	py::enum_<Token>(m, "BasicType")
-		.value("class_", tok_class)
-		.value("null_", tok_null)
-		.value("func", tok_func)
-		.value("void", tok_void)
-		.value("byte", tok_byte)
-		.value("int_", tok_int)
-		.value("long", tok_long)
-		.value("ulong", tok_ulong)
-		.value("uint", tok_uint)
-		.value("float_", tok_float)
-		.value("double", tok_double)
-		.value("boolean", tok_boolean)
-		.value("pointer", tok_pointer);
+		.value("CLASS", tok_class)
+		.value("NULL", tok_null)
+		.value("FUNC", tok_func)
+		.value("VOID", tok_void)
+		.value("BYTE", tok_byte)
+		.value("INT", tok_int)
+		.value("LONG", tok_long)
+		.value("ULONG", tok_ulong)
+		.value("UINT", tok_uint)
+		.value("FLOAT", tok_float)
+		.value("DOUBLE", tok_double)
+		.value("BOOLEAN", tok_boolean)
+		.value("POINTER", tok_pointer);
 
 	py::class_<SourcePos>(m, "SourcePos")
 		.def_readwrite("source_idx", &SourcePos::source_idx)
@@ -101,32 +101,10 @@ void RegisiterClassForBinding2(py::module& m) {
 
 	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
-	py::class_<NumberExprAST, ResolvedIdentifierExprAST>(m,"NumberExprAST")
-		.def("__str__", [](NumberExprAST& ths) {
-			std::stringstream buf;
-			ths.ToString(buf);
-			return buf.str();
-		})
-		.def_property("value", GetNumberLiteral, [](NumberExprAST& ths,py::object& obj) {
-			if (py::isinstance<py::int_>(obj))
-			{
-				ths.Val.v_long = obj.cast<uint64_t>();
-			}
-			else if (py::isinstance<py::float_>(obj))
-			{
-				ths.Val.v_double = obj.cast<double>();
-			}
-			else
-			{
-				abort();
-			}
-		})
-		.def_property("type", [](NumberExprAST& ths) {return ths.Val.type; },[](NumberExprAST& ths, Token tok) {ths.Val.type = tok; })
-		.def("run", [](NumberExprAST& ths, py::object& func) {});
-
 	//BasicTypeExprAST
 	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
-		.def_property_readonly("expr", [](ReturnAST& ths) {return GetRef(ths.Val); })
+		.def_property("expr", [](ReturnAST& ths) {return GetRef(ths.Val); },
+			[](ReturnAST& ths, UniquePtr<unique_ptr<StatementAST>>* v) {ths.Val = v->move_expr(); })
 		.def("run", [](ReturnAST& ths, py::object& func) {func(GetRef(ths.Val)); });
 	py::class_<StringLiteralAST, ResolvedIdentifierExprAST>(m, "StringLiteralAST")
 		.def_readwrite("value",&StringLiteralAST::Val)

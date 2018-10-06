@@ -1,7 +1,7 @@
 #pragma once
 #include <pybind11/embed.h>
 #include <pybind11/stl.h>
-
+#include <Util.h>
 namespace py = pybind11;
 
 
@@ -71,6 +71,48 @@ template <class T>
 auto GetRef(std::unique_ptr<T>& v)
 {
 	return std::reference_wrapper<T>(*v);
+}
+
+
+template<class T>
+struct UniquePtr
+{
+	T ptr;
+	auto get()
+	{
+		return GetRef(ptr);
+	}
+	T move() { return std::move(ptr); }
+	bool is_expr() const {
+		static_assert("Do not call move_expr for T != unique_ptr<StatementAST>");
+	}
+	std::unique_ptr<Birdee::ExprAST> move_expr() {
+		static_assert("Do not call move_expr for T != unique_ptr<StatementAST>");
+	}
+	UniquePtr(T&& ptr) :ptr(std::move(ptr)) {}
+};
+
+
+template<>
+bool UniquePtr< std::unique_ptr<Birdee::StatementAST>>::is_expr() const
+{
+	return dynamic_cast<Birdee::ExprAST*>(ptr.get()) != nullptr;
+}
+
+template<>
+std::unique_ptr<Birdee::StatementAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move()
+{
+	auto ret = std::move(ptr);
+	ptr = nullptr;
+	return std::move(ret);
+}
+
+template<>
+std::unique_ptr<Birdee::ExprAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move_expr()
+{
+	if (!is_expr())
+		throw std::invalid_argument("the contained pointer is not an ExprAST!");
+	return Birdee::unique_ptr_cast<Birdee::ExprAST>(move());
 }
 
 //the iterator class for std::vector binding for python. 

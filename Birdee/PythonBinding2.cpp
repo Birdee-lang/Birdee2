@@ -95,7 +95,7 @@ static int CompileTopLevel(char* src)
 	return ret;
 }
 
-py::object GetNumberLiteral(NumberExprAST& ths)
+static py::object GetNumberLiteral(NumberExprAST& ths)
 {
 	switch (ths.Val.type)
 	{
@@ -123,6 +123,35 @@ py::object GetNumberLiteral(NumberExprAST& ths)
 	}
 	abort();
 	return py::int_(0);
+}
+
+static auto NewNumberExpr(Token tok, py::object& obj) {
+	ResolvedType t;
+	t.type = tok;
+	if (!t.isNumber())
+		throw std::invalid_argument("The type is not a number type!");
+
+	NumberLiteral val;
+	val.type = tok;
+	if (py::isinstance<py::int_>(obj))
+	{
+		if(tok == tok_float || tok == tok_double)
+			val.v_double = (double)obj.cast<uint64_t>();
+		else
+			val.v_long = obj.cast<uint64_t>();
+	}
+	else if (py::isinstance<py::float_>(obj))
+	{
+		if (tok!=tok_float && tok!=tok_double)
+			throw std::invalid_argument("bad input type, expecting an float");
+		val.v_double = obj.cast<double>();
+	}
+	else
+	{
+		throw std::invalid_argument("bad input type, must be either an integer or a float");
+	}
+
+	return new UniquePtr<unique_ptr<StatementAST>>(std::make_unique< NumberExprAST>(val));
 }
 
 
@@ -219,6 +248,31 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m)
 
 	RegisiterObjectVector<FieldDef>(m, "FieldDefList");
 	RegisiterObjectVector<MemberFunctionDef>(m, "MemberFunctionDefList");
+
+	py::class_<NumberExprAST, ResolvedIdentifierExprAST>(m, "NumberExprAST")
+		.def_static("new", NewNumberExpr)
+		.def("__str__", [](NumberExprAST& ths) {
+			std::stringstream buf;
+			ths.ToString(buf);
+			return buf.str();
+		})
+		.def_property("value", GetNumberLiteral, [](NumberExprAST& ths, py::object& obj) {
+			if (py::isinstance<py::int_>(obj))
+			{
+				ths.Val.v_long = obj.cast<uint64_t>();
+			}
+			else if (py::isinstance<py::float_>(obj))
+			{
+				ths.Val.v_double = obj.cast<double>();
+			}
+			else
+			{
+				throw std::invalid_argument("bad input type, must be either an integer or a float");
+			}
+		})
+		.def_property("type", [](NumberExprAST& ths) {return ths.Val.type; }, [](NumberExprAST& ths, Token tok) {ths.Val.type = tok; })
+		.def("run", [](NumberExprAST& ths, py::object& func) {});
+
 
 	py::enum_ < AccessModifier>(m, "AccessModifier")
 		.value("PUBLIC", AccessModifier::access_public)
