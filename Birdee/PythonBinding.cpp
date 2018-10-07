@@ -69,7 +69,8 @@ void RegisiterClassForBinding2(py::module& m) {
 			//fix-me : set the import_node
 			ths.type = type;
 			return;
-		});
+		})
+		.def("__eq__", &ResolvedType::operator ==);
 		
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos);

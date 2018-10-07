@@ -81,6 +81,22 @@ end
 	func_proto.cls=clz
 	assert(id(func_proto.cls)==id(clz))
 
+
+def resolve_type_test():
+	top_level('''
+dim a = "sada"
+class clz
+end
+class lst[T]
+end
+''')
+	process_top_level()
+
+	assert(get_top_level()[0].resolved_type==resolve_type("birdee.string"))
+	assert(str(resolve_type("lst[int]"))=="ast_write_test.lst[int]")
+	assert(str(resolve_type("clz"))=="ast_write_test.clz")
+
+resolve_type_test()
 #return_ast()
 #resolved_type()
-prototype_ast()
+#prototype_ast()

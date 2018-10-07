@@ -13,6 +13,7 @@ extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel();
 extern FunctionAST* GetCurrentPreprocessedFunction();
+extern std::unique_ptr<Type> ParseTypeName();
 
 static unique_ptr<ExprAST> outexpr = nullptr;
 struct BirdeePyContext
@@ -39,6 +40,7 @@ static BirdeePyContext& InitPython()
 	static BirdeePyContext context;
 	return context;
 }
+
 
 void RunGenerativeScript()
 {
@@ -84,6 +86,17 @@ static void CompileExpr(char* cmd) {
 	SwitchTokenizer(std::move(old_tok));
 }
 
+
+static ResolvedType ResolveType(string str)
+{
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(str)), -1);
+	toknzr.GetNextToken();
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	SourcePos pos = old_tok.GetSourcePos();
+	auto type = ParseTypeName();
+	SwitchTokenizer(std::move(old_tok));
+	return ResolvedType(*type, pos);
+}
 
 static int CompileTopLevel(char* src)
 {
@@ -207,7 +220,7 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m)
 		m.def("top_level", CompileTopLevel);
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 	}
-
+	m.def("resolve_type", ResolveType);
 	py::class_ < CompileError>(m, "CompileError")
 		.def_readwrite("linenumber", &CompileError::linenumber)
 		.def_readwrite("pos", &CompileError::pos)
