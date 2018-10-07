@@ -11,10 +11,11 @@
 using namespace Birdee;
 
 extern void CompileExpr(char* cmd);
+extern Tokenizer tokenizer;
 
 void RegisiterClassForBinding2(py::module& m) {
 	// `m` is a `py::module` which is used to bind functions and classes
-	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "UniquePtrStatementAST")
+	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "StatementAST_UniquePtr")
 		.def("get", &UniquePtr<unique_ptr<StatementAST>>::get);
 
 	RegisiterObjectVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
@@ -36,7 +37,8 @@ void RegisiterClassForBinding2(py::module& m) {
 		.value("FLOAT", tok_float)
 		.value("DOUBLE", tok_double)
 		.value("BOOLEAN", tok_boolean)
-		.value("POINTER", tok_pointer);
+		.value("POINTER", tok_pointer)
+		.value("PACKAGE", tok_package);
 
 	py::class_<SourcePos>(m, "SourcePos")
 		.def_readwrite("source_idx", &SourcePos::source_idx)
@@ -44,7 +46,30 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("pos", &SourcePos::pos)
 		.def("__str__", &SourcePos::ToString);
 	py::class_<ResolvedType>(m, "ResolvedType")
-		.def("GetString", &ResolvedType::GetString);
+		.def("__str__", &ResolvedType::GetString)
+		.def_readonly("base",&ResolvedType::type)
+		.def_readwrite("index_level", &ResolvedType::index_level)
+		.def("get_detail", [](ResolvedType& ths) {
+			if (ths.type == tok_class)
+				return py::cast(GetRef(ths.class_ast), py::return_value_policy::reference);
+			else if (ths.type == tok_package)
+				return py::cast(nullptr); //fix-me : return the import_node
+			else if (ths.type == tok_func)
+				return py::cast(GetRef(ths.proto_ast), py::return_value_policy::reference);
+			else
+				return py::cast(nullptr);
+		})
+		.def("set_detail", [](ResolvedType& ths, Token type, py::object obj) {
+			if (type == tok_class)
+				ths.class_ast = py::cast<ClassAST*>(obj);
+			else if (type == tok_func)
+				ths.proto_ast = py::cast<PrototypeAST*>(obj);
+			else
+				ths.class_ast = nullptr;
+			//fix-me : set the import_node
+			ths.type = type;
+			return;
+		});
 		
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos);
@@ -54,8 +79,12 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def("is_lvalue", [](ExprAST& ths)->bool {return (bool)ths.GetLValue(true); });
 
 	py::class_<AnnotationStatementAST, StatementAST>(m, "AnnotationStatementAST")
+		.def_static("new", [](vector<string>&& anno, UniquePtrStatementAST& impl) {
+			return new UniquePtrStatementAST(std::make_unique< AnnotationStatementAST>(std::move(anno), impl.move()));
+		})
 		.def_readwrite("anno",&AnnotationStatementAST::anno)
-		.def_property_readonly("impl", [](AnnotationStatementAST& ths) {return GetRef(ths.impl); })
+		.def_property("impl", [](AnnotationStatementAST& ths) {return GetRef(ths.impl); },
+			[](AnnotationStatementAST& ths, UniquePtrStatementAST& impl) {ths.impl = impl.move(); })
 		.def("run", [](AnnotationStatementAST& ths, py::object& func) {func(GetRef(ths.impl)); });
 
 	py::class_<PrototypeAST>(m, "PrototypeAST")
@@ -65,7 +94,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("name", &PrototypeAST::Name)
 		.def_readwrite("return_type", &PrototypeAST::resolved_type)
 		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); })
-		.def_property_readonly("cls", [](const PrototypeAST& ths) {return GetRef(ths.cls); });
+		.def_readwrite("cls", &PrototypeAST::cls);
 
 	py::class_ < TemplateParameter>(m, "TemplateParameter")
 		.def_property_readonly("type", [](TemplateParameter& ths) {
@@ -103,22 +132,29 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
 	//BasicTypeExprAST
 	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
+		.def_static("new", [](UniquePtrStatementAST& expr) {return new UniquePtrStatementAST(make_unique<ReturnAST>(expr.move_expr(),tokenizer.GetSourcePos())); })
 		.def_property("expr", [](ReturnAST& ths) {return GetRef(ths.Val); },
-			[](ReturnAST& ths, UniquePtr<unique_ptr<StatementAST>>* v) {ths.Val = v->move_expr(); })
+			[](ReturnAST& ths, UniquePtrStatementAST& v) {ths.Val = v.move_expr(); })
 		.def("run", [](ReturnAST& ths, py::object& func) {func(GetRef(ths.Val)); });
 	py::class_<StringLiteralAST, ResolvedIdentifierExprAST>(m, "StringLiteralAST")
+		.def_static("new", [](string& str) {return new UniquePtrStatementAST(make_unique<StringLiteralAST>(str)); })
 		.def_readwrite("value",&StringLiteralAST::Val)
 		.def("run", [](StringLiteralAST& ths, py::object& func) { });
 	py::class_< IdentifierExprAST, ExprAST>(m, "IdentifierExprAST")
+		.def_static("new", [](string& name) {return new UniquePtrStatementAST(make_unique<IdentifierExprAST>(name)); })
 		.def_readwrite("name", &IdentifierExprAST::Name)
-		.def_property_readonly("impl", [](IdentifierExprAST& ths) {return GetRef(ths.impl); })
+		.def_property("impl", [](IdentifierExprAST& ths) {return GetRef(ths.impl); },
+			[](IdentifierExprAST& ths, UniquePtrStatementAST& v) {ths.impl = move_cast_or_throw<ResolvedIdentifierExprAST>(v.ptr); })
 		.def("run", [](IdentifierExprAST& ths, py::object& func) {func(GetRef(ths.impl)); });
 	py::class_< ResolvedFuncExprAST, ResolvedIdentifierExprAST>(m, "ResolvedFuncExprAST")
-		.def_property_readonly("funcdef", [](ResolvedFuncExprAST& ths) {return GetRef(ths.def); })
+		.def_readwrite("funcdef", &ResolvedFuncExprAST::def)
 		.def("run", [](ResolvedFuncExprAST& ths, py::object& func) { });
 	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST")
+		.def_static("new", []() {return new UniquePtrStatementAST(make_unique<ThisExprAST>()); })
 		.def("run", [](ThisExprAST& ths, py::object& func) {});
 	py::class_< BoolLiteralExprAST, ExprAST>(m, "BoolLiteralExprAST")
+		.def_static("new", [](bool b) {return new UniquePtrStatementAST(make_unique<BoolLiteralExprAST>(b)); })
+		.def_readwrite("value", &BoolLiteralExprAST::v)
 		.def("run", [](BoolLiteralExprAST& ths, py::object& func) {});
 	py::class_< IfBlockAST, StatementAST>(m,"IFBlockAST")
 		.def_property_readonly("cond", [](IfBlockAST& ths) {return GetRef(ths.cond); })

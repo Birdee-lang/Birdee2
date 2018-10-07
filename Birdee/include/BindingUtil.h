@@ -83,37 +83,41 @@ struct UniquePtr
 		return GetRef(ptr);
 	}
 	T move() { return std::move(ptr); }
-	bool is_expr() const {
-		static_assert("Do not call move_expr for T != unique_ptr<StatementAST>");
-	}
 	std::unique_ptr<Birdee::ExprAST> move_expr() {
 		static_assert("Do not call move_expr for T != unique_ptr<StatementAST>");
 	}
-	UniquePtr(T&& ptr) :ptr(std::move(ptr)) {}
+	void init() {}
+	UniquePtr(T&& ptr) :ptr(std::move(ptr)) { init(); }
 };
 
-
 template<>
-bool UniquePtr< std::unique_ptr<Birdee::StatementAST>>::is_expr() const
+void UniquePtr< std::unique_ptr<Birdee::StatementAST>>::init()
 {
-	return dynamic_cast<Birdee::ExprAST*>(ptr.get()) != nullptr;
+	ptr->Phase1();
 }
-
 template<>
 std::unique_ptr<Birdee::StatementAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move()
 {
-	auto ret = std::move(ptr);
-	ptr = nullptr;
-	return std::move(ret);
+	if(ptr==nullptr)
+		throw std::invalid_argument("the contained pointer is already moved!");
+	return std::move(ptr);
 }
 
+
+template<typename Derived, typename Base>
+std::unique_ptr<Derived> move_cast_or_throw(std::unique_ptr<Base>& ptr)
+{
+	if (!Birdee::instance_of<Derived>(ptr.get()))
+		throw std::invalid_argument("the contained pointer is not an Derived type!");
+	return Birdee::unique_ptr_cast<Derived>(std::move(ptr));
+}
 template<>
 std::unique_ptr<Birdee::ExprAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move_expr()
 {
-	if (!is_expr())
-		throw std::invalid_argument("the contained pointer is not an ExprAST!");
-	return Birdee::unique_ptr_cast<Birdee::ExprAST>(move());
+	return move_cast_or_throw< Birdee::ExprAST>(ptr);
 }
+
+using UniquePtrStatementAST = UniquePtr<std::unique_ptr<Birdee::StatementAST>>;
 
 //the iterator class for std::vector binding for python. 
 //T can be clazz*/clazz/unique_ptr<clazz>
@@ -167,8 +171,9 @@ void RegisiterObjectVector(py::module& m, const char* name)
 	py::class_<std::vector<T>>(m, name)
 		.def(py::init<>())
 		.def("pop_back", &std::vector<T>::pop_back)
+		.def("push_back", [](std::vector<T> &v, UniquePtr<T>* ptr) { v.push_back(ptr->move()); })
 		.def("__getitem__", [](std::vector<T> &v, int idx) { return VectorIterator<T>::access(v, idx); })
-		//.def("__setitem__", [](const StatementASTList &v, int idx) { return v[idx].get(); })
+		.def("__setitem__", [](std::vector<T> &v, int idx, UniquePtr<T>* ptr) { v[idx] = ptr->move(); })
 		.def("__len__", [](const std::vector<T> &v) { return v.size(); })
 		.def("__iter__", [](std::vector<T> &v) {
 		return py::make_iterator(VectorIterator<T>(&v, 0), VectorIterator<T>(&v));
