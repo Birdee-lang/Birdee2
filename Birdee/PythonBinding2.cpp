@@ -16,6 +16,7 @@ extern FunctionAST* GetCurrentPreprocessedFunction();
 extern std::unique_ptr<Type> ParseTypeName();
 
 static unique_ptr<ExprAST> outexpr = nullptr;
+extern Tokenizer tokenizer;
 struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
@@ -196,7 +197,11 @@ void RegisterNumCastClass(py::module& m)
 	string name = string("CastNumberExpr_") + GetTokenString(t1) + "_" + GetTokenString(t2);
 	using T = Birdee::CastNumberExpr<t1, t2>;
 	py::class_<T, ExprAST>(m, name.c_str())
-		.def_property_readonly("expr", [](T& ths) {return GetRef(ths.expr); })
+		.def_static("new", [](UniquePtrStatementAST& expr) { return new UniquePtrStatementAST(std::make_unique<T>(expr.move_expr(), tokenizer.GetSourcePos())); })
+		.def_property("expr", [](T& ths) {return GetRef(ths.expr); },
+			[](T& ths, UniquePtrStatementAST& v) {
+			ths.expr = v.move_expr();
+		})
 		.def("run", [](T& ths, py::object& func) {func(GetRef(ths.expr)); });
 }
 
@@ -292,17 +297,25 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m)
 		.value("PRIVATE", AccessModifier::access_private);
 
 	py::class_ < FieldDef>(m, "FieldDef")
+		.def_static("new", [](int index, AccessModifier access, UniquePtrStatementAST& v) {
+			return new UniquePtr< FieldDef>(FieldDef(access, move_cast_or_throw< VariableSingleDefAST>(v.ptr), index));
+		})
 		.def_readwrite("index", &FieldDef::index)
 		.def_readwrite("access", &FieldDef::access)
-		.def_property_readonly("decl", [](FieldDef& ths) {return GetRef(ths.decl); });
+		.def_property("decl", [](FieldDef& ths) {return GetRef(ths.decl); },
+			[](FieldDef& ths, UniquePtrStatementAST& v) {ths.decl = move_cast_or_throw< VariableSingleDefAST>(v.ptr); });
 
 	py::class_ < MemberFunctionDef>(m, "MemberFunctionDef")
+		.def_static("new", [](AccessModifier access, UniquePtrStatementAST& v) {
+			return new UniquePtr< MemberFunctionDef>(MemberFunctionDef(access, move_cast_or_throw< FunctionAST>(v.ptr)));
+		})
 		.def_readwrite("access", &MemberFunctionDef::access)
-		.def_property_readonly("decl", [](MemberFunctionDef& ths) {return GetRef(ths.decl); });
+		.def_property("decl", [](MemberFunctionDef& ths) {return GetRef(ths.decl); },
+			[](MemberFunctionDef& ths, UniquePtrStatementAST& v) {ths.decl = move_cast_or_throw< FunctionAST>(v.ptr); });
 
 	py::class_ < NewExprAST, ExprAST>(m, "NewExprAST")
 		.def_property_readonly("args", [](NewExprAST& ths) {return GetRef(ths.args); })
-		.def_property_readonly("func", [](NewExprAST& ths) {return GetRef(ths.func); })
+		.def_readwrite("func", &NewExprAST::func)
 		.def("run", [](NewExprAST& ths, py::object& func) {
 			for (auto &v : ths.args)
 				func(GetRef(v));
@@ -334,17 +347,42 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m)
 		.value("IMPORTED_FUNCTION", MemberExprAST::MemberType::member_imported_function);
 
 	member_cls
-		.def_property_readonly("func", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_function ? GetRef(ths.func) : GetNullRef<MemberFunctionDef>(); })
-		.def_property_readonly("field", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_field ? GetRef(ths.field) : GetNullRef<FieldDef>(); })
-		.def_property_readonly("imported_func", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_imported_function ? GetRef(ths.import_func) : GetNullRef<FunctionAST>(); })
-		.def_property_readonly("imported_dim", [](MemberExprAST& ths) {return ths.kind == MemberExprAST::MemberType::member_imported_dim ? GetRef(ths.import_dim) : GetNullRef<VariableSingleDefAST>(); })
+		.def_property("func", [](MemberExprAST& ths) {
+			return ths.kind == MemberExprAST::MemberType::member_function ? GetRef(ths.func) : GetNullRef<MemberFunctionDef>();
+		}, [](MemberExprAST& ths,  MemberFunctionDef* v) {
+			ths.kind = MemberExprAST::MemberType::member_function;
+			ths.func = v;
+		})
+		.def_property("field", [](MemberExprAST& ths) {
+			return ths.kind == MemberExprAST::MemberType::member_field ? GetRef(ths.field) : GetNullRef<FieldDef>(); 
+		}, [](MemberExprAST& ths, FieldDef* v) {
+			ths.kind = MemberExprAST::MemberType::member_field;
+			ths.field = v;
+		})
+		.def_property("imported_func", [](MemberExprAST& ths) {
+			return ths.kind == MemberExprAST::MemberType::member_imported_function ? GetRef(ths.import_func) : GetNullRef<FunctionAST>();
+		}, [](MemberExprAST& ths, FunctionAST* v) {
+			ths.kind = MemberExprAST::MemberType::member_imported_function;
+			ths.import_func = v;
+		})
+		.def_property("imported_dim", [](MemberExprAST& ths) {
+			return ths.kind == MemberExprAST::MemberType::member_imported_dim ? GetRef(ths.import_dim) : GetNullRef<VariableSingleDefAST>(); 
+		}, [](MemberExprAST& ths, VariableSingleDefAST* v) {
+			ths.kind = MemberExprAST::MemberType::member_imported_dim;
+			ths.import_dim = v;
+		})
 		.def("to_string_array",&MemberExprAST::ToStringArray)
 		.def_readwrite("kind",&MemberExprAST::kind)
-		.def_property_readonly("obj", [](MemberExprAST& ths) {return GetRef(ths.Obj); })
+		.def_property("obj", [](MemberExprAST& ths) {return GetRef(ths.Obj); }, [](MemberExprAST& ths, UniquePtrStatementAST& v) {
+			ths.Obj=v.move_expr();
+		})
 		.def("run", [](MemberExprAST& ths, py::object& func) {func(GetRef(ths.Obj)); });
 
 	py::class_ < ScriptAST, ExprAST>(m, "ScriptAST")
-		.def_property_readonly("expr", [](ScriptAST& ths) {return GetRef(ths.expr); })
+		.def_static("new", [](const string& str) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str)); })
+		.def_property("expr", [](ScriptAST& ths) {return GetRef(ths.expr); }, [](ScriptAST& ths, UniquePtrStatementAST& v) {
+			ths.expr = v.move_expr();
+		})
 		.def_readwrite("script", &ScriptAST::script)
 		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.expr)); });
 
