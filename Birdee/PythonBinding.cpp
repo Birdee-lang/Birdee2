@@ -169,9 +169,11 @@ void RegisiterClassForBinding2(py::module& m) {
 				func(GetRef(v));
 		});
 	py::class_< ForBlockAST, StatementAST>(m, "ForBlockAST")
-		.def_property_readonly("init_value", [](ForBlockAST& ths) {return GetRef(ths.init); })
-		.def_property_readonly("loop_var", [](ForBlockAST& ths) {return GetRef(ths.loop_var); })
-		.def_property_readonly("till", [](ForBlockAST& ths) {return GetRef(ths.till); })
+		.def_property("init_value", [](ForBlockAST& ths) {return GetRef(ths.init); },
+			[](ForBlockAST& ths, UniquePtrStatementAST& v) {ths.init = v.move(); })
+		.def_readwrite("loop_var", &ForBlockAST::loop_var )
+		.def_property("till", [](ForBlockAST& ths) {return GetRef(ths.till); },
+			[](ForBlockAST& ths, UniquePtrStatementAST& v) {ths.till = v.move_expr(); })
 		.def_readwrite("inclusive", &ForBlockAST::including)
 		.def_readwrite("is_dim", &ForBlockAST::isdim)
 		.def_property_readonly("block", [](ForBlockAST& ths) {return &ths.block.body; })
@@ -186,6 +188,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.value("BREAK", LoopControlType::BREAK)
 		.value("CONTINUE", LoopControlType::CONTINUE);
 	py::class_< LoopControlAST, StatementAST>(m, "LoopControlAST")
+		.def_static("new", [](LoopControlType ty) {return new UniquePtrStatementAST(std::make_unique<LoopControlAST>((Token)ty)); })
 		.def_readwrite("type",(LoopControlType LoopControlAST::*)&LoopControlAST::tok)
 		.def("run", [](LoopControlAST& ths, py::object& func) {});
 
@@ -211,9 +214,14 @@ void RegisiterClassForBinding2(py::module& m) {
 		.SET_VALUE(BIN_ASSIGN);
 #undef SET_VALUE
 	py::class_< BinaryExprAST, ExprAST>(m, "BinaryExprAST")
-		.def_property_readonly("func", [](BinaryExprAST& ths) {return GetRef(ths.func); })
-		.def_property_readonly("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); })
-		.def_property_readonly("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); })
+		.def_static("new", [](BinaryOp op, UniquePtrStatementAST& lhs, UniquePtrStatementAST& rhs) {
+			return new UniquePtrStatementAST(std::make_unique<BinaryExprAST>((Token)op,lhs.move_expr(),rhs.move_expr()));
+		})
+		.def_readwrite("func", &BinaryExprAST::func)
+		.def_property("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); },
+			[](BinaryExprAST& ths, UniquePtrStatementAST& v) {ths.LHS = v.move_expr(); })
+		.def_property("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); },
+			[](BinaryExprAST& ths, UniquePtrStatementAST& v) {ths.RHS = v.move_expr(); })
 		.def_readwrite("op", (BinaryOp BinaryExprAST::*)&BinaryExprAST::Op)
 		.def("run", [](BinaryExprAST& ths, py::object& func) {func(GetRef(ths.LHS)); func(GetRef(ths.RHS)); });
 
@@ -224,18 +232,23 @@ void RegisiterClassForBinding2(py::module& m) {
 	templ_arg_cls
 		.def_readwrite("kind", &TemplateArgument::kind)
 		.def_readwrite("resolved_type", &TemplateArgument::type)
-		.def_property_readonly("expr", [](TemplateArgument& ths) {return GetRef(ths.expr); });
+		.def_property("expr", [](TemplateArgument& ths) {return GetRef(ths.expr); },
+			[](TemplateArgument& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); });
 	
 	py::class_< FunctionTemplateInstanceExprAST, ExprAST>(m, "FunctionTemplateInstanceExprAST")
 		.def_property_readonly("template_args", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.template_args); })
-		.def_property_readonly("expr", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.expr); })
-		.def_property_readonly("instance", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.instance); })
+		.def_property("expr", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.expr); },
+			[](FunctionTemplateInstanceExprAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
+		.def_readwrite("instance", &FunctionTemplateInstanceExprAST::instance)
 		.def("run", [](FunctionTemplateInstanceExprAST& ths, py::object& func) {func(GetRef(ths.expr));});
 
 	py::class_< IndexExprAST, ExprAST>(m, "IndexExprAST")
-		.def_property_readonly("expr", [](IndexExprAST& ths) {return GetRef(ths.Expr); })
-		.def_property_readonly("index", [](IndexExprAST& ths) {return GetRef(ths.Index); })
-		.def_property_readonly("template_inst", [](IndexExprAST& ths) {return GetRef(ths.instance); })
+		.def_property("expr", [](IndexExprAST& ths) {return GetRef(ths.Expr); },
+			[](IndexExprAST& ths, UniquePtrStatementAST& v) {ths.Expr = v.move_expr(); })
+		.def_property("index", [](IndexExprAST& ths) {return GetRef(ths.Index); },
+			[](IndexExprAST& ths, UniquePtrStatementAST& v) {ths.Index = v.move_expr(); })
+		.def_property("template_inst", [](IndexExprAST& ths) {return GetRef(ths.instance); },
+			[](IndexExprAST& ths, UniquePtrStatementAST& v) {ths.instance = move_cast_or_throw< FunctionTemplateInstanceExprAST>(v.ptr); })
 		.def("is_template_instance",&IndexExprAST::isTemplateInstance)
 		.def("run", [](IndexExprAST& ths, py::object& func) {
 			if (ths.Expr)
@@ -247,12 +260,17 @@ void RegisiterClassForBinding2(py::module& m) {
 		});
 
 	py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
-		.def_property_readonly("expr", [](AddressOfExprAST& ths) {return GetRef(ths.expr); })
+		.def_static("new", [](UniquePtrStatementAST& v, bool is_address_of) {
+			return new UniquePtrStatementAST(std::make_unique<AddressOfExprAST>(v.move_expr(),is_address_of,tokenizer.GetSourcePos())); 
+		})
+		.def_property("expr", [](AddressOfExprAST& ths) {return GetRef(ths.expr); },
+			[](AddressOfExprAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
 		.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of)
 		.def("run", [](AddressOfExprAST& ths, py::object& func) {func(GetRef(ths.expr)); });
 
 	py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
-		.def_property_readonly("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); })
+		.def_property("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); },
+			[](CallExprAST& ths, UniquePtrStatementAST& v) {ths.Callee = v.move_expr(); })
 		.def_property_readonly("args", [](CallExprAST& ths) {return GetRef(ths.Args); })
 		.def("run", [](CallExprAST& ths, py::object& func) {
 			func(GetRef(ths.Callee));
@@ -262,7 +280,8 @@ void RegisiterClassForBinding2(py::module& m) {
 
 	py::class_< VariableSingleDefAST, StatementAST>(m, "VariableSingleDefAST")
 		.def_readwrite("name", &VariableSingleDefAST::name)
-		.def_property_readonly("value", [](VariableSingleDefAST& ths) {return GetRef(ths.val); })
+		.def_property("value", [](VariableSingleDefAST& ths) {return GetRef(ths.val); },
+			[](VariableSingleDefAST& ths, UniquePtrStatementAST& v) {ths.val = v.move_expr(); })
 		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type)
 		.def("run", [](VariableSingleDefAST& ths, py::object& func) {if (ths.val)func(GetRef(ths.val)); });
 
@@ -274,7 +293,10 @@ void RegisiterClassForBinding2(py::module& m) {
 		});
 
 	py::class_< LocalVarExprAST, ResolvedIdentifierExprAST>(m, "LocalVarExprAST")
-		.def_property_readonly("vardef", [](LocalVarExprAST& ths) {return GetRef(ths.def); })
+		.def_static("new", [](VariableSingleDefAST* def) {
+			return new UniquePtrStatementAST(std::make_unique<LocalVarExprAST>(def, tokenizer.GetSourcePos()));
+		})
+		.def_readwrite("vardef", &LocalVarExprAST::def)
 		.def("run", [](LocalVarExprAST& ths, py::object& func) { });
 
 
