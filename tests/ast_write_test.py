@@ -97,6 +97,7 @@ end
 	assert(str(resolve_type("clz"))=="ast_write_test.clz")
 
 resolve_type_test()
-#return_ast()
+clear_compile_unit()
+return_ast()
 #resolved_type()
 #prototype_ast()

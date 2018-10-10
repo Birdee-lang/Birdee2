@@ -63,39 +63,15 @@
     <ClInclude Include="include\BindingUtil.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\LibDef.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Birdee.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="Preprocessing.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="CodeGen.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="NumberCast.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="Parser.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="MetadataSerializer.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="MetadataDeserializer.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="CopyAST.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="PythonBinding.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="PythonBinding2.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

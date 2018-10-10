@@ -11,7 +11,7 @@
 using namespace Birdee;
 
 extern void CompileExpr(char* cmd);
-extern Tokenizer tokenizer;
+extern BD_CORE_API Tokenizer tokenizer;
 
 void RegisiterClassForBinding2(py::module& m) {
 	// `m` is a `py::module` which is used to bind functions and classes
@@ -157,7 +157,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_static("new", [](bool b) {return new UniquePtrStatementAST(make_unique<BoolLiteralExprAST>(b)); })
 		.def_readwrite("value", &BoolLiteralExprAST::v)
 		.def("run", [](BoolLiteralExprAST& ths, py::object& func) {});
-	py::class_< IfBlockAST, StatementAST>(m,"IFBlockAST")
+	py::class_< IfBlockAST, StatementAST>(m,"IfBlockAST")
 		.def_property_readonly("cond", [](IfBlockAST& ths) {return GetRef(ths.cond); })
 		.def_property_readonly("if_true", [](IfBlockAST& ths) {return GetRef(ths.iftrue.body); })
 		.def_property_readonly("if_false", [](IfBlockAST& ths) {return GetRef(ths.iffalse.body); })

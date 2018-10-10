@@ -407,7 +407,7 @@ void Birdee::CompileUnit::AbortGenerate()
 {
 	gen_context.~GeneratorContext();
 	new (&gen_context) GeneratorContext();
-	InitForGenerate();
+	cu.InitForGenerate();
 }
 
 

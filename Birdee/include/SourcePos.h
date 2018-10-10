@@ -2,9 +2,10 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <LibDef.h>
 namespace Birdee
 {
-	extern std::vector<std::string> source_paths;
+	BD_CORE_API extern std::vector<std::string> source_paths;
 	struct SourcePos
 	{
 		int source_idx;

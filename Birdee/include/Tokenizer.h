@@ -18,7 +18,7 @@ namespace Birdee
 
 	class TokenizerError {
 	public:
-		static TokenizerError last_error;
+		static BD_CORE_API TokenizerError last_error;
 		int linenumber;
 		int pos;
 		std::string msg;
@@ -227,9 +227,9 @@ namespace Birdee
 		Tokenizer(std::unique_ptr<Stream>&& f,int source_idx):f(std::move(f)),source_idx (source_idx){ line = 1; pos = 1;}
 		NumberLiteral NumVal;		// Filled in if tok_number
 
-		static std::map<int, Token> single_operator_map;
-		static std::map<int, Token> single_token_map;
-		static std::map < std::string, Token > token_map;
+		static BD_CORE_API std::map<int, Token> single_operator_map;
+		static BD_CORE_API std::map<int, Token> single_token_map;
+		static BD_CORE_API std::map < std::string, Token > token_map;
 		std::string IdentifierStr; // Filled in if tok_identifier
 
 

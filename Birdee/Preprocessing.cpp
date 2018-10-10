@@ -369,7 +369,7 @@ struct PreprocessingState
 #define cur_func (preprocessing_state._cur_func)
 
 static PreprocessingState preprocessing_state;
-FunctionAST* GetCurrentPreprocessedFunction()
+BD_CORE_API FunctionAST* GetCurrentPreprocessedFunction()
 {
 	return cur_func;
 }
@@ -552,7 +552,7 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,b
 extern string GetModuleNameByArray(const vector<string>& package);
 namespace Birdee
 {
-	string GetClassASTName(ClassAST* cls)
+	BD_CORE_API string GetClassASTName(ClassAST* cls)
 	{
 		return cls->GetUniqueName();
 	}
@@ -744,7 +744,7 @@ namespace Birdee
 			return "(Error type)";
 	}
 
-	bool operator==(const PrototypeAST& ths, const PrototypeAST& other) 
+	BD_CORE_API bool operator==(const PrototypeAST& ths, const PrototypeAST& other)
 	{
 		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
 		if (!(ths.resolved_type == other.resolved_type))
@@ -805,6 +805,51 @@ namespace Birdee
 		if (type != v.type)
 			return type < type;
 		return v_ulong<v.v_ulong;
+	}
+
+#ifdef BIRDEE_USE_DYN_LIB
+	static_assert(_WIN32, "Non-windows version is not implemented");
+#include <Windows.h>
+	static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
+	{
+		
+		typedef void(*PtrImpl)(AnnotationStatementAST* ths);
+		static PtrImpl impl=nullptr;
+		if (impl == nullptr)
+		{
+			auto hinst = LoadLibrary(L"BirdeeBinding.dll");
+			assert(hinst);
+			impl = (PtrImpl)GetProcAddress(hinst, "?Birdee_AnnotationStatementAST_Phase1@@YAXPEAVAnnotationStatementAST@Birdee@@@Z");
+			assert(impl);
+		}
+		impl(ths);
+	}
+	static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
+	{
+		typedef void(*PtrImpl)(ScriptAST* ths);
+		static PtrImpl impl = nullptr;
+		if (impl == nullptr)
+		{
+			auto hinst = LoadLibrary(L"BirdeeBinding.dll");
+			assert(hinst);
+			impl = (PtrImpl)GetProcAddress(hinst, "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@@Z");
+			assert(impl);
+		}
+		impl(ths);
+	}
+#else
+	extern void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths);
+	extern void Birdee_ScriptAST_Phase1(ScriptAST* ths);
+#endif
+
+	void Birdee::ScriptAST::Phase1()
+	{
+		Birdee_ScriptAST_Phase1(this);
+	}
+
+	void Birdee::AnnotationStatementAST::Phase1()
+	{
+		Birdee_AnnotationStatementAST_Phase1(this);
 	}
 
 	bool Birdee::TemplateArgument::operator<(const TemplateArgument & that) const

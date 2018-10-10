@@ -341,7 +341,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	return json_cls;
 }
 
-void SeralizeMetadata(std::ostream& out)
+BD_CORE_API void SeralizeMetadata(std::ostream& out)
 {
 	json outjson;
 	imported_class.clear();

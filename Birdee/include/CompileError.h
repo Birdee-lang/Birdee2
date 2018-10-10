@@ -1,13 +1,15 @@
 #pragma once
 #include <string>
 #include <SourcePos.h>
+#include <LibDef.h>
+
 namespace Birdee
 {
-	extern SourcePos GetCurrentSourcePos();
-	extern std::string GetTemplateStackTrace();
+	BD_CORE_API extern SourcePos GetCurrentSourcePos();
+	BD_CORE_API extern std::string GetTemplateStackTrace();
 	class CompileError {
 	public:
-		static CompileError last_error;
+		static BD_CORE_API CompileError last_error;
 		int linenumber;
 		int pos;
 		std::string msg;

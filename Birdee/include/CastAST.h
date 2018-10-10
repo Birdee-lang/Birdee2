@@ -5,7 +5,7 @@
 namespace Birdee
 {
 	template <Token typefrom, Token typeto>
-	class CastNumberExpr : public ExprAST
+	class BD_CORE_API CastNumberExpr : public ExprAST
 	{
 	public:
 		unique_ptr<ExprAST> expr;

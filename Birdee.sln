@@ -4,6 +4,10 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 15.0.27428.2015
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Birdee", "Birdee\Birdee.vcxproj", "{B5007550-4998-4B5F-9891-4E37FCBD737B}"
+	ProjectSection(ProjectDependencies) = postProject
+		{793F4745-C386-4C59-A84E-00EED244B34A} = {793F4745-C386-4C59-A84E-00EED244B34A}
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46} = {82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BirdeeMainTest", "BirdeeMainTest\BirdeeMainTest.vcxproj", "{82D04493-F23B-4A46-A2E0-937CE649C5D1}"
 	ProjectSection(ProjectDependencies) = postProject
@@ -11,6 +15,13 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BirdeeMainTest", "BirdeeMai
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BirdeeRuntime", "BirdeeRuntime\BirdeeRuntime.vcxproj", "{F07E95CE-12AE-49A2-BC62-694EE3E8B0F7}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BirdeeCompilerCore", "BirdeeCompilerCore\BirdeeCompilerCore.vcxproj", "{793F4745-C386-4C59-A84E-00EED244B34A}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BirdeeBinding", "BirdeeBinding\BirdeeBinding.vcxproj", "{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}"
+	ProjectSection(ProjectDependencies) = postProject
+		{793F4745-C386-4C59-A84E-00EED244B34A} = {793F4745-C386-4C59-A84E-00EED244B34A}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -44,6 +55,22 @@ Global
 		{F07E95CE-12AE-49A2-BC62-694EE3E8B0F7}.Release|x64.Build.0 = Release|x64
 		{F07E95CE-12AE-49A2-BC62-694EE3E8B0F7}.Release|x86.ActiveCfg = Release|Win32
 		{F07E95CE-12AE-49A2-BC62-694EE3E8B0F7}.Release|x86.Build.0 = Release|Win32
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Debug|x64.ActiveCfg = Debug|x64
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Debug|x64.Build.0 = Debug|x64
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Debug|x86.ActiveCfg = Debug|Win32
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Debug|x86.Build.0 = Debug|Win32
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Release|x64.ActiveCfg = Release|x64
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Release|x64.Build.0 = Release|x64
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Release|x86.ActiveCfg = Release|Win32
+		{793F4745-C386-4C59-A84E-00EED244B34A}.Release|x86.Build.0 = Release|Win32
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Debug|x64.ActiveCfg = Debug|x64
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Debug|x64.Build.0 = Debug|x64
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Debug|x86.ActiveCfg = Debug|Win32
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Debug|x86.Build.0 = Debug|Win32
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Release|x64.ActiveCfg = Release|x64
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Release|x64.Build.0 = Release|x64
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Release|x86.ActiveCfg = Release|Win32
+		{82C8B6DF-D7E8-4934-ADAA-7FC1A88F3F46}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

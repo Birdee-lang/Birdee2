@@ -24,16 +24,16 @@ using namespace Birdee;
 
 
 
-extern Tokenizer tokenizer;
+BD_CORE_API extern Tokenizer tokenizer;
 
 
 namespace Birdee
 {
-	SourcePos GetCurrentSourcePos()
+	BD_CORE_API SourcePos GetCurrentSourcePos()
 	{
 		return SourcePos{ tokenizer.source_idx, tokenizer.GetLine(),tokenizer.GetPos() };
 	}
-	string GetTokenString(Token tok)
+	BD_CORE_API string GetTokenString(Token tok)
 	{
 		static std::map<Token, std::string> tok_names = {
 			{ tok_mul,"*" },
@@ -123,7 +123,7 @@ inline void CompileCheckGlobalConflict(SourcePos pos, const std::string& name)
 	}
 }
 
-Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
+BD_CORE_API Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
 {
 	Tokenizer t = std::move(tokenizer);
 	tokenizer = std::move(tokzr);
@@ -131,7 +131,7 @@ Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
-std::unique_ptr<ExprAST> ParseExpressionUnknown();
+BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown();
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
@@ -191,7 +191,7 @@ std::unique_ptr<Type> ParseBasicType()
 	return std::move(type);
 }
 
-std::unique_ptr<Type> ParseTypeName()
+BD_CORE_API std::unique_ptr<Type> ParseTypeName()
 {
 	std::unique_ptr<Type> type = ParseBasicType();
 	while (tokenizer.CurTok == tok_left_index)
@@ -603,7 +603,7 @@ std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
 /*
 Parse an expression when we don't know what kind of it is. Maybe an identifier? A function def?
 */
-std::unique_ptr<ExprAST> ParseExpressionUnknown()
+BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 {
 
 	return ParseBinOpRHS(0,
@@ -1268,7 +1268,7 @@ void ParseImports()
 	}
 }
 
-int ParseTopLevel()
+BD_CORE_API int ParseTopLevel()
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
 	std::unique_ptr<ExprAST> firstexpr;

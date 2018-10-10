@@ -9,6 +9,7 @@
 #include "SourcePos.h"
 #include "Util.h"
 #include "TokenDef.h"
+#include <LibDef.h>
 #include <assert.h>
 
 namespace Birdee
@@ -84,19 +85,19 @@ namespace Birdee {
 			std::cout << "\t";
 	}
 
-	extern SourcePos GetCurrentSourcePos();
-	extern string GetTokenString(Token tok);
+	BD_CORE_API extern SourcePos GetCurrentSourcePos();
+	BD_CORE_API extern string GetTokenString(Token tok);
 
 	struct ImportedModule
 	{
 		unordered_map<string, unique_ptr<ClassAST>> classmap;
 		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
 		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
-		void Init(const vector<string>& package,const string& module_name);
+		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};
 
 	//a quick structure to find & store names of imported packages
-	class ImportTree
+	class BD_CORE_API ImportTree
 	{
 	public:
 		unordered_map<string, unique_ptr<ImportTree>> map;
@@ -110,7 +111,7 @@ namespace Birdee {
 		ImportTree* Insert(const vector<string>& package, int level=0);
 	};
 
-	class Type {
+	class BD_CORE_API Type {
 
 	public:
 		Token type;
@@ -127,13 +128,13 @@ namespace Birdee {
 	};
 
 	class ExprAST;
-	class GeneralIdentifierType :public Type {
+	class BD_CORE_API GeneralIdentifierType :public Type {
 	public:
 		unique_ptr<vector<unique_ptr<ExprAST>>> template_args;
 		GeneralIdentifierType(Token tok) :Type(tok) {}
 	};
 
-	class IdentifierType :public GeneralIdentifierType {
+	class BD_CORE_API IdentifierType :public GeneralIdentifierType {
 		
 	public:
 		virtual unique_ptr<Type> Copy();
@@ -146,7 +147,7 @@ namespace Birdee {
 		}
 	};
 
-	class QualifiedIdentifierType :public GeneralIdentifierType {
+	class BD_CORE_API QualifiedIdentifierType :public GeneralIdentifierType {
 
 	public:
 		virtual unique_ptr<Type> Copy();
@@ -161,9 +162,9 @@ namespace Birdee {
 
 	class ClassAST;
 	class PrototypeAST;
-	extern string GetClassASTName(ClassAST*);
-	extern bool operator ==(const PrototypeAST& ,const PrototypeAST& );
-	class ResolvedType {
+	BD_CORE_API extern string GetClassASTName(ClassAST*);
+	BD_CORE_API extern bool operator ==(const PrototypeAST& ,const PrototypeAST& );
+	class BD_CORE_API ResolvedType {
 		void ResolveType(Type& _type, SourcePos pos);
 	public:
 		Token type;
@@ -237,7 +238,7 @@ namespace Birdee {
 	};
 
 	/// StatementAST - Base class for all expression nodes.
-	class StatementAST {
+	class BD_CORE_API StatementAST {
 	public:
 		virtual Value* Generate()=0;
 		SourcePos Pos=GetCurrentSourcePos();
@@ -250,7 +251,7 @@ namespace Birdee {
 		}
 	};
 
-	class ExprAST : public StatementAST {
+	class BD_CORE_API ExprAST : public StatementAST {
 	public:
 		ResolvedType resolved_type;
 		virtual llvm::Value* GetLValue(bool checkHas) { return nullptr; };
@@ -259,7 +260,7 @@ namespace Birdee {
 			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
 		}
 	};
-	class AnnotationStatementAST : public StatementAST {
+	class BD_CORE_API AnnotationStatementAST : public StatementAST {
 	public:
 		std::vector<std::string> anno;
 		unique_ptr< StatementAST> impl;
@@ -270,7 +271,7 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
-	class CompileUnit
+	class BD_CORE_API CompileUnit
 	{
 	public:
 		string targetpath;
@@ -284,6 +285,7 @@ namespace Birdee {
 		bool is_print_ir = false;
 		bool expose_main = false;
 		bool is_script_mode = false;
+		bool is_compiler_mode = false; //if the Birdee Compiler Core is called by birdeec, it should be set true; if called & loaded by python, remain false
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
@@ -315,14 +317,14 @@ namespace Birdee {
 		void Generate();
 		void AbortGenerate();
 	};
-	extern  CompileUnit cu;
+	BD_CORE_API extern  CompileUnit cu;
 
-	class ResolvedIdentifierExprAST : public ExprAST {
+	class BD_CORE_API ResolvedIdentifierExprAST : public ExprAST {
 	public:
 		virtual bool isMutable() = 0;
 	};
 	/// NumberExprAST - Expression class for numeric literals like "1.0".
-	class NumberExprAST : public ResolvedIdentifierExprAST {
+	class BD_CORE_API NumberExprAST : public ResolvedIdentifierExprAST {
 	public:
 		NumberLiteral Val;
 		bool isMutable() { return false; } //for template argument replacement
@@ -364,7 +366,7 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
-	class BasicTypeExprAST : public ExprAST
+	class BD_CORE_API BasicTypeExprAST : public ExprAST
 	{
 	public:
 		unique_ptr<Type> type;
@@ -379,7 +381,7 @@ namespace Birdee {
 	};
 
 	class PrototypeAST;
-	class ReturnAST : public StatementAST {
+	class BD_CORE_API ReturnAST : public StatementAST {
 	public:
 		std::unique_ptr<ExprAST> Val;
 		Value* Generate();
@@ -392,7 +394,7 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
-	class StringLiteralAST : public ResolvedIdentifierExprAST {
+	class BD_CORE_API StringLiteralAST : public ResolvedIdentifierExprAST {
 	public:
 		bool isMutable() { return false; }//for template argument replacement
 		std::string Val;
@@ -404,7 +406,7 @@ namespace Birdee {
 	};
 
 	/// IdentifierExprAST - Expression class for referencing a variable, like "a".
-	class IdentifierExprAST : public ExprAST {
+	class BD_CORE_API IdentifierExprAST : public ExprAST {
 	public:
 		std::string Name;
 		unique_ptr<ResolvedIdentifierExprAST> impl;
@@ -416,7 +418,7 @@ namespace Birdee {
 		std::unique_ptr<StatementAST> Copy();
 	};
 
-	class ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
+	class BD_CORE_API ResolvedFuncExprAST : public ResolvedIdentifierExprAST {
 	public:
 		FunctionAST * def;
 		bool isMutable() { return false; }
@@ -426,7 +428,7 @@ namespace Birdee {
 		std::unique_ptr<StatementAST> Copy();
 	};
 
-	class ThisExprAST : public ExprAST {
+	class BD_CORE_API ThisExprAST : public ExprAST {
 	public:
 		void Phase1();
 		llvm::Value* Generate();
@@ -435,7 +437,7 @@ namespace Birdee {
 		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
 	};
-	class BoolLiteralExprAST : public ExprAST {
+	class BD_CORE_API BoolLiteralExprAST : public ExprAST {
 	public:
 		bool v;
 		void Phase1() {};
@@ -445,7 +447,7 @@ namespace Birdee {
 		void print(int level) { ExprAST::print(level); std::cout << "bool" << "\n"; }
 	};
 
-	class NullExprAST : public ExprAST {
+	class BD_CORE_API NullExprAST : public ExprAST {
 	public:
 		void Phase1() {};
 		llvm::Value* Generate();
@@ -457,10 +459,10 @@ namespace Birdee {
 	{
 	public:
 		std::vector<std::unique_ptr<StatementAST>> body;
-		ASTBasicBlock Copy();
-		void Phase1();
-		void Phase1(PrototypeAST* proto);
-		bool Generate();
+		BD_CORE_API ASTBasicBlock Copy();
+		BD_CORE_API void Phase1();
+		BD_CORE_API void Phase1(PrototypeAST* proto);
+		BD_CORE_API bool Generate();
 		void print(int level)
 		{
 			for (auto&& s : body)
@@ -469,7 +471,7 @@ namespace Birdee {
 	};
 
 	/// IfBlockAST - Expression class for If block.
-	class IfBlockAST : public StatementAST {
+	class BD_CORE_API IfBlockAST : public StatementAST {
 	public:
 		std::unique_ptr<ExprAST> cond;
 		ASTBasicBlock iftrue;
@@ -495,7 +497,7 @@ namespace Birdee {
 		}
 	};
 	/// ForBlockAST - Expression class for For block.
-	class ForBlockAST : public StatementAST {
+	class BD_CORE_API ForBlockAST : public StatementAST {
 	public:
 		std::unique_ptr<StatementAST> init; //the code that initialize the loop variable
 		ExprAST* loop_var; //the variable definition, if isdim, this member has no meaning
@@ -524,7 +526,7 @@ namespace Birdee {
 			block.print(level + 2);
 		}
 	};
-	class LoopControlAST :public StatementAST {
+	class BD_CORE_API LoopControlAST :public StatementAST {
 	public:
 		Token tok;
 		void Phase1() {};
@@ -534,7 +536,7 @@ namespace Birdee {
 		std::unique_ptr<StatementAST> Copy();
 	};
 	/// BinaryExprAST - Expression class for a binary operator.
-	class BinaryExprAST : public ExprAST {
+	class BD_CORE_API BinaryExprAST : public ExprAST {
 	public:
 		FunctionAST* func = nullptr;
 		std::unique_ptr<ExprAST> LHS, RHS;
@@ -560,7 +562,7 @@ namespace Birdee {
 	};
 	/// BinaryExprAST - Expression class for a binary operator.
 	class FunctionTemplateInstanceExprAST;
-	class IndexExprAST : public ExprAST {
+	class BD_CORE_API IndexExprAST : public ExprAST {
 	public:
 		std::unique_ptr<ExprAST> Expr, Index;
 		unique_ptr<FunctionTemplateInstanceExprAST> instance;
@@ -585,7 +587,7 @@ namespace Birdee {
 			Index->print(level + 1);
 		}
 	};
-	struct TemplateArgument
+	struct BD_CORE_API TemplateArgument
 	{
 		enum TemplateArgumentType {
 			TEMPLATE_ARG_TYPE,
@@ -603,7 +605,7 @@ namespace Birdee {
 		bool operator < (const TemplateArgument&) const;
 	};
 
-	class FunctionTemplateInstanceExprAST : public ExprAST {
+	class BD_CORE_API FunctionTemplateInstanceExprAST : public ExprAST {
 	public:
 		FunctionAST* instance = nullptr;
 		vector<unique_ptr<ExprAST>> raw_template_args;
@@ -625,7 +627,7 @@ namespace Birdee {
 			ExprAST::print(level + 1); std::cout << "----------------\n";
 		}
 	};
-	class AddressOfExprAST : public ExprAST {
+	class BD_CORE_API AddressOfExprAST : public ExprAST {
 	public:
 		std::unique_ptr<ExprAST> expr;
 		bool is_address_of; //true for addressof, false for pointerof
@@ -644,7 +646,7 @@ namespace Birdee {
 		}
 	};
 	/// CallExprAST - Expression class for function calls.
-	class CallExprAST : public ExprAST {
+	class BD_CORE_API CallExprAST : public ExprAST {
 	public:
 		std::unique_ptr<ExprAST> Callee;
 		std::vector<std::unique_ptr<ExprAST>> Args;
@@ -671,7 +673,7 @@ namespace Birdee {
 
 	class VariableSingleDefAST;
 
-	class VariableDefAST : public StatementAST {
+	class BD_CORE_API VariableDefAST : public StatementAST {
 	public:
 		virtual void move(unique_ptr<VariableDefAST>&& current,
 			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func) = 0;
@@ -679,7 +681,7 @@ namespace Birdee {
 
 
 
-	class VariableSingleDefAST : public VariableDefAST {
+	class BD_CORE_API VariableSingleDefAST : public VariableDefAST {
 		std::unique_ptr<Type> type;
 	public:
 		std::unique_ptr<ExprAST> val;
@@ -729,8 +731,8 @@ namespace Birdee {
 			for (auto& a : lst)
 				a->Phase1();
 		}
-		llvm::Value* Generate();
-		std::unique_ptr<StatementAST> Copy();
+		BD_CORE_API llvm::Value* Generate();
+		BD_CORE_API std::unique_ptr<StatementAST> Copy();
 		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
 		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
@@ -750,7 +752,7 @@ namespace Birdee {
 		}
 	};
 
-	class LocalVarExprAST : public ResolvedIdentifierExprAST {
+	class BD_CORE_API LocalVarExprAST : public ResolvedIdentifierExprAST {
 	public:
 		VariableSingleDefAST* def;
 		std::unique_ptr<StatementAST> Copy();
@@ -764,7 +766,7 @@ namespace Birdee {
 	/// PrototypeAST - This class represents the "prototype" for a function,
 	/// which captures its name, and its argument names (thus implicitly the number
 	/// of arguments the function takes).
-	class PrototypeAST {
+	class BD_CORE_API PrototypeAST {
 	protected:
 		
 		std::unique_ptr<VariableDefAST> Args;
@@ -778,7 +780,7 @@ namespace Birdee {
 		//the index in CompileUnit.imported_module_names
 		//if -1, means it is not imported from other modules
 		int prefix_idx=-1;
-		friend bool operator == (const PrototypeAST&, const PrototypeAST&);
+		friend BD_CORE_API bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 		llvm::FunctionType* GenerateFunctionType();
@@ -901,7 +903,7 @@ namespace Birdee {
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
-		T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
+		BD_CORE_API T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
 		T* Get(vector<TemplateArgument>& v)
 		{
 			auto f = instances.find(v);
@@ -915,14 +917,14 @@ namespace Birdee {
 			instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(v), std::move(impl)));
 		}
 		TemplateParameters(vector<TemplateParameter>&& params) : params(std::move(params)){};
-		TemplateParameters(vector<TemplateParameter>&& params, string&& source) : params(std::move(params)), source(std::move(source)){};
+		//TemplateParameters(vector<TemplateParameter>&& params, string&& src) : params(std::move(params)), source(std::move(src)){};
 		TemplateParameters() {}
-		unique_ptr<TemplateParameters<T>> Copy();
-		void ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos);
+		BD_CORE_API unique_ptr<TemplateParameters<T>> Copy();
+		BD_CORE_API void ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos);
 	};
 
 	/// FunctionAST - This class represents a function definition itself.
-	class FunctionAST : public ExprAST {
+	class BD_CORE_API FunctionAST : public ExprAST {
 	public:
 		ASTBasicBlock Body;
 		unique_ptr<TemplateParameters<FunctionAST>> template_param;
@@ -991,7 +993,7 @@ namespace Birdee {
 		access_public,
 		access_private
 	};
-	class FieldDef
+	class BD_CORE_API FieldDef
 	{
 	public:
 		int index;
@@ -1010,7 +1012,7 @@ namespace Birdee {
 		}
 		FieldDef(AccessModifier access, std::unique_ptr<VariableSingleDefAST>&& decl,int index) :access(access), decl(std::move(decl)),index(index) {}
 	};
-	class MemberFunctionDef
+	class BD_CORE_API MemberFunctionDef
 	{
 	public:
 		AccessModifier access;
@@ -1029,7 +1031,7 @@ namespace Birdee {
 		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl) :access(access), decl(std::move(decl)) {}
 	};
 
-	class NewExprAST : public ExprAST {
+	class BD_CORE_API NewExprAST : public ExprAST {
 		std::unique_ptr<Type> ty;
 		string method;
 	public:
@@ -1050,7 +1052,7 @@ namespace Birdee {
 		}
 	};
 
-	class ClassAST : public StatementAST {
+	class BD_CORE_API ClassAST : public StatementAST {
 	public:
 		std::unique_ptr<StatementAST> Copy();
 		std::unique_ptr<ClassAST> CopyNoTemplate();
@@ -1113,7 +1115,7 @@ namespace Birdee {
 
 
 	/// MemberExprAST - Expression class for function calls.
-	class MemberExprAST : public ResolvedIdentifierExprAST {
+	class BD_CORE_API MemberExprAST : public ResolvedIdentifierExprAST {
 		std::string member;
 	public:
 		std::unique_ptr<ExprAST> Obj;
@@ -1168,7 +1170,7 @@ namespace Birdee {
 
 	};
 
-	class ScriptAST : public ExprAST
+	class BD_CORE_API ScriptAST : public ExprAST
 	{
 	public:
 		unique_ptr<ExprAST> expr;

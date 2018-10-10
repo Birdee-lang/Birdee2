@@ -16,7 +16,7 @@ extern FunctionAST* GetCurrentPreprocessedFunction();
 extern std::unique_ptr<Type> ParseTypeName();
 
 static unique_ptr<ExprAST> outexpr = nullptr;
-extern Tokenizer tokenizer;
+extern BD_CORE_API Tokenizer tokenizer;
 struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
@@ -43,7 +43,7 @@ static BirdeePyContext& InitPython()
 }
 
 
-void RunGenerativeScript()
+BIRDEE_BINDING_API void RunGenerativeScript()
 {
 	try
 	{
@@ -59,23 +59,23 @@ void RunGenerativeScript()
 	}
 }
 
-void Birdee::ScriptAST::Phase1()
+BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths)
 {
 	auto& env=InitPython();
 	try
 	{
-		py::exec(script.c_str(),env.orig_scope);
+		py::exec(ths->script.c_str(),env.orig_scope);
 	}
 	catch (py::error_already_set& e)
 	{
-		throw CompileError(Pos.line, Pos.pos, string("\nScript exception:\n") + e.what());
+		throw CompileError(ths->Pos.line, ths->Pos.pos, string("\nScript exception:\n") + e.what());
 	}
-	expr = std::move(outexpr);
+	ths->expr = std::move(outexpr);
 	outexpr = nullptr;
-	if (expr)
+	if (ths->expr)
 	{
-		expr->Phase1();
-		resolved_type = expr->resolved_type;
+		ths->expr->Phase1();
+		ths->resolved_type = ths->expr->resolved_type;
 	}
 }
 
@@ -102,7 +102,6 @@ static ResolvedType ResolveType(string str)
 static int CompileTopLevel(char* src)
 {
 	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(src)), -1);
-	toknzr.GetNextToken();
 	auto old_tok = SwitchTokenizer(std::move(toknzr));
 	int ret = ParseTopLevel();
 	SwitchTokenizer(std::move(old_tok));
@@ -169,26 +168,26 @@ static auto NewNumberExpr(Token tok, py::object& obj) {
 }
 
 
-void Birdee::AnnotationStatementAST::Phase1()
+BIRDEE_BINDING_API void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
 {
-	impl->Phase1();
+	ths->impl->Phase1();
 	auto& main_module = InitPython().main_module;
 	try
 	{
-		for (auto& func_name : anno)
+		for (auto& func_name : ths->anno)
 		{
-			main_module.attr(func_name.c_str())(GetRef(impl));
+			main_module.attr(func_name.c_str())(GetRef(ths->impl));
 		}
 	}
 	catch (py::error_already_set& e)
 	{
-		throw CompileError(Pos.line, Pos.pos, string("\nScript exception:\n") + e.what());
+		throw CompileError(ths->Pos.line, ths->Pos.pos, string("\nScript exception:\n") + e.what());
 	}
 }
 
 namespace Birdee
 {
-	extern string GetTokenString(Token tok);
+	BD_CORE_API extern string GetTokenString(Token tok);
 }
 
 template<Token t1,Token t2>
@@ -217,13 +216,14 @@ PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
 
 extern void RegisiterClassForBinding2(py::module& m);
 
-PYBIND11_EMBEDDED_MODULE(birdeec, m)
+void RegisiterClassForBinding(py::module& m)
 {
-	if (cu.is_script_mode)
+	if (cu.is_script_mode || !cu.is_compiler_mode)
 	{
 		m.def("clear_compile_unit", []() {cu.Clear(); });
 		m.def("top_level", CompileTopLevel);
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
+		cu.InitForGenerate();
 	}
 	m.def("resolve_type", ResolveType);
 	py::class_ < CompileError>(m, "CompileError")
@@ -446,3 +446,38 @@ PYBIND11_EMBEDDED_MODULE(birdeec, m)
 	RegisterNumCastClass<tok_ulong, tok_uint>(m);
 	
 }
+
+extern "C" PyObject * pybind11_init_impl_birdeec() {
+	auto m = pybind11::module("birdeec");
+	try {
+		RegisiterClassForBinding(m);
+		return m.ptr();
+	}
+	catch (pybind11::error_already_set &e) {
+		PyErr_SetString(PyExc_ImportError, e.what());
+		return nullptr;
+	}
+	catch (const std::exception &e) {
+
+		PyErr_SetString(PyExc_ImportError, e.what());
+		return nullptr;
+	}
+}
+struct myembedded_module
+{
+	myembedded_module()
+	{
+		if (cu.is_compiler_mode)
+		{
+			py::detail::embedded_module mod("birdeec", pybind11_init_impl_birdeec);
+		}
+	}
+}module_initializer;
+
+
+
+PYBIND11_MODULE(birdeec, m)
+{
+	RegisiterClassForBinding(m);
+}
+
