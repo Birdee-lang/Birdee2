@@ -8,9 +8,25 @@ class pair[K,V]
 	end
 end
 
+function hash[T](v as T) as uint
+	return {@
+ty=resolve_type("T")
+if ty.is_integer():
+	expr("v")
+else:
+	raise Exception(f"Cannot hash the type: {ty}")
+@}
+end
+
 class hash_map[K,V]
-	private bucks as list[pair[K,V]]
+	private buckets as list[pair[K,V]][]
+
+	public function create()
+		buckets=new list[pair[K,V]] * 100
+	end
+
 	public function set(k as K, v as V)
-		bucks.push_back(new pair.set(k,v))
+		dim h = hash[K](k)
+		buckets[h].push_back(new pair[K,V]:set(k,v))
 	end
 end

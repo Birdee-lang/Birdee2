@@ -199,6 +199,7 @@
     <Text Include="..\BirdeeHome\src\test.txt" />
     <Text Include="..\BirdeeHome\src\test2.txt" />
     <Text Include="..\BirdeeHome\src\template_test.txt" />
+    <Text Include="..\tests\hash_map_test.txt" />
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>

@@ -186,7 +186,8 @@ namespace Birdee
 
 	std::unique_ptr<PrototypeAST> Birdee::PrototypeAST::Copy()
 	{
-		auto ret = make_unique<PrototypeAST>(Name, unique_ptr_cast<VariableDefAST>(Args->Copy()), RetType->Copy(), cur_cls ? cur_cls : cls, pos);
+		auto ret = make_unique<PrototypeAST>(Name, Args==nullptr ? nullptr: unique_ptr_cast<VariableDefAST>(Args->Copy()),
+			RetType->Copy(), cur_cls ? cur_cls : cls, pos);
 		ret->prefix_idx = prefix_idx;
 		return std::move(ret);
 	}

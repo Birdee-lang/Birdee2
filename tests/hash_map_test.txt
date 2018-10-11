@@ -1,0 +1,4 @@
+import hash_map:hash_map
+
+dim map = new hash_map[int,string]
+map.set(3,"123")

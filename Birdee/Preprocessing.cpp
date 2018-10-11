@@ -219,10 +219,20 @@ public:
 		class_stack.pop_back();
 	}
 
-	bool isInTemplateOfOtherModule()
+	bool isInTemplateOfOtherModuleAndDoImport()
 	{
-		return (!template_stack.empty() && template_stack.back().imported_mod) 
-			|| (!template_class_stack.empty() && template_class_stack.back().imported_mod);
+		bool ret = false;
+		if (!template_stack.empty() && template_stack.back().imported_mod)
+		{
+			ret = true;
+			template_stack.back().imported_mod->HandleImport();
+		}
+		if (!template_class_stack.empty() && template_class_stack.back().imported_mod)
+		{
+			ret = true;
+			template_class_stack.back().imported_mod->HandleImport();
+		}
+		return ret;
 	}
 
 	VariableSingleDefAST* GetGlobalFromImportedTemplate(const string& name)
@@ -235,9 +245,11 @@ public:
 				auto& dimmap = vec.back().imported_mod->dimmap;
 				auto var = dimmap.find(name);
 				if (var != dimmap.end())
-				{
 					return var->second.get();
-				}
+				auto& dimmap2 = vec.back().imported_mod->imported_dimmap;
+				auto var2 = dimmap2.find(name);
+				if (var2 != dimmap2.end())
+					return var2->second;
 			}
 			return nullptr;
 		};
@@ -259,7 +271,7 @@ public:
 		if (template_arg)
 			return std::move(template_arg);
 
-		bool isInOtherModule = isInTemplateOfOtherModule();
+		bool isInOtherModule = isInTemplateOfOtherModuleAndDoImport();
 		if (isInOtherModule)
 		{//if in template of another module, search global vars from the module
 			auto ret = GetGlobalFromImportedTemplate(name);
@@ -295,14 +307,16 @@ public:
 		//if we are in a template && the template is imported from other modules
 		auto check_template_module = [&](vector<TemplateEnv>& v)->unique_ptr<ResolvedFuncExprAST>
 		{
-			if (!template_stack.empty() && template_stack.back().imported_mod)
+			if (!v.empty() && v.back().imported_mod)
 			{
-				auto& funcmap = template_stack.back().imported_mod->funcmap;
+				auto& funcmap = v.back().imported_mod->funcmap;
 				auto var = funcmap.find(name);
 				if (var != funcmap.end())
-				{
 					return make_unique<ResolvedFuncExprAST>(var->second.get(), pos);
-				}
+				auto& funcmap2 = v.back().imported_mod->imported_funcmap;
+				auto var2 = funcmap2.find(name);
+				if (var2 != funcmap2.end())
+					return make_unique<ResolvedFuncExprAST>(var2->second, pos);
 			}
 			return nullptr;
 		};
@@ -659,16 +673,24 @@ namespace Birdee
 				*this = rtype;
 				return;
 			}
+			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
 			//if we are in a template and it is imported from another modules
+			auto find_in_template_env = [&pos](const ScopeManager::TemplateEnv& env, const string& str)
+			{
+				auto& classmap = env.imported_mod->classmap;
+				auto itr = classmap.find(str);
+				if (itr != classmap.end())
+					return itr->second.get();
+				ClassAST* ret= GetItemByName(env.imported_mod->imported_classmap, str, pos);
+				return ret;
+			};
 			if (!scope_mgr.template_stack.empty() && scope_mgr.template_stack.back().imported_mod)
 			{
-				auto& classmap = scope_mgr.template_stack.back().imported_mod->classmap;
-				this->class_ast = GetItemByName(classmap, ty->name, pos).get();
+				this->class_ast = find_in_template_env(scope_mgr.template_stack.back(),ty->name);
 			}
 			else if (!scope_mgr.template_class_stack.empty() && scope_mgr.template_class_stack.back().imported_mod)
 			{
-				auto& classmap = scope_mgr.template_class_stack.back().imported_mod->classmap;
-				this->class_ast = GetItemByName(classmap, ty->name, pos).get();
+				this->class_ast = find_in_template_env(scope_mgr.template_class_stack.back(), ty->name);
 			}
 			else
 			{

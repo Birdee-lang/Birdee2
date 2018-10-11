@@ -70,7 +70,8 @@ void RegisiterClassForBinding2(py::module& m) {
 			ths.type = type;
 			return;
 		})
-		.def("__eq__", &ResolvedType::operator ==);
+		.def("__eq__", &ResolvedType::operator ==)
+		.def("is_integer", &ResolvedType::isInteger);
 		
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos);

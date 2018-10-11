@@ -65,7 +65,7 @@ void Print(T* v)
 }
 
 typedef DIType* PDIType;
-bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base);
+void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base);
 struct LLVMHelper {
 	Function* cur_llvm_func = nullptr;
 	ClassAST* cur_class_ast = nullptr;
@@ -92,12 +92,9 @@ struct LLVMHelper {
 			return itr->second;
 		}
 		llvm::Type* ret;
-		bool resolved = GenerateType(ty, dtype,ret);
-		if (resolved)
-		{
-			typemap[ty] = ret;
-			dtypemap[ty] = dtype;
-		}
+		GenerateType(ty, dtype,ret);
+		typemap[ty] = ret;
+		dtypemap[ty] = dtype;
 		return ret;
 	}
 
@@ -201,9 +198,19 @@ llvm::Type* BuildArrayType(llvm::Type* ty, DIType* & dty,string& name,DIType* & 
 
 }
 
-bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base)
+void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base)
 {
-	bool resolved = true;
+	if (type.index_level > 0)
+	{
+		llvm::Type* mybase;
+		PDIType mydtype;
+		Birdee::ResolvedType subtype = type;
+		subtype.index_level--;
+		mybase = helper.GetType(subtype, mydtype);
+		string name = mydtype->getName();
+		base = BuildArrayType(mybase, mydtype, name, dtype);
+		return;
+	}
 	switch (type.type)
 	{
 	case tok_boolean:
@@ -253,7 +260,6 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	case tok_class:
 		if (!type.class_ast->llvm_type)
 		{
-			resolved = true;
 			base = StructType::create(context, type.class_ast->GetUniqueName())->getPointerTo();
 			dtype = DBuilder->createPointerType(DBuilder->createUnspecifiedType(type.class_ast->GetUniqueName()),64);
 		}
@@ -266,15 +272,6 @@ bool GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	default:
 		assert(0 && "Error type");
 	}
-	if (type.index_level > 0)
-	{
-		string name = dtype->getName();
-		for (int i = 0; i < type.index_level; i++)
-		{
-			base=BuildArrayType(base, dtype, name, dtype);
-		}	
-	}
-	return resolved;
 }
 
 Value * Birdee::BasicTypeExprAST::Generate()
@@ -728,7 +725,9 @@ Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<u
 {
 	vector<Value*> args;
 	if (obj)
+	{
 		args.push_back(obj);
+	}
 	for (auto& vargs : Args)
 	{
 		args.push_back(vargs->Generate());

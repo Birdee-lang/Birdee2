@@ -90,13 +90,9 @@ namespace Birdee {
 
 	struct ImportedModule
 	{
-		unordered_map<std::reference_wrapper<const string>, ClassAST*> classmap;
-		unordered_map<std::reference_wrapper<const string>, FunctionAST*> funcmap;
-		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> dimmap;
-
-		vector<unique_ptr<ClassAST>> classes;
-		vector<unique_ptr<FunctionAST>> funcs;
-		vector<unique_ptr<VariableSingleDefAST>> dims;
+		unordered_map<string, unique_ptr<ClassAST>> classmap;
+		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
+		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
 
 		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;

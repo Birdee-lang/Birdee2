@@ -154,6 +154,7 @@ void ParseTemplateArgsForType(GeneralIdentifierType* type)
 		type->template_args->push_back(ParseExpressionUnknown());
 		while (tokenizer.CurTok == tok_comma)
 		{
+			tokenizer.GetNextToken();
 			type->template_args->push_back(ParseExpressionUnknown());
 		}
 		CompileExpect(tok_right_index, "Expected ] after template arguments");		
@@ -1200,15 +1201,15 @@ void DoImportPackageAll(const vector<string>& package)
 	auto mod = DoImportPackage(package);
 	for (auto& itr : mod->classmap)
 	{
-		InsertName(cu.imported_classmap, itr.first, itr.second);
+		InsertName(cu.imported_classmap, itr.first, itr.second.get());
 	}
 	for (auto& itr : mod->dimmap)
 	{
-		InsertName(cu.imported_dimmap, itr.first, itr.second);
+		InsertName(cu.imported_dimmap, itr.first, itr.second.get());
 	}
 	for (auto& itr : mod->funcmap)
 	{
-		InsertName(cu.imported_funcmap, itr.first, itr.second);
+		InsertName(cu.imported_funcmap, itr.first, itr.second.get());
 	}
 }
 
@@ -1238,16 +1239,17 @@ static vector<vector<string>> auto_import_packages = { {"birdee"} };
 
 void AddAutoImport()
 {
-	DoImportPackageAll({"birdee"});
+	for(auto& imp:auto_import_packages)
+		DoImportPackageAll(imp);
 }
 
 
 void DoImportNameInImportedModule(ImportedModule* to_mod,const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
-	if (FindAndInsertName(to_mod->dimmap, mod->dimmap, name)) return;
-	if (FindAndInsertName(to_mod->funcmap, mod->funcmap, name)) return;
-	if (FindAndInsertName(to_mod->classmap, mod->classmap, name)) return;
+	if (FindAndInsertName(to_mod->imported_dimmap, mod->dimmap, name)) return;
+	if (FindAndInsertName(to_mod->imported_funcmap, mod->funcmap, name)) return;
+	if (FindAndInsertName(to_mod->imported_classmap, mod->classmap, name)) return;
 	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
 }
 
@@ -1256,15 +1258,15 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 	auto mod = DoImportPackage(package);
 	for (auto& itr : mod->classmap)
 	{
-		InsertName(cu.imported_classmap, itr.first, itr.second);
+		InsertName(to_mod->imported_classmap, itr.first, itr.second.get());
 	}
 	for (auto& itr : mod->dimmap)
 	{
-		InsertName(cu.imported_dimmap, itr.first, itr.second);
+		InsertName(to_mod->imported_dimmap, itr.first, itr.second.get());
 	}
 	for (auto& itr : mod->funcmap)
 	{
-		InsertName(cu.imported_funcmap, itr.first, itr.second);
+		InsertName(to_mod->imported_funcmap, itr.first, itr.second.get());
 	}
 }
 
@@ -1272,14 +1274,25 @@ void ImportedModule::HandleImport()
 {
 	if (user_imports.size())
 	{
+		for (auto& imp : auto_import_packages)
+			DoImportPackageAllInImportedModule(this, imp);
 		for (auto& imp : user_imports)
 		{
 			if (imp.back() == "*")
 			{
 				imp.pop_back();
-
+				DoImportPackageAllInImportedModule(this, imp);
 			}
-
+			else if (imp.back().size() > 0 && imp.back()[0] == ':')
+			{
+				string name = imp.back().substr(1);
+				imp.pop_back();
+				DoImportNameInImportedModule(this, imp, name);
+			}
+			else
+			{
+				DoImportPackage(imp);
+			}
 		}
 		user_imports.clear();
 	}
