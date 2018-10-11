@@ -561,6 +561,7 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,b
 }
 
 extern string GetModuleNameByArray(const vector<string>& package);
+
 namespace Birdee
 {
 	BD_CORE_API string GetClassASTName(ClassAST* cls)

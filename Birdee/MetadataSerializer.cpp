@@ -341,6 +341,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	return json_cls;
 }
 
+
 BD_CORE_API void SeralizeMetadata(std::ostream& out)
 {
 	json outjson;
@@ -358,6 +359,7 @@ BD_CORE_API void SeralizeMetadata(std::ostream& out)
 	json func_template;
 	outjson["Functions"] = BuildGlobalFuncJson(func_template);
 	outjson["FunctionTemplates"] = func_template;
+	outjson["Imports"] = cu.imports;
 	outjson["ImportedClasses"] = imported_class;
 	out << std::setw(4)<< outjson;
 }

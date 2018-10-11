@@ -1166,59 +1166,59 @@ ImportedModule* DoImportPackage(const vector<string>& package)
 
 
 using strref = std::reference_wrapper<const string>;
-void InsertName(const string& name,ClassAST* ptr)
+void InsertName(unordered_map<strref, ClassAST*>& imported_classmap,const string& name,ClassAST* ptr)
 {
-	auto itr2 = cu.imported_classmap.find(name);
-	WarnAssert(itr2 == cu.imported_classmap.end(),
+	auto itr2 = imported_classmap.find(name);
+	WarnAssert(itr2 == imported_classmap.end(),
 		string("The imported class ") + ptr->GetUniqueName()
 		+ " has overwritten the previously imported class " + itr2->second->GetUniqueName());
-	if(itr2!= cu.imported_classmap.end()) cu.imported_classmap.erase(itr2);
-	cu.imported_classmap[strref(name)] = ptr;
+	if(itr2!= imported_classmap.end()) imported_classmap.erase(itr2);
+	imported_classmap[strref(name)] = ptr;
 }
-void InsertName(const string& name, VariableSingleDefAST* ptr)
+void InsertName(unordered_map<strref, VariableSingleDefAST*>& imported_dimmap, const string& name, VariableSingleDefAST* ptr)
 {
-	auto itr2 = cu.imported_dimmap.find(name);
-	WarnAssert(itr2 == cu.imported_dimmap.end(),
+	auto itr2 = imported_dimmap.find(name);
+	WarnAssert(itr2 == imported_dimmap.end(),
 		string("The imported variable ") + ptr->name
 		+ " has overwritten the previously imported variable.");
-	if (itr2 != cu.imported_dimmap.end()) cu.imported_dimmap.erase(itr2);
-	cu.imported_dimmap.insert(std::make_pair(strref(name), ptr));
+	if (itr2 != imported_dimmap.end()) imported_dimmap.erase(itr2);
+	imported_dimmap.insert(std::make_pair(strref(name), ptr));
 }
 
 
-void InsertName(const string& name, FunctionAST* ptr)
+void InsertName(unordered_map<strref, FunctionAST*>& imported_funcmap, const string& name, FunctionAST* ptr)
 {
-	auto itr2 = cu.imported_funcmap.find(name);
-	WarnAssert(itr2 == cu.imported_funcmap.end(),
+	auto itr2 = imported_funcmap.find(name);
+	WarnAssert(itr2 == imported_funcmap.end(),
 		string("The imported function ") + ptr->GetName()
 		+ " has overwritten the previously imported function.");
-	if (itr2 != cu.imported_funcmap.end()) cu.imported_funcmap.erase(itr2);
-	cu.imported_funcmap.insert(std::make_pair(strref(name), ptr));
+	if (itr2 != imported_funcmap.end()) imported_funcmap.erase(itr2);
+	imported_funcmap.insert(std::make_pair(strref(name), ptr));
 }
 void DoImportPackageAll(const vector<string>& package)
 {
 	auto mod = DoImportPackage(package);
 	for (auto& itr : mod->classmap)
 	{
-		InsertName(itr.first, itr.second.get());
+		InsertName(cu.imported_classmap, itr.first, itr.second);
 	}
 	for (auto& itr : mod->dimmap)
 	{
-		InsertName(itr.first, itr.second.get());
+		InsertName(cu.imported_dimmap, itr.first, itr.second);
 	}
 	for (auto& itr : mod->funcmap)
 	{
-		InsertName(itr.first, itr.second.get());
+		InsertName(cu.imported_funcmap, itr.first, itr.second);
 	}
 }
 
-template<typename T>
-bool FindAndInsertName(T& namemap, const string& name)
+template<typename T,typename NodeT>
+bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
 {
 	auto dim = namemap.find(name);
 	if (dim != namemap.end())
 	{
-		InsertName(dim->first, dim->second.get());
+		InsertName(node,dim->first, dim->second.get());
 		return true;
 	}
 	return false;
@@ -1227,15 +1227,62 @@ bool FindAndInsertName(T& namemap, const string& name)
 void DoImportName(const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
-	if (FindAndInsertName(mod->dimmap, name)) return;
-	if (FindAndInsertName(mod->funcmap, name)) return;
-	if (FindAndInsertName(mod->classmap, name)) return;
-	throw CompileError("Cannot find name " + name);
+	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
+	if (FindAndInsertName(cu.imported_funcmap, mod->funcmap, name)) return;
+	if (FindAndInsertName(cu.imported_classmap, mod->classmap, name)) return;
+	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
 }
+
+
+static vector<vector<string>> auto_import_packages = { {"birdee"} };
 
 void AddAutoImport()
 {
 	DoImportPackageAll({"birdee"});
+}
+
+
+void DoImportNameInImportedModule(ImportedModule* to_mod,const vector<string>& package, const string& name)
+{
+	auto mod = DoImportPackage(package);
+	if (FindAndInsertName(to_mod->dimmap, mod->dimmap, name)) return;
+	if (FindAndInsertName(to_mod->funcmap, mod->funcmap, name)) return;
+	if (FindAndInsertName(to_mod->classmap, mod->classmap, name)) return;
+	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
+}
+
+void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<string>& package)
+{
+	auto mod = DoImportPackage(package);
+	for (auto& itr : mod->classmap)
+	{
+		InsertName(cu.imported_classmap, itr.first, itr.second);
+	}
+	for (auto& itr : mod->dimmap)
+	{
+		InsertName(cu.imported_dimmap, itr.first, itr.second);
+	}
+	for (auto& itr : mod->funcmap)
+	{
+		InsertName(cu.imported_funcmap, itr.first, itr.second);
+	}
+}
+
+void ImportedModule::HandleImport()
+{
+	if (user_imports.size())
+	{
+		for (auto& imp : user_imports)
+		{
+			if (imp.back() == "*")
+			{
+				imp.pop_back();
+
+			}
+
+		}
+		user_imports.clear();
+	}
 }
 
 void ParseImports()
@@ -1254,6 +1301,7 @@ void ParseImports()
 			if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
 			{
 				DoImportPackage(package);
+				cu.imports.push_back(std::move(package));
 				tokenizer.GetNextToken();
 			}
 			else if (tokenizer.CurTok == tok_colon)
@@ -1265,12 +1313,16 @@ void ParseImports()
 					tokenizer.GetNextToken();
 					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
 					DoImportName(package, name);
+					package.push_back(string(":") + name);
+					cu.imports.push_back(std::move(package));
 				}
 				else if (tokenizer.CurTok == tok_mul)
 				{
 					tokenizer.GetNextToken();
 					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
 					DoImportPackageAll(package);
+					package.push_back("*");
+					cu.imports.push_back(std::move(package));
 				}
 			}
 		}

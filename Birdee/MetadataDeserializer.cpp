@@ -27,6 +27,7 @@ extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
 extern void ParseClassInPlace(ClassAST* ret);
 
 extern std::vector<std::string> Birdee::source_paths;
+using strref = std::reference_wrapper<const string>;
 
 /*
 fix-me: Load template class & functions & instances
@@ -127,7 +128,8 @@ void BuildGlobalVaribleFromJson(const json& globals,ImportedModule& mod)
 	{
 		auto var=BuildVariableFromJson(itr);
 		var->PreGenerateExternForGlobal(current_package_name);
-		mod.dimmap[var->name] = std::move(var);
+		mod.dimmap.insert(std::make_pair(strref(var->name), var.get()));
+		mod.dims.push_back(std::move(var));
 	}
 }
 
@@ -159,7 +161,8 @@ void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
 	{
 		auto var = BuildFunctionFromJson(itr,nullptr);
 		var->PreGenerate();
-		mod.funcmap[var->Proto->GetName()] = std::move(var);
+		mod.funcmap.insert(std::make_pair(strref(var->Proto->GetName()), var.get()));
+		mod.funcs.push_back(std::move(var));
 	}
 }
 
@@ -176,7 +179,8 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
-		mod.funcmap[func->Proto->GetName()] = std::move(func);
+		mod.funcmap.insert(std::make_pair(strref(func->Proto->GetName()), func.get()));
+		mod.funcs.push_back(std::move(func));
 	}
 }
 
@@ -323,14 +327,18 @@ void PreBuildClassFromJson(const json& cls, const string& module_name,ImportedMo
 			if (orphan != cu.orphan_class.end())
 			{
 				classdef = std::move(orphan->second);
+				classdef->package_name_idx = current_module_idx;
+				classdef->name = name;
 				cu.orphan_class.erase(orphan);
 			}
 			else
 			{
-				classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
+				classdef = make_unique<ClassAST>(name, SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
+				classdef->package_name_idx = -3; //-3 marks it a placeholder
 			}
 			idx_to_class.push_back(classdef.get());
-			mod.classmap[name] = std::move(classdef);
+			mod.classmap.insert(std::make_pair(strref(classdef->name), classdef.get()));
+			mod.classes.push_back(std::move(classdef));
 		}
 		else//assert that it's a class template instance
 		{
@@ -370,9 +378,10 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 				if (node)
 				{//if the package is imported
 					BirdeeAssert(templ_idx > idx, "Invalid template instance class name");
-					auto itr = node->mod->classmap.find(name.substr(idx + 1, templ_idx-1-idx));
+					string classname = name.substr(idx + 1, templ_idx - 1 - idx);
+					auto itr = node->mod->classmap.find(classname);
 					BirdeeAssert(itr != node->mod->classmap.end(), "Module imported, but cannot find the class");
-					auto src = itr->second.get();
+					auto src = itr->second;
 					BirdeeAssert(src->isTemplate(), "The source must be a template");
 					//add to the existing template's instances
 					auto pargs = BuildTemplateArgsFromJson(json_cls["template_arguments"]);
@@ -384,6 +393,7 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 					else
 					{ //if no instance, add a placeholder to the instance set
 						auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //placeholder
+						newclass->package_name_idx = -3; //-3 for placeholder
 						classdef = newclass.get();
 						classdef->template_instance_args = unique_ptr<vector<TemplateArgument>>(pargs);
 						src->template_param->AddImpl(*pargs, std::move(newclass));
@@ -392,6 +402,7 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 				else
 				{//if the template itself is not imported, make it an orphan
 					auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
+					newclass->package_name_idx = -3; //-3 for placeholder
 					classdef = newclass.get();
 					cu.orphan_class[name] = std::move(newclass);
 				}
@@ -404,13 +415,15 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 				auto node = cu.imported_packages.Contains(name, idx);
 				if (node)
 				{//if the package is imported
-					auto itr = node->mod->classmap.find(name.substr(idx + 1));
+					string classname = name.substr(idx + 1);
+					auto itr = node->mod->classmap.find(classname);
 					BirdeeAssert(itr != node->mod->classmap.end(), "Module imported, but cannot find the class");
-					classdef = itr->second.get();
+					classdef = itr->second;
 				}
 				else
 				{
 					auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
+					newclass->package_name_idx = -3; //-3 for placeholder
 					classdef = newclass.get();
 					cu.orphan_class[name] = std::move(newclass);
 				}
@@ -432,7 +445,7 @@ void BuildClassFromJson(const json& cls, ImportedModule& mod)
 		auto nameitr = json_cls.find("name");
 		if (nameitr != json_cls.end()) //if it's a class def or class template
 		{
-			if ((*itr)->name.size() == 0) // if it is a placeholder
+			if ((*itr)->package_name_idx == -3) // if it is a placeholder
 			{
 				BuildSingleClassFromJson((*itr), json_cls, cu.imported_module_names.size() - 1, mod);
 			}
@@ -459,7 +472,7 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 	auto itr = orphan_idx_to_class.begin();
 	for (auto& json_cls : cls)
 	{
-		if ((*itr)->name.size() == 0) // if it is a placeholder
+		if ((*itr)->package_name_idx == -3) // if it is a placeholder
 		{
 			BuildSingleClassFromJson((*itr), json_cls, -2,mod); //orphan classes, module index=-2
 		}
@@ -491,6 +504,20 @@ string GetModulePathCurrentDir(const vector<string>& package)
 	ret += ".bmm";
 	return ret;
 }
+
+
+void Get2DStringArray(vector<vector<string>> ret,const json& js)
+{
+	for (auto& arr : js)
+	{
+		ret.push_back(vector<string>());
+		for (auto& itm : arr)
+		{
+			ret.back().push_back(itm.get<string>());
+		}
+	}
+}
+
 void ImportedModule::Init(const vector<string>& package,const string& module_name)
 {
 	json json;
@@ -540,7 +567,9 @@ void ImportedModule::Init(const vector<string>& package,const string& module_nam
 		//cls->Generate();
 	}
 
-
 	BuildGlobalVaribleFromJson(json["Variables"],*this);
 	BuildGlobalFuncFromJson(json["Functions"],*this);
+	auto imports_itr = json.find("Imports");
+	if(imports_itr!=json.end())
+		Get2DStringArray(this->user_imports, *imports_itr);
 }

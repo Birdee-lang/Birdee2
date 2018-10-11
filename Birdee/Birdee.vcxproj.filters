@@ -22,6 +22,9 @@
     <Filter Include="资源文件\pylib">
       <UniqueIdentifier>{7a407203-81d6-40ca-aa1b-efd3f0943592}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\blib">
+      <UniqueIdentifier>{66515783-4c42-478f-b199-5a7aa3253095}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -102,6 +105,12 @@
     </Text>
     <Text Include="..\BirdeeHome\src\template_test.txt">
       <Filter>资源文件\template</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\list.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\hash_map.txt">
+      <Filter>资源文件\blib</Filter>
     </Text>
   </ItemGroup>
   <ItemGroup>

@@ -90,9 +90,20 @@ namespace Birdee {
 
 	struct ImportedModule
 	{
-		unordered_map<string, unique_ptr<ClassAST>> classmap;
-		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
-		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
+		unordered_map<std::reference_wrapper<const string>, ClassAST*> classmap;
+		unordered_map<std::reference_wrapper<const string>, FunctionAST*> funcmap;
+		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> dimmap;
+
+		vector<unique_ptr<ClassAST>> classes;
+		vector<unique_ptr<FunctionAST>> funcs;
+		vector<unique_ptr<VariableSingleDefAST>> dims;
+
+		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
+		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
+		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
+
+		vector<vector<string>> user_imports;
+		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};
 
@@ -305,6 +316,9 @@ namespace Birdee {
 		map<string, unique_ptr<ClassAST>> orphan_class;
 
 		vector<string> imported_module_names;
+
+		//all imports by the source code. if imports[X].back() is "*" or starts with ":", it is a name import
+		vector<vector<string>> imports;
 		/*
 			for quick module name-looking. We need this because we need to quickly distinguish in "AAA.BBB",
 			whether AAA is a variable name or a package name.
@@ -1068,6 +1082,7 @@ namespace Birdee {
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
 		//if the class is defined in the current package, this field will be -1
 		//if the class is an orphan class, this field will be -2
+		//if package_name_idx is -3, the ClassAST is a placeholder
 		int package_name_idx=-1;
 		llvm::StructType* llvm_type=nullptr;
 		llvm::DIType* llvm_dtype = nullptr;
