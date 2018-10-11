@@ -200,7 +200,9 @@
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\BirdeeHome\bin\pylib\getset.py" />
     <None Include="..\tests\ast_write_test.py" />
+    <None Include="..\tests\getset_test.py" />
     <None Include="..\tests\scripttest.py" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

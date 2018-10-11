@@ -19,6 +19,9 @@
     <Filter Include="资源文件\tests">
       <UniqueIdentifier>{118bd8ee-92bf-4acf-8b1a-acf62f9597e6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\pylib">
+      <UniqueIdentifier>{7a407203-81d6-40ca-aa1b-efd3f0943592}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -106,6 +109,12 @@
       <Filter>资源文件\tests</Filter>
     </None>
     <None Include="..\tests\scripttest.py">
+      <Filter>资源文件\tests</Filter>
+    </None>
+    <None Include="..\BirdeeHome\bin\pylib\getset.py">
+      <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\tests\getset_test.py">
       <Filter>资源文件\tests</Filter>
     </None>
   </ItemGroup>

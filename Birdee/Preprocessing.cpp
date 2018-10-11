@@ -374,6 +374,17 @@ BD_CORE_API FunctionAST* GetCurrentPreprocessedFunction()
 	return cur_func;
 }
 
+BD_CORE_API void PushClass(ClassAST* cls)
+{
+	return scope_mgr.PushClass(cls);
+}
+
+BD_CORE_API void PopClass()
+{
+	return scope_mgr.PopClass();
+}
+
+
 void ClearPreprocessingState()
 {
 	preprocessing_state.~PreprocessingState();
@@ -724,24 +735,23 @@ namespace Birdee
 	}
 	string ResolvedType::GetString() const
 	{
-		if (type == tok_class)
-			return GetClassASTName(class_ast);
 		if (type == tok_null)
 			return "null_t";
 		if (type == tok_func)
 			return "func";
 		if (type == tok_void)
 			return "void";
-		if (isTypeToken(type))
-		{
-			std::stringstream buf;
+
+		std::stringstream buf;
+		if (type == tok_class)
+			buf << GetClassASTName(class_ast);
+		else if (isTypeToken(type))
 			buf << GetTokenString(type);
-			for(int i=0;i<index_level;i++)
-				buf<<"[]";
-			return buf.str();
-		}
 		else
 			return "(Error type)";
+		for (int i = 0; i < index_level; i++)
+			buf << "[]";
+		return buf.str();
 	}
 
 	BD_CORE_API bool operator==(const PrototypeAST& ths, const PrototypeAST& other)

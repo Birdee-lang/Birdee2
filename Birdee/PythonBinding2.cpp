@@ -26,6 +26,11 @@ struct BirdeePyContext
 	BirdeePyContext()
 	{
 		main_module = py::module::import("__main__");
+		auto sysmod = py::module::import("sys");
+		auto patharr = py::cast<py::list>(sysmod.attr("path"));
+		patharr.append(cu.directory);
+		patharr.append(cu.homepath + "pylib");
+
 		if (cu.is_script_mode)
 		{
 			PyObject* newdict = PyDict_Copy(main_module.attr("__dict__").ptr());
@@ -185,6 +190,36 @@ BIRDEE_BINDING_API void Birdee_AnnotationStatementAST_Phase1(AnnotationStatement
 	}
 }
 
+BD_CORE_API bool ParseClassBody(ClassAST* cls);
+BD_CORE_API void PushClass(ClassAST* cls);
+BD_CORE_API void PopClass();
+static void CompileClassBody(ClassAST* cls, const char* src)
+{
+	PushClass(cls);
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(src)), -1);
+	toknzr.GetNextToken();
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	auto field_cnt = cls->fields.size();
+	auto func_cnt = cls->funcs.size();
+	while (ParseClassBody(cls))
+	{
+		if (cls->funcs.size() != func_cnt)
+		{
+			cls->funcs.back().decl->Phase1();
+			func_cnt = cls->funcs.size();
+		}
+		if (cls->fields.size() != field_cnt)
+		{
+			cls->fields.back().decl->Phase1();
+			field_cnt = cls->fields.size();
+		}
+	}
+	if (tokenizer.CurTok != tok_eof)
+		throw std::invalid_argument("Bad token for class body, expecting EOF\n");
+	SwitchTokenizer(std::move(old_tok));
+	PopClass();
+}
+
 namespace Birdee
 {
 	BD_CORE_API extern string GetTokenString(Token tok);
@@ -225,6 +260,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 		cu.InitForGenerate();
 	}
+	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
 	py::class_ < CompileError>(m, "CompileError")
 		.def_readwrite("linenumber", &CompileError::linenumber)

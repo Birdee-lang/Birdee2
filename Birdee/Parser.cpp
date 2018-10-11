@@ -146,6 +146,7 @@ void ParseTemplateArgsForType(GeneralIdentifierType* type)
 		tokenizer.GetNextToken();
 		if (tokenizer.CurTok == tok_right_index)
 		{
+			tokenizer.GetNextToken();
 			type->index_level++;
 			return;
 		}
@@ -888,6 +889,84 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 	return make_unique<FunctionAST>(std::move(funcproto), link_name, pos);
 }
 
+BD_CORE_API bool ParseClassBody(ClassAST* ret)
+{
+	std::vector<FieldDef>& fields = ret->fields;
+	std::vector<MemberFunctionDef>& funcs = ret->funcs;
+	unordered_map<reference_wrapper<const string>, int>& fieldmap = ret->fieldmap;
+	unordered_map<reference_wrapper<const string>, int>& funcmap = ret->funcmap;
+	auto classname_checker = [&fieldmap, &funcmap, &fields, &funcs](SourcePos pos, const string& name)
+	{
+		auto prv1 = fieldmap.find(name);
+		if (prv1 != fieldmap.end())
+		{
+			throw CompileError(pos.line, pos.pos, string("The name ") + name + " is already used in " + fields[prv1->second].decl->Pos.ToString());
+		}
+		auto prv2 = funcmap.find(name);
+		if (prv2 != funcmap.end())
+		{
+			throw CompileError(pos.line, pos.pos, string("The name ") + name + " is already used in " + funcs[prv2->second].decl->Pos.ToString());
+		}
+	};
+	AccessModifier access;
+	switch (tokenizer.CurTok)
+	{
+	case tok_newline:
+		tokenizer.GetNextToken(); //eat newline
+		break;
+	case tok_dim:
+		throw CompileError("You should use public/private to define a member variable in a class");
+		break;
+	case tok_private:
+	case tok_public:
+		access = tokenizer.CurTok == tok_private ? AccessModifier::access_private : AccessModifier::access_public;
+		tokenizer.GetNextToken(); //eat access modifier
+		if (tokenizer.CurTok == tok_identifier)
+		{
+			auto var = ParseDim();
+			SourcePos pos = var->Pos;
+			var->move(std::move(var), [pos, &classname_checker, &fields, access, &fieldmap](unique_ptr<VariableSingleDefAST>&& def) {
+				classname_checker(pos, def->name);
+				fields.push_back(FieldDef(access, std::move(def), fields.size()));
+				fieldmap.insert(std::make_pair(reference_wrapper<const string>(fields.back().decl->name), fields.size() - 1));
+			});
+			CompileExpect(tok_newline, "Expected a new line after variable definition");
+		}
+		else if (tokenizer.CurTok == tok_func)
+		{
+			tokenizer.GetNextToken(); //eat function
+			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
+			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+				funcs.size() - 1));
+			CompileExpect(tok_newline, "Expected a new line after function definition");
+		}
+		else
+		{
+			throw CompileError("After public/private, only accept function/variable definitions");
+		}
+		break;
+	case tok_func:
+		tokenizer.GetNextToken(); //eat function
+		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
+		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+			funcs.size() - 1));
+		CompileExpect({ tok_newline }, "Expected a new line after function definition");
+		break;
+	case tok_declare:
+		tokenizer.GetNextToken(); //eat declare
+		CompileExpect(tok_func, "Expected a function after declare");
+		funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret)));
+		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+			funcs.size() - 1));
+		break;
+	default :
+		return false;
+	}
+	return true;
+}
 
 void ParseClassInPlace(ClassAST* ret)
 {
@@ -915,90 +994,22 @@ void ParseClassInPlace(ClassAST* ret)
 		ret->template_param->params = std::move(ParseTemplateParameters());
 	}
 	CompileExpect(tok_newline, "Expected an newline after class name");
-	std::vector<FieldDef>& fields = ret->fields;
-	std::vector<MemberFunctionDef>& funcs = ret->funcs;
-	unordered_map<reference_wrapper<const string>, int>& fieldmap = ret->fieldmap;
-	unordered_map<reference_wrapper<const string>, int>& funcmap = ret->funcmap;
-	auto classname_checker = [&fieldmap, &funcmap, &fields, &funcs](SourcePos pos, const string& name)
-	{
-		auto prv1 = fieldmap.find(name);
-		if (prv1 != fieldmap.end())
-		{
-			throw CompileError(pos.line, pos.pos, string("The name ") + name + " is already used in " + fields[prv1->second].decl->Pos.ToString());
-		}
-		auto prv2 = funcmap.find(name);
-		if (prv2 != funcmap.end())
-		{
-			throw CompileError(pos.line, pos.pos, string("The name ") + name + " is already used in " + funcs[prv2->second].decl->Pos.ToString());
-		}
-	};
+	
 	while (true)
 	{
-		AccessModifier access;
-		switch (tokenizer.CurTok)
-		{
-		case tok_newline:
-			tokenizer.GetNextToken(); //eat newline
+		if (ParseClassBody(ret)) //if a member is recoginzed, continue to find next one
 			continue;
-			break;
-		case tok_dim:
-			throw CompileError("You should use public/private to define a member variable in a class");
-			break;
-		case tok_private:
-		case tok_public:
-			access = tokenizer.CurTok == tok_private ? AccessModifier::access_private : AccessModifier::access_public;
-			tokenizer.GetNextToken(); //eat access modifier
-			if (tokenizer.CurTok == tok_identifier)
-			{
-				auto var = ParseDim();
-				SourcePos pos = var->Pos;
-				var->move(std::move(var), [pos, &classname_checker, &fields, access, &fieldmap](unique_ptr<VariableSingleDefAST>&& def) {
-					classname_checker(pos, def->name);
-					fields.push_back(FieldDef(access, std::move(def), fields.size()));
-					fieldmap.insert(std::make_pair(reference_wrapper<const string>(fields.back().decl->name), fields.size() - 1));
-				});
-				CompileExpect(tok_newline, "Expected a new line after variable definition");
-			}
-			else if (tokenizer.CurTok == tok_func)
-			{
-				tokenizer.GetNextToken(); //eat function
-				funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
-				classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-				funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-					funcs.size() - 1));
-				CompileExpect(tok_newline, "Expected a new line after function definition");
-			}
-			else
-			{
-				throw CompileError("After public/private, only accept function/variable definitions");
-			}
-			break;
-		case tok_eof:
-			throw CompileError("Unexpected end of file, missing \"end\"");
-			break;
-		case tok_func:
-			tokenizer.GetNextToken(); //eat function
-			funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
-			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-				funcs.size() - 1));
-			CompileExpect({ tok_newline }, "Expected a new line after function definition");
-			break;
-		case tok_declare:
-			tokenizer.GetNextToken(); //eat declare
-			CompileExpect(tok_func, "Expected a function after declare");
-			funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret)));
-			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-				funcs.size() - 1));
-			break;
-		case tok_end:
+		if (tokenizer.CurTok == tok_end)
+		{
 			tokenizer.GetNextToken(); //eat end
-			if (tokenizer.CurTok == tok_class) //optional: end function
-				tokenizer.GetNextToken(); //eat function
+			if (tokenizer.CurTok == tok_class) //optional: end class
+				tokenizer.GetNextToken(); //eat class
 			goto done;
-			break;
-		default:
+		}
+		else if(tokenizer.CurTok == tok_eof)
+			throw CompileError("Unexpected end of file, missing \"end\"");
+		else
+		{
 			throw CompileError("Expected member declarations");
 		}
 	}
