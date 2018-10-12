@@ -701,6 +701,7 @@ namespace Birdee
 					this->class_ast = &(itr->second.get());
 				//fix-me: should find function proto
 			}
+			CompileAssert(!this->class_ast->isTemplate(), pos, string("Cannot use template as a class instance: ")+this->class_ast->GetUniqueName());
 		}
 		else if (type.type == tok_package)
 		{
