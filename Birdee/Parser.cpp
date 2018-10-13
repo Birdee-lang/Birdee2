@@ -528,6 +528,7 @@ std::unordered_map<Token, int> tok_precedence = {
 { tok_equal,10 },
 { tok_ne,10 },
 { tok_cmp_equal,10 },
+{ tok_cmp_ne,10 },
 { tok_and,9 },
 { tok_xor,8 },
 { tok_or,7 },

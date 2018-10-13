@@ -75,6 +75,7 @@ namespace Birdee
 		tok_equal,
 		tok_ne,
 		tok_cmp_equal,
+		tok_cmp_ne,
 		tok_ge,
 		tok_le,
 		tok_logic_and,
@@ -143,5 +144,10 @@ namespace Birdee
 			return true;
 		}
 		return false;
+	}
+	inline bool isLogicToken(Token Op)
+	{
+		return Op == tok_logic_and || Op == tok_logic_or || Op == tok_and
+			|| Op == tok_or || Op == tok_not || Op == tok_xor;
 	}
 }

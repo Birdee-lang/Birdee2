@@ -76,6 +76,7 @@ namespace Birdee
 	{"==",tok_equal},
 	{ "!=",tok_ne },
 	{"===",tok_cmp_equal},
+	{"!==",tok_cmp_ne},
 	{">=",tok_ge},
 	{"<=",tok_le},
 	{"&&",tok_logic_and},

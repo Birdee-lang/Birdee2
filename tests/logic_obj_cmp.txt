@@ -1,0 +1,17 @@
+dim a as string, b as string
+a==b
+a===b
+a!=b
+
+dim c =true
+c= c | true
+c= c & true
+c= c && (a==b)
+c= c || (a==b)
+
+dim d=1
+d=d | 123
+d=d ^ 123
+
+#d=d&&1
+#0.123 | 32

@@ -1249,8 +1249,10 @@ llvm::Value * BinaryGenerateFloat(Token op,Value* lv,Value* rv)
 	case tok_minus:
 		return builder.CreateFSub(lv, rv);
 	case tok_equal:
+	case tok_cmp_equal:
 		return builder.CreateFCmpOEQ(lv, rv);
 	case tok_ne:
+	case tok_cmp_ne:
 		return builder.CreateFCmpONE(lv, rv);
 	case tok_ge:
 		return builder.CreateFCmpOGE(lv, rv);
@@ -1294,8 +1296,10 @@ llvm::Value * BinaryGenerateInt(Token op, Value* lv, Value* rv,bool issigned)
 	case tok_minus:
 		return builder.CreateSub(lv, rv);
 	case tok_equal:
+	case tok_cmp_equal:
 		return builder.CreateICmpEQ(lv, rv);
 	case tok_ne:
+	case tok_cmp_ne:
 		return builder.CreateICmpNE(lv, rv);
 	case tok_ge:
 		return issigned ? builder.CreateICmpSGE(lv, rv): builder.CreateICmpUGE(lv, rv);
@@ -1330,6 +1334,77 @@ llvm::Value * BinaryGenerateInt(Token op, Value* lv, Value* rv,bool issigned)
 }
 
 
+llvm::Value * BinaryGenerateBool(Token op, ExprAST* lvexpr, ExprAST* rvexpr)
+{
+	auto lv = lvexpr->Generate();
+	switch (op)
+	{
+	case tok_logic_or:
+	{
+		BasicBlock* logic_false = BasicBlock::Create(context, "or_f", helper.cur_llvm_func);
+		BasicBlock* logic_conti = BasicBlock::Create(context, "or_conti", helper.cur_llvm_func);
+		BasicBlock* if_f = BasicBlock::Create(context, "or_second_expr", helper.cur_llvm_func, logic_false);
+		BasicBlock* oldbb = builder.GetInsertBlock();
+
+		builder.CreateCondBr(lv, logic_conti, if_f);
+
+		builder.SetInsertPoint(logic_false);
+		builder.CreateBr(logic_conti);
+
+		builder.SetInsertPoint(if_f);
+		auto rv = rvexpr->Generate();
+		BasicBlock* bif_f = builder.GetInsertBlock();
+		builder.CreateCondBr(rv, logic_conti, logic_false);
+
+		builder.SetInsertPoint(logic_conti);
+
+		logic_conti = nullptr;
+		PHINode* v2= builder.CreatePHI(builder.getInt1Ty(), 3);
+		v2->addIncoming(builder.getInt1(true), oldbb); //if lv is true
+		v2->addIncoming(builder.getInt1(false), logic_false); //if rv is false
+		v2->addIncoming(builder.getInt1(true), bif_f); //if rv is true
+		return v2;
+		break;
+	}
+	case tok_logic_and:
+	{
+		BasicBlock* logic_true = BasicBlock::Create(context, "and_t", helper.cur_llvm_func);
+		BasicBlock* logic_conti = BasicBlock::Create(context, "and_conti", helper.cur_llvm_func);
+		BasicBlock* if_t = BasicBlock::Create(context, "and_second_expr", helper.cur_llvm_func, logic_true);
+		BasicBlock* oldbb = builder.GetInsertBlock();
+		builder.CreateCondBr(lv, if_t, logic_conti);
+
+		builder.SetInsertPoint(logic_true);
+		builder.CreateBr(logic_conti);
+
+		builder.SetInsertPoint(if_t);
+		auto rv = rvexpr->Generate();
+		BasicBlock* bif_t = builder.GetInsertBlock();
+		builder.CreateCondBr(rv, logic_true, logic_conti);
+
+		builder.SetInsertPoint(logic_conti);
+
+		logic_conti = nullptr;
+		PHINode* v = builder.CreatePHI(builder.getInt1Ty(), 3);
+		v->addIncoming(builder.getInt1(false), oldbb); //if lv is false
+		v->addIncoming(builder.getInt1(true), logic_true); //if both true
+		v->addIncoming(builder.getInt1(false), bif_t); //if rv is false
+		return v;
+	}
+	case tok_and:
+		return builder.CreateAnd(lv, rvexpr->Generate());
+	case tok_or:
+		return builder.CreateOr(lv, rvexpr->Generate());
+	case tok_xor:
+		return builder.CreateXor(lv, rvexpr->Generate());
+	default:
+		assert(0 && "Operator not supported");
+	}
+	return nullptr;
+}
+
+
+
 llvm::Value * Birdee::BinaryExprAST::Generate()
 {
 	dinfo.emitLocation(this);
@@ -1343,24 +1418,28 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 	}
 	if (LHS->resolved_type.isReference())
 	{
-		if (Op == tok_equal)
+		if (Op == tok_cmp_equal)
 		{
 			return builder.CreateICmpEQ(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
 				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
 		}
-		if (Op == tok_ne)
+		if (Op == tok_cmp_ne)
 		{
 			return builder.CreateICmpNE(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
 				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
 		}
 		if(LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0)
 		{
+			assert(func);
 			auto proto = func->resolved_type.proto_ast;
 			vector<unique_ptr<ExprAST>> vec; vec.push_back(std::move(RHS));
 			return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec,this->Pos);
 		}
 	}
-
+	if (isLogicToken(Op)) //boolean
+	{
+		return BinaryGenerateBool(Op, LHS.get(), RHS.get());
+	}
 	assert(LHS->resolved_type.isNumber() && RHS->resolved_type.isNumber());
 	if (LHS->resolved_type.isInteger())
 	{
