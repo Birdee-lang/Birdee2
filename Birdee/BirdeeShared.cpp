@@ -37,7 +37,8 @@ namespace Birdee
 
 	BD_CORE_API std::map < std::string, Token > Tokenizer::token_map = {
 		{"new",tok_new},
-		{ "dim",tok_dim },
+		{"dim",tok_dim },
+		{"while",tok_while},
 	{"alias",tok_alias},
 	{ "true",tok_true },
 	{ "false",tok_false },

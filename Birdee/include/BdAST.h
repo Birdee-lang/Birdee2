@@ -536,6 +536,29 @@ namespace Birdee {
 			block.print(level + 2);
 		}
 	};
+
+	class BD_CORE_API WhileBlockAST : public StatementAST {
+	public:
+		std::unique_ptr<ExprAST> cond; //the end of the loop
+		ASTBasicBlock block;
+		std::unique_ptr<StatementAST> Copy();
+		void Phase1();
+		llvm::Value* Generate();
+		WhileBlockAST(std::unique_ptr<ExprAST>&& cond,
+			ASTBasicBlock&& block,
+			SourcePos pos)
+			: cond(std::move(cond)), block(std::move(block)) {
+			Pos = pos;
+		}
+
+		void print(int level) {
+			StatementAST::print(level);	std::cout << "While" << "\n";
+			cond->print(level + 1);
+			StatementAST::print(level + 1);	std::cout << "Block" << "\n";
+			block.print(level + 2);
+		}
+	};
+
 	class BD_CORE_API LoopControlAST :public StatementAST {
 	public:
 		Token tok;

@@ -1208,6 +1208,36 @@ llvm::Value * Birdee::ForBlockAST::Generate()
 	return nullptr;
 }
 
+llvm::Value * Birdee::WhileBlockAST::Generate()
+{
+	dinfo.emitLocation(this);
+	auto loopinfo = helper.cur_loop;
+
+	auto cont = BasicBlock::Create(context, "cont", helper.cur_llvm_func);
+	auto bt = BasicBlock::Create(context, "while_do", helper.cur_llvm_func, cont);
+	auto check = BasicBlock::Create(context, "while_check", helper.cur_llvm_func, bt);
+
+	helper.cur_loop.next = check;
+	helper.cur_loop.cont = cont;
+
+	builder.CreateBr(check);
+	builder.SetInsertPoint(check);
+
+	auto v = cond->Generate();
+	builder.CreateCondBr(v, bt, cont);
+
+	builder.SetInsertPoint(bt);
+	bool hasret = block.Generate();
+	if (!hasret)
+	{
+		SafeBr(check);
+	}
+
+	builder.SetInsertPoint(cont);
+	helper.cur_loop = loopinfo;
+	return nullptr;
+}
+
 llvm::Value * Birdee::ClassAST::Generate()
 {
 	PreGenerate();
@@ -1262,26 +1292,14 @@ llvm::Value * BinaryGenerateFloat(Token op,Value* lv,Value* rv)
 		return builder.CreateFCmpOGT(lv, rv);
 	case tok_lt:
 		return builder.CreateFCmpOLT(lv, rv);
+	case tok_mul:
+		return builder.CreateFMul(lv, rv);
+	case tok_div:
+		return builder.CreateFDiv(lv, rv);
+	case tok_mod:
+		return builder.CreateFRem(lv, rv);
 	default:
 		assert(0 && "Operator not supported");
-		/*			tok_minus,
-		tok_mul,
-		tok_div,
-		tok_mod,
-		tok_assign,
-		tok_equal,
-		tok_ne,
-		tok_cmp_equal,
-		tok_ge,
-		tok_le,
-		tok_logic_and,
-		tok_logic_or,
-		tok_gt,
-		tok_lt,
-		tok_and,
-		tok_or,
-		tok_not,
-		tok_xor,*/
 	}
 	return nullptr;
 }
@@ -1309,26 +1327,14 @@ llvm::Value * BinaryGenerateInt(Token op, Value* lv, Value* rv,bool issigned)
 		return issigned ? builder.CreateICmpSGT(lv, rv) : builder.CreateICmpUGT(lv, rv);
 	case tok_lt:
 		return issigned ? builder.CreateICmpSLT(lv, rv) : builder.CreateICmpULT(lv, rv);
+	case tok_mod:
+		return issigned ? builder.CreateSRem(lv, rv) : builder.CreateURem(lv, rv);
+	case tok_mul:
+		return builder.CreateMul(lv, rv);
+	case tok_div:
+		return issigned ? builder.CreateSDiv(lv, rv) : builder.CreateUDiv(lv, rv);
 	default:
 		assert(0 && "Operator not supported");
-		/*			tok_minus,
-		tok_mul,
-		tok_div,
-		tok_mod,
-		tok_assign,
-		tok_equal,
-		tok_ne,
-		tok_cmp_equal,
-		tok_ge,
-		tok_le,
-		tok_logic_and,
-		tok_logic_or,
-		tok_gt,
-		tok_lt,
-		tok_and,
-		tok_or,
-		tok_not,
-		tok_xor,*/
 	}
 	return nullptr;
 }

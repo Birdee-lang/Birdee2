@@ -616,6 +616,7 @@ BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 
 
 std::unique_ptr<ForBlockAST> ParseFor();
+std::unique_ptr<WhileBlockAST> ParseWhile();
 void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 {
 	std::unique_ptr<ExprAST> firstexpr;
@@ -674,6 +675,11 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			push_expr(std::move(ParseFor()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
 			break;
+		case tok_while:
+			tokenizer.GetNextToken(); //eat function
+			push_expr(std::move(ParseWhile()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after while block");
+			break;
 		case tok_end:
 			tokenizer.GetNextToken(); //eat end
 			if (optional_tok >= 0 && tokenizer.CurTok == optional_tok) //optional: end function/if/for...
@@ -701,6 +707,17 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 	}
 done:
 	return;
+}
+
+
+std::unique_ptr<WhileBlockAST> ParseWhile()
+{
+	SourcePos pos = tokenizer.GetSourcePos();
+	auto cond = ParseExpressionUnknown();
+	CompileExpect(tok_newline, "Expecting a new line after while condition");
+	ASTBasicBlock block;
+	ParseBasicBlock(block, tok_while);
+	return make_unique<WhileBlockAST>(std::move(cond), std::move(block), pos);
 }
 
 std::unique_ptr<ForBlockAST> ParseFor()
@@ -1389,12 +1406,15 @@ BD_CORE_API int ParseTopLevel()
 			return 0;
 			break;
 		case tok_for:
-		{
-			tokenizer.GetNextToken(); //eat function
+			tokenizer.GetNextToken(); //eat for
 			push_expr(ParseFor());
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
 			break;
-		}
+		case tok_while:
+			tokenizer.GetNextToken(); //eat while
+			push_expr(ParseWhile());
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after while block");
+			break;
 		case tok_func:
 		{
 			tokenizer.GetNextToken(); //eat function

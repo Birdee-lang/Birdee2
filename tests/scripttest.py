@@ -37,3 +37,14 @@ except CompileException:
 clear_compile_unit()
 
 
+
+top_level('''
+dim a =true
+dim b =1
+while a
+	a= b%2==0
+end while
+	''')
+process_top_level()
+clear_compile_unit()
+

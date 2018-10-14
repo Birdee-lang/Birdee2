@@ -1507,7 +1507,7 @@ namespace Birdee
 		auto gen_call_to_operator_func = [&LHS,&RHS,&resolved_type,&Pos,&func](const string name) {
 			auto itr = LHS->resolved_type.class_ast->funcmap.find(name);
 			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
-				string("Cannot find function ") + name + "in class " + LHS->resolved_type.class_ast->GetUniqueName());
+				string("Cannot find function ") + name + " in class " + LHS->resolved_type.class_ast->GetUniqueName());
 			func = LHS->resolved_type.class_ast->funcs[itr->second].decl.get();
 			auto proto = func->resolved_type.proto_ast;
 			vector<unique_ptr<ExprAST>> args; args.push_back(std::move(RHS));
@@ -1617,5 +1617,12 @@ namespace Birdee
 			node->Phase1();
 		}
 		scope_mgr.PopBasicBlock();
+	}
+
+	void Birdee::WhileBlockAST::Phase1()
+	{
+		cond->Phase1();
+		CompileAssert(cond->resolved_type.type == tok_boolean && cond->resolved_type.index_level == 0, Pos, "Expecting a boolean expression in while block");
+		block.Phase1();
 	}
 }

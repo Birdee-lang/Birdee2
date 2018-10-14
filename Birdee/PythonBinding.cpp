@@ -184,6 +184,15 @@ void RegisiterClassForBinding2(py::module& m) {
 			for (auto& v : ths.block.body)
 				func(GetRef(v));
 		});
+	py::class_< WhileBlockAST, StatementAST>(m, "WhileBlockAST")
+		.def_property("cond", [](WhileBlockAST& ths) {return GetRef(ths.cond); },
+			[](WhileBlockAST& ths, UniquePtrStatementAST& v) {ths.cond = v.move_expr(); })
+		.def_property_readonly("block", [](WhileBlockAST& ths) {return &ths.block.body; })
+		.def("run", [](WhileBlockAST& ths, py::object& func) {
+			func(GetRef(ths.cond));
+			for (auto& v : ths.block.body)
+				func(GetRef(v));
+		});
 
 	py::enum_<LoopControlType>(m, "LoopControlType")
 		.value("BREAK", LoopControlType::BREAK)

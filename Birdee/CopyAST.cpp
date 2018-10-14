@@ -312,4 +312,9 @@ namespace Birdee
 		vector<string> anno_cp = anno;
 		return make_unique<AnnotationStatementAST>(std::move(anno_cp),impl->Copy());
 	}
+
+	std::unique_ptr<StatementAST> Birdee::WhileBlockAST::Copy()
+	{
+		return std::make_unique<WhileBlockAST>(ToExpr(cond->Copy()),block.Copy(),Pos);
+	}
 }
