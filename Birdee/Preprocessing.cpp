@@ -701,7 +701,6 @@ namespace Birdee
 					this->class_ast = &(itr->second.get());
 				//fix-me: should find function proto
 			}
-			CompileAssert(!this->class_ast->isTemplate(), pos, string("Cannot use template as a class instance: ")+this->class_ast->GetUniqueName());
 		}
 		else if (type.type == tok_package)
 		{
@@ -733,6 +732,8 @@ namespace Birdee
 				class_ast = class_ast->template_param->GetOrCreate(&arg, class_ast, pos); //will take the ownership of the pointer arg
 			}
 		}
+		if(this->type==tok_class)
+			CompileAssert(!this->class_ast->isTemplate(), pos, string("Cannot use template as a class instance: ") + this->class_ast->GetUniqueName());
 
 	}
 

@@ -1,11 +1,11 @@
 class list[T]
-	private head as list_node[T]
-	private tail as list_node[T]
+	public head as list_node[T]
+	public tail as list_node[T]
 	public function push_back(v as T)
 		dim node=new list_node[T]
 		node.v=v
 		node.next=null
-		if head==null then
+		if head===null then
 			head=node
 			tail=node
 		else

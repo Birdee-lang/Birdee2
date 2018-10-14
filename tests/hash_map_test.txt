@@ -1,4 +1,6 @@
 import hash_map:hash_map
 
-dim map = new hash_map[int,string]
-map.set(3,"123")
+dim map = new hash_map[string,int]
+map.set("123",321)
+
+#--printir -i D:\Menooker\CXX\Birdee\tests\hash_map_test.txt -o .\hash_map_test.obj  -e

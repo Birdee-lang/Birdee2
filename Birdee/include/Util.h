@@ -41,7 +41,7 @@ namespace Birdee
 	template<typename Derived, typename Base>
 	bool isa(Base* p)
 	{
-		if (typeid(p)==typeid(Derived)) {
+		if (typeid(*p)==typeid(Derived)) {
 			return true;
 		}
 		return false;

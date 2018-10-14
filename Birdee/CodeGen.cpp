@@ -207,7 +207,14 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		Birdee::ResolvedType subtype = type;
 		subtype.index_level--;
 		mybase = helper.GetType(subtype, mydtype);
-		string name = mydtype->getName();
+		string name;
+		if (type.index_level > 1 || type.type == tok_class)
+		{ //bypass a "bug" in llvm: cannot getName from debugtype for some long struct name
+			assert(mybase->getPointerElementType()->isStructTy());
+			name = static_cast<StructType*>(mybase->getPointerElementType())->getStructName();
+		}
+		else
+			name= mydtype->getName();
 		base = BuildArrayType(mybase, mydtype, name, dtype);
 		return;
 	}
@@ -260,8 +267,9 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	case tok_class:
 		if (!type.class_ast->llvm_type)
 		{
-			base = StructType::create(context, type.class_ast->GetUniqueName())->getPointerTo();
-			dtype = DBuilder->createPointerType(DBuilder->createUnspecifiedType(type.class_ast->GetUniqueName()),64);
+			string name = type.class_ast->GetUniqueName();
+			base = StructType::create(context, name)->getPointerTo();
+			dtype = DBuilder->createPointerType(DBuilder->createUnspecifiedType(name),64);
 		}
 		else
 		{
@@ -1057,11 +1065,20 @@ llvm::Value * Birdee::CallExprAST::Generate()
 			obj=pobj->llvm_obj;
 		else
 		{
-			auto pidx= dynamic_cast<IndexExprAST*>(Callee.get());
-			assert(pidx);
-			pobj = dynamic_cast<MemberExprAST*>(pidx->instance->expr.get());
-			assert(pobj);
-			obj = pobj->llvm_obj;
+			auto piden= dynamic_cast<IdentifierExprAST*>(Callee.get());
+			if (piden)
+			{
+				assert(isa<MemberExprAST>(piden->impl.get()));
+				obj = dynamic_cast<MemberExprAST*>(piden->impl.get())->llvm_obj;
+			}
+			else
+			{
+				auto pidx = dynamic_cast<IndexExprAST*>(Callee.get());
+				assert(pidx);
+				pobj = dynamic_cast<MemberExprAST*>(pidx->instance->expr.get());
+				assert(pobj);
+				obj = pobj->llvm_obj;
+			}
 		}
 	}
 	return GenerateCall(func, proto, obj, Args,this->Pos);
