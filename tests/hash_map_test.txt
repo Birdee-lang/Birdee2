@@ -1,6 +1,7 @@
 import hash_map:hash_map
 
-dim map = new hash_map[string,int]
+dim map = new hash_map[string,int]:create()
 map.set("123",321)
+println(int2str(map.get_pair("123").value))
 
 #--printir -i D:\Menooker\CXX\Birdee\tests\hash_map_test.txt -o .\hash_map_test.obj  -e

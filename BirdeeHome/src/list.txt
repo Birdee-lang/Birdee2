@@ -13,6 +13,10 @@ class list[T]
 			tail=node
 		end
 	end
+	public function create()
+		head=null
+		tail=null
+	end
 end
 
 class list_node[T]
