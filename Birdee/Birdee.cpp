@@ -10,7 +10,33 @@ using namespace Birdee;
 extern int ParseTopLevel();
 extern void SeralizeMetadata(std::ostream& out);
 
+#ifdef _WIN32
 extern void RunGenerativeScript();
+#else
+#include <dlfcn.h>
+	static void RunGenerativeScript()
+	{
+		typedef void(*PtrImpl)();
+		static PtrImpl impl = nullptr;
+		if (impl == nullptr)
+		{
+			void *handle;
+			char *error;
+			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
+			if (!handle) {
+				fprintf (stderr, "%s\n", dlerror());
+				exit(1);
+			}
+			dlerror();    
+			impl = (PtrImpl)dlsym(handle, "_Z19RunGenerativeScriptv");
+			if ((error = dlerror()) != NULL)  {
+				fprintf (stderr, "%s\n", error);
+				exit(1);
+			}
+		}
+		impl();
+	}
+#endif
 BD_CORE_API extern Tokenizer tokenizer;
 
 

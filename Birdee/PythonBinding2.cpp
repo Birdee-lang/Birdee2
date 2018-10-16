@@ -17,6 +17,9 @@ extern std::unique_ptr<Type> ParseTypeName();
 
 static unique_ptr<ExprAST> outexpr = nullptr;
 extern BD_CORE_API Tokenizer tokenizer;
+
+static void init_embedded_module();
+
 struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
@@ -25,6 +28,7 @@ struct BirdeePyContext
 	py::object copied_scope;
 	BirdeePyContext()
 	{
+		//init_embedded_module();
 		main_module = py::module::import("__main__");
 		auto sysmod = py::module::import("sys");
 		auto patharr = py::cast<py::list>(sysmod.attr("path"));
@@ -499,16 +503,27 @@ extern "C" PyObject * pybind11_init_impl_birdeec() {
 		return nullptr;
 	}
 }
+
+
+
+static void init_embedded_module()
+{
+	if (cu.is_compiler_mode)
+	{
+		py::detail::embedded_module mod("birdeec", pybind11_init_impl_birdeec);
+	}
+}
+
+
+
 struct myembedded_module
 {
 	myembedded_module()
 	{
-		if (cu.is_compiler_mode)
-		{
-			py::detail::embedded_module mod("birdeec", pybind11_init_impl_birdeec);
-		}
+		init_embedded_module();
 	}
 }module_initializer;
+
 
 
 

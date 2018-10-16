@@ -9,7 +9,9 @@
 	#define BIRDEE_BINDING_API __declspec(dllexport)
 	
 #else
-	#define BD_CORE_API
-	#define BIRDEE_BINDING_API
+	#if defined(BIRDEE_USE_DYN_LIB) && !defined(_WIN32)
+		#define BD_CORE_API __attribute__((visibility("default")))
+		#define BIRDEE_BINDING_API __attribute__((visibility("default")))
+	#endif
 #endif
 

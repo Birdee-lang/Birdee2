@@ -756,7 +756,7 @@ namespace Birdee {
 		}
 	};
 
-	class VariableMultiDefAST : public VariableDefAST {
+	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
 
 	public:
 		void Phase1()
