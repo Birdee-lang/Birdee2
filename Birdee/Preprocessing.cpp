@@ -843,7 +843,7 @@ namespace Birdee
 	}
 
 #ifdef BIRDEE_USE_DYN_LIB
-	static_assert(_WIN32, "Non-windows version is not implemented");
+	#ifdef _WIN32
 #include <Windows.h>
 	static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
 	{
@@ -872,6 +872,60 @@ namespace Birdee
 		}
 		impl(ths);
 	}
+	#else
+
+#include <dlfcn.h>
+	static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
+	{
+		
+		typedef void(*PtrImpl)(AnnotationStatementAST* ths);
+		static PtrImpl impl=nullptr;
+		if (impl == nullptr)
+		{
+			void *handle;
+			double (*cosine)(double);
+			char *error;
+			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
+			if (!handle) {
+				fprintf (stderr, "%s\n", dlerror());
+				exit(1);
+			}
+			dlerror();    
+			impl = (PtrImpl)dlsym(handle, "_Z36Birdee_AnnotationStatementAST_Phase1PN6Birdee22AnnotationStatementASTE");
+			if ((error = dlerror()) != NULL)  {
+				fprintf (stderr, "%s\n", error);
+				exit(1);
+			}
+		}
+		impl(ths);
+	}
+	static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
+	{
+		typedef void(*PtrImpl)(ScriptAST* ths);
+		static PtrImpl impl = nullptr;
+		if (impl == nullptr)
+		{
+			void *handle;
+			double (*cosine)(double);
+			char *error;
+			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
+			if (!handle) {
+				fprintf (stderr, "%s\n", dlerror());
+				exit(1);
+			}
+			dlerror();    
+			impl = (PtrImpl)dlsym(handle, "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE");
+			if ((error = dlerror()) != NULL)  {
+				fprintf (stderr, "%s\n", error);
+				exit(1);
+			}
+		}
+		impl(ths);
+	}
+
+
+	#endif
+
 #else
 	extern void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths);
 	extern void Birdee_ScriptAST_Phase1(ScriptAST* ths);

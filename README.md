@@ -77,3 +77,11 @@ Finally, make Birdee!
 make
 ```
 
+One more step, set some required environment variables. You can add something like:
+```bash
+export BIRDEE_HOME=/home/menooker/Birdee2/BirdeeHome/bin/
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/menooker/Birdee2/lib
+```
+
+to your /etc/profile or ~/.bashrc.
+

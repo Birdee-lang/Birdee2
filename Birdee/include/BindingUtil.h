@@ -85,18 +85,19 @@ struct UniquePtr
 	T move() { return std::move(ptr); }
 	std::unique_ptr<Birdee::ExprAST> move_expr() {
 		static_assert("Do not call move_expr for T != unique_ptr<StatementAST>");
+		return nullptr;//make g++ happy
 	}
 	void init() {}
 	UniquePtr(T&& ptr) :ptr(std::move(ptr)) { init(); }
 };
 
 template<>
-void UniquePtr< std::unique_ptr<Birdee::StatementAST>>::init()
+inline void UniquePtr< std::unique_ptr<Birdee::StatementAST>>::init()
 {
 	ptr->Phase1();
 }
 template<>
-std::unique_ptr<Birdee::StatementAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move()
+inline std::unique_ptr<Birdee::StatementAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move()
 {
 	if(ptr==nullptr)
 		throw std::invalid_argument("the contained pointer is already moved!");
@@ -112,7 +113,7 @@ std::unique_ptr<Derived> move_cast_or_throw(std::unique_ptr<Base>& ptr)
 	return Birdee::unique_ptr_cast<Derived>(std::move(ptr));
 }
 template<>
-std::unique_ptr<Birdee::ExprAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move_expr()
+inline std::unique_ptr<Birdee::ExprAST> UniquePtr< std::unique_ptr<Birdee::StatementAST>>::move_expr()
 {
 	return move_cast_or_throw< Birdee::ExprAST>(ptr);
 }
