@@ -13,6 +13,7 @@ dependency/*
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 .python-version
+__pycache__
 
 # Build results
 [Dd]ebug/
