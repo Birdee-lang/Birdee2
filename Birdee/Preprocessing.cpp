@@ -883,7 +883,6 @@ namespace Birdee
 		if (impl == nullptr)
 		{
 			void *handle;
-			double (*cosine)(double);
 			char *error;
 			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
 			if (!handle) {
@@ -906,7 +905,6 @@ namespace Birdee
 		if (impl == nullptr)
 		{
 			void *handle;
-			double (*cosine)(double);
 			char *error;
 			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
 			if (!handle) {
