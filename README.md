@@ -10,8 +10,8 @@ Birdee Language compiler and runtime. Birdee language aims to help construct rob
 
 ### Language features
 - [ ] garbage collection
-- [ ] templates 
-- [ ] script-based meta-programming
+- [x] templates 
+- [x] script-based meta-programming
 - [x] classes
 - [ ] class inheritance, interface 
 - [x] array
@@ -30,6 +30,10 @@ Birdee Language compiler and runtime. Birdee language aims to help construct rob
 - [ ] JIT execution 
 - [ ] Runtime-compilation 
 
+
+## Documents
+
+Please view our [wiki](https://github.com/Menooker/Birdee2/wiki).
 
 ## Building Birdee on Ubuntu
 
@@ -77,7 +81,7 @@ Finally, make Birdee!
 make
 ```
 
-One more step, set some required environment variables. You can add something like:
+One more step, set some required environment variables. You can add something like (assuming that the root directory of Birdee source code is /home/menooker/Birdee2):
 ```bash
 export BIRDEE_HOME=/home/menooker/Birdee2/BirdeeHome/bin/
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/menooker/Birdee2/lib
@@ -85,3 +89,50 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/menooker/Birdee2/lib
 
 to your /etc/profile or ~/.bashrc.
 
+## Building Birdee on with Visual Studio
+
+This repo includes a Visual Studio 2017 solution. Clone this repo and open "Birdee.sln", then you can view the source code of Birdee. However, to compile Birdee, a few more steps needs to be done.
+
+First, you need a copy of LLVM 6.0 (or maybe newer). You can compile LLVM by yourself with CMake, or you can download a pre-compiled LLVM binary built by me.
+
+ * LLVM-Windows-x64-Debug (Debug version with symbols) [BaiduYun](https://pan.baidu.com/s/1Yb4GPKIuYlQcXcKWd7tXRA) [GoogleDrive](https://drive.google.com/open?id=1Jeh8Dm9ca7u119yvsytv_SaHQNqHaq1m)
+ * LLVM-Windows-x64-Release (Release version) [BaiduYun](https://pan.baidu.com/s/1JJPzMSNf9XRaSzzHO42DiA) [GoogleDrive](https://drive.google.com/open?id=1TKdx8wxkdvz1Mx2Fzpluc7-XVEa2gaeH)
+ * Headers for Windows x64 [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
+
+
+Assume that the root directory of Birdee source code is "Birdee". Then create directory "Birdee\\dependency" and "Birdee\\dependency\\bin".
+
+### Step 1 for VS
+Then make sure you have installed an x64 version of Python. Copy/Link "python3.lib" and "python3X.lib" from Python to "Birdee\\dependency\\bin" ("X" in the file name is the exact subversion of your Python). These two files are located in "lib" directory of Python's installed directory.
+
+Run command
+
+```cmd
+pip install pybind11
+```
+
+Make sure the "pip" program is provided exactly by the same version of Python to be used by Birdee. Finally, link/copy the "include" directory from Python's installed directory to "Birdee\\dependency\\pyinclude"
+
+### Step 2 for VS
+
+If you have compiled LLVM by yourself,
+
+ * link/copy "path_to_llvm_src/llvm-6.0.0.src/include" to  "Birdee\\dependency\\llvm-include"
+ * link/copy "path_to_llvm_cmake_project/include" to "Birdee\\dependency\\llvm-build-include"
+ * link/copy "path_to_llvm_cmake_project/Debug/lib" to "Birdee\\dependency\\bin\\llvm-debug" 
+ * link/copy "path_to_llvm_cmake_project/Release/lib" to "Birdee\\dependency\\bin\\llvm-release" 
+
+If you have downloaded pre-compiled LLVM,
+
+ * extract "llvm.6.0.win.include.zip/llvm-include" to  "Birdee\\dependency\\llvm-include"
+ * extract "llvm.6.0.win.include.zip/llvm-build-include" to "Birdee\\dependency\\llvm-build-include"
+ * extract "llvm.6.0.win.Debug.zip/lib" to "Birdee\\dependency\\bin\\llvm-debug" 
+ * (Not currently needed, you can skip this step) extract "llvm.6.0.win.Release.zip/lib" to "Birdee\\dependency\\bin\\llvm-release" 
+
+### Step 3 for VS
+
+Create a directory "Birdee\\dependency\\include" and "Birdee\\dependency\\include\\nlohmann". Download [header](https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp) and [header](https://raw.githubusercontent.com/nlohmann/fifo_map/master/src/fifo_map.hpp) to "Birdee\\dependency\\include\\nlohmann".
+
+### Build Birdee with VS!
+
+Open "Birdee\\Birdee.sln" and build the project "Birdee".

@@ -756,29 +756,29 @@ namespace Birdee {
 		}
 	};
 
-	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
+	class VariableMultiDefAST : public VariableDefAST {
 
 	public:
-		void Phase1()
+		BD_CORE_API void Phase1()
 		{
 			for (auto& a : lst)
 				a->Phase1();
 		}
 		BD_CORE_API llvm::Value* Generate();
-		BD_CORE_API std::unique_ptr<StatementAST> Copy();
+		std::unique_ptr<StatementAST> Copy();
 		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
-		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
-		VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
+		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
+		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
 			Pos = pos;
 		}
-		void move(unique_ptr<VariableDefAST>&& current,
+		BD_CORE_API void move(unique_ptr<VariableDefAST>&& current,
 			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
 		{
 			for (auto&& var : lst)
 				func(std::move(var));
 		}
 
-		void print(int level) {
+		BD_CORE_API void print(int level) {
 			//VariableDefAST::print(level);
 			for (auto& a : lst)
 				a->print(level);

@@ -72,7 +72,7 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(SolutionDir)Birdee\include;D:\Menooker\lib\llvm-build\include;D:\Menooker\lib\llvm-6.0.0.src\include;$(SolutionDir)dependency\pyinclude;$(SolutionDir)dependency\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)Birdee\include;$(SolutionDir)dependency\pyinclude;$(SolutionDir)dependency\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>

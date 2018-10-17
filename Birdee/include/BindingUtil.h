@@ -84,7 +84,7 @@ struct UniquePtr
 	}
 	T move() { return std::move(ptr); }
 	std::unique_ptr<Birdee::ExprAST> move_expr() {
-		static_assert("Do not call move_expr for T != unique_ptr<StatementAST>");
+		assert(0 && "Do not call move_expr for T != unique_ptr<StatementAST>");
 		return nullptr;//make g++ happy
 	}
 	void init() {}
