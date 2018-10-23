@@ -35,6 +35,86 @@ T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
 }
 
 
+#ifdef BIRDEE_USE_DYN_LIB
+#ifdef _WIN32
+#include <Windows.h>
+BD_CORE_API void* LoadBindingFunction(const char* name)
+{
+	auto hinst = LoadLibrary(L"BirdeeBinding.dll");
+	assert(hinst);
+	void* impl = GetProcAddress(hinst, name);
+	assert(impl);
+	return impl;
+}
+
+#define Birdee_AnnotationStatementAST_Phase1_NAME "?Birdee_AnnotationStatementAST_Phase1@@YAXPEAVAnnotationStatementAST@Birdee@@@Z"
+#define Birdee_ScriptAST_Phase1_NAME "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@@Z"
+#define Birdee_ScriptType_Resolve_NAME "?Birdee_ScriptType_Resolve@@YAXPEAVResolvedType@Birdee@@PEAVScriptType@2@USourcePos@2@@Z"
+
+#else
+
+#include <dlfcn.h>
+
+BD_CORE_API void* LoadBindingFunction(const char* name)
+{
+	void *handle;
+	char *error;
+	handle = dlopen("libBirdeeBinding.so", RTLD_LAZY);
+	if (!handle) {
+		fprintf(stderr, "%s\n", dlerror());
+		exit(1);
+	}
+	dlerror();
+	impl = (PtrImpl)dlsym(handle, name);
+	if ((error = dlerror()) != NULL) {
+		fprintf(stderr, "%s\n", error);
+		exit(1);
+	}
+}
+
+#define Birdee_AnnotationStatementAST_Phase1_NAME "_Z36Birdee_AnnotationStatementAST_Phase1PN6Birdee22AnnotationStatementASTE"
+#define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE"
+#endif
+
+static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
+{
+
+	typedef void(*PtrImpl)(AnnotationStatementAST* ths);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(Birdee_AnnotationStatementAST_Phase1_NAME);
+	}
+	impl(ths);
+}
+static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
+{
+	typedef void(*PtrImpl)(ScriptAST* ths);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(Birdee_ScriptAST_Phase1_NAME);
+	}
+	impl(ths);
+}
+
+static void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos)
+{
+	typedef void(*PtrImpl)(ResolvedType* out,ScriptType* ths, SourcePos);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(Birdee_ScriptType_Resolve_NAME);
+	}
+	impl(out, ths, pos);
+}
+
+#else
+extern void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths);
+extern void Birdee_ScriptAST_Phase1(ScriptAST* ths);
+#endif
+
+
 class ScopeManager
 {
 public:
@@ -662,6 +742,12 @@ namespace Birdee
 
 	void ResolvedType::ResolveType(Type& type, SourcePos pos)
 	{
+		if (type.type == tok_script)
+		{
+			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type),pos);
+			return;
+		}
+
 		if (type.type == tok_identifier)
 		{
 			IdentifierType* ty = dynamic_cast<IdentifierType*>(&type);
@@ -841,93 +927,6 @@ namespace Birdee
 			return type < type;
 		return v_ulong<v.v_ulong;
 	}
-
-#ifdef BIRDEE_USE_DYN_LIB
-	#ifdef _WIN32
-#include <Windows.h>
-	static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
-	{
-		
-		typedef void(*PtrImpl)(AnnotationStatementAST* ths);
-		static PtrImpl impl=nullptr;
-		if (impl == nullptr)
-		{
-			auto hinst = LoadLibrary(L"BirdeeBinding.dll");
-			assert(hinst);
-			impl = (PtrImpl)GetProcAddress(hinst, "?Birdee_AnnotationStatementAST_Phase1@@YAXPEAVAnnotationStatementAST@Birdee@@@Z");
-			assert(impl);
-		}
-		impl(ths);
-	}
-	static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
-	{
-		typedef void(*PtrImpl)(ScriptAST* ths);
-		static PtrImpl impl = nullptr;
-		if (impl == nullptr)
-		{
-			auto hinst = LoadLibrary(L"BirdeeBinding.dll");
-			assert(hinst);
-			impl = (PtrImpl)GetProcAddress(hinst, "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@@Z");
-			assert(impl);
-		}
-		impl(ths);
-	}
-	#else
-
-#include <dlfcn.h>
-	static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
-	{
-		
-		typedef void(*PtrImpl)(AnnotationStatementAST* ths);
-		static PtrImpl impl=nullptr;
-		if (impl == nullptr)
-		{
-			void *handle;
-			char *error;
-			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
-			if (!handle) {
-				fprintf (stderr, "%s\n", dlerror());
-				exit(1);
-			}
-			dlerror();    
-			impl = (PtrImpl)dlsym(handle, "_Z36Birdee_AnnotationStatementAST_Phase1PN6Birdee22AnnotationStatementASTE");
-			if ((error = dlerror()) != NULL)  {
-				fprintf (stderr, "%s\n", error);
-				exit(1);
-			}
-		}
-		impl(ths);
-	}
-	static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
-	{
-		typedef void(*PtrImpl)(ScriptAST* ths);
-		static PtrImpl impl = nullptr;
-		if (impl == nullptr)
-		{
-			void *handle;
-			char *error;
-			handle = dlopen ("libBirdeeBinding.so", RTLD_LAZY);
-			if (!handle) {
-				fprintf (stderr, "%s\n", dlerror());
-				exit(1);
-			}
-			dlerror();    
-			impl = (PtrImpl)dlsym(handle, "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE");
-			if ((error = dlerror()) != NULL)  {
-				fprintf (stderr, "%s\n", error);
-				exit(1);
-			}
-		}
-		impl(ths);
-	}
-
-
-	#endif
-
-#else
-	extern void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths);
-	extern void Birdee_ScriptAST_Phase1(ScriptAST* ths);
-#endif
 
 	void Birdee::ScriptAST::Phase1()
 	{
@@ -1677,5 +1676,11 @@ namespace Birdee
 		cond->Phase1();
 		CompileAssert(cond->resolved_type.type == tok_boolean && cond->resolved_type.index_level == 0, Pos, "Expecting a boolean expression in while block");
 		block.Phase1();
+	}
+
+	llvm::Value * Birdee::ScriptAST::GetLValue(bool checkHas)
+	{
+		CompileAssert(instance_of<ExprAST>(stmt.get()), Pos, "Getting LValue from statement is illegal");
+		return static_cast<ExprAST*>(stmt.get())->GetLValue(checkHas);
 	}
 }

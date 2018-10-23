@@ -48,3 +48,20 @@ end while
 process_top_level()
 clear_compile_unit()
 
+top_level(
+'''
+dim a = {@set_ast(expr("32"))@}
+println(int2str(a))
+
+{@
+set_ast(stmt(\'''if a==3 then
+	a=4
+end\'''))
+@}
+
+dim c as {@set_type(resolve_type("int"))@}
+c=a
+'''
+)
+process_top_level()
+clear_compile_unit()

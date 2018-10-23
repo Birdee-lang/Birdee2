@@ -99,6 +99,12 @@ namespace Birdee
 		return std::move(v);
 	}
 
+	unique_ptr<Type> Birdee::ScriptType::Copy()
+	{
+		string str = script;
+		return make_unique<ScriptType>(str);
+	}
+
 	unique_ptr<Type> Birdee::IdentifierType::Copy()
 	{
 		auto v = make_unique<IdentifierType>(name);
@@ -302,8 +308,8 @@ namespace Birdee
 	{
 		auto ret = make_unique<ScriptAST>(script);
 		ret->Pos = Pos;
-		if (expr)
-			ret->expr = ToExpr(expr->Copy());
+		if (stmt)
+			ret->stmt = stmt->Copy();
 		return std::move(ret);
 	}
 

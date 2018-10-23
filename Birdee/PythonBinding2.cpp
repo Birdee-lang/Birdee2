@@ -5,6 +5,7 @@
 #include <sstream>
 #include "OpEnums.h"
 #include <CastAST.h>
+#include <Util.h>
 
 using namespace Birdee;
 
@@ -14,8 +15,11 @@ extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel();
 extern FunctionAST* GetCurrentPreprocessedFunction();
 extern std::unique_ptr<Type> ParseTypeName();
+extern unique_ptr<StatementAST> ParseStatement();
 
-static unique_ptr<ExprAST> outexpr = nullptr;
+static unique_ptr<StatementAST> outexpr = nullptr;
+static ResolvedType outtype;
+
 extern BD_CORE_API Tokenizer tokenizer;
 
 static void init_embedded_module();
@@ -79,21 +83,35 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths)
 	{
 		throw CompileError(ths->Pos.line, ths->Pos.pos, string("\nScript exception:\n") + e.what());
 	}
-	ths->expr = std::move(outexpr);
+	ths->stmt = std::move(outexpr);
 	outexpr = nullptr;
-	if (ths->expr)
+	outtype.type = tok_error;
+	if (ths->stmt)
 	{
-		ths->expr->Phase1();
-		ths->resolved_type = ths->expr->resolved_type;
+		ths->stmt->Phase1();
+		if (instance_of<ExprAST>(ths->stmt.get()))
+			ths->resolved_type = ((ExprAST*)ths->stmt.get())->resolved_type;
+		else
+			ths->resolved_type.type = tok_error;
 	}
 }
 
-static void CompileExpr(char* cmd) {
+static UniquePtrStatementAST CompileExpr(char* cmd) {
 	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(cmd)), -1);
 	toknzr.GetNextToken();
 	auto old_tok = SwitchTokenizer(std::move(toknzr));
-	outexpr = ParseExpressionUnknown();
+	auto expr = ParseExpressionUnknown();
 	SwitchTokenizer(std::move(old_tok));
+	return UniquePtrStatementAST(std::move(expr));
+}
+
+static UniquePtrStatementAST CompileStmt(char* cmd) {
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(cmd)), -1);
+	toknzr.GetNextToken();
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	auto stmt = ParseStatement();
+	SwitchTokenizer(std::move(old_tok));
+	return UniquePtrStatementAST(std::move(stmt));
 }
 
 
@@ -176,6 +194,26 @@ static auto NewNumberExpr(Token tok, py::object& obj) {
 	return new UniquePtr<unique_ptr<StatementAST>>(std::make_unique< NumberExprAST>(val));
 }
 
+
+BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths,SourcePos pos)
+{
+	auto& env = InitPython();
+	try
+	{
+		py::exec(ths->script.c_str(), env.orig_scope);
+	}
+	catch (py::error_already_set& e)
+	{
+		throw CompileError(pos.line, pos.pos, string("\nScript exception:\n") + e.what());
+	}
+	if (!outtype.isResolved())
+	{
+		throw CompileError(pos.line, pos.pos, "The returned type is invalid");
+	}
+	*out = outtype;
+	outtype.type = tok_error;
+	outexpr = nullptr;
+}
 
 BIRDEE_BINDING_API void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
 {
@@ -290,6 +328,9 @@ void RegisiterClassForBinding(py::module& m)
 	});
 
 	m.def("expr", CompileExpr);
+	m.def("stmt", CompileStmt);
+	m.def("set_ast", [](UniquePtrStatementAST& ptr) {outexpr = ptr.move(); });
+	m.def("set_type", [](ResolvedType& ty) {outtype = ty; });
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
 	m.def("get_func", [](const std::string& name) {
 		auto itr = cu.funcmap.find(name);
@@ -420,11 +461,11 @@ void RegisiterClassForBinding(py::module& m)
 
 	py::class_ < ScriptAST, ExprAST>(m, "ScriptAST")
 		.def_static("new", [](const string& str) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str)); })
-		.def_property("expr", [](ScriptAST& ths) {return GetRef(ths.expr); }, [](ScriptAST& ths, UniquePtrStatementAST& v) {
-			ths.expr = v.move_expr();
+		.def_property("stmt", [](ScriptAST& ths) {return GetRef(ths.stmt); }, [](ScriptAST& ths, UniquePtrStatementAST& v) {
+			ths.stmt = v.move_expr();
 		})
 		.def_readwrite("script", &ScriptAST::script)
-		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.expr)); });
+		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.stmt)); });
 
 	RegisterNumCastClass<tok_int, tok_float>(m);
 	RegisterNumCastClass<tok_long, tok_float>(m);

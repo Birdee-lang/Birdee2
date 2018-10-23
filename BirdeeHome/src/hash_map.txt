@@ -18,9 +18,9 @@ function hash[T](v as T) as uint
 	return {@
 ty=resolve_type("T")
 if ty.is_integer():
-	expr("int_hash(v)")
+	set_ast(expr("int_hash(v)"))
 elif ty.index_level==0 and ty.base==BasicType.CLASS:
-	expr("v.__hash__()")
+	set_ast(expr("v.__hash__()"))
 else:
 	raise Exception(f"Cannot hash the type: {ty}")
 @}

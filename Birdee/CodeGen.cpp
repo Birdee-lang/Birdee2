@@ -631,7 +631,7 @@ DIType * Birdee::PrototypeAST::GenerateDebugType()
 
 Value * Birdee::ScriptAST::Generate()
 {
-	return expr? expr->Generate():nullptr;
+	return stmt ? stmt->Generate():nullptr;
 }
 
 void Birdee::ClassAST::PreGenerate()

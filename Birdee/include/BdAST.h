@@ -141,6 +141,20 @@ namespace Birdee {
 		GeneralIdentifierType(Token tok) :Type(tok) {}
 	};
 
+	class BD_CORE_API ScriptType :public Type {
+
+	public:
+		virtual unique_ptr<Type> Copy();
+		std::string script;
+		ScriptType(const std::string& _script) :Type(tok_script), script(_script) {}
+		void print(int level)
+		{
+			Type::print(level);
+			std::cout << " script: " << script;
+		}
+	};
+
+
 	class BD_CORE_API IdentifierType :public GeneralIdentifierType {
 		
 	public:
@@ -1208,7 +1222,7 @@ namespace Birdee {
 	class BD_CORE_API ScriptAST : public ExprAST
 	{
 	public:
-		unique_ptr<ExprAST> expr;
+		unique_ptr<StatementAST> stmt;
 		string script;
 		virtual Value* Generate();
 		virtual void Phase1();
@@ -1218,7 +1232,7 @@ namespace Birdee {
 			std::cout << "script " << script<<"\n";
 		}
 		ScriptAST(const string& str):script(str) {}
-		virtual llvm::Value* GetLValue(bool checkHas) { return expr?expr->GetLValue(checkHas):nullptr; }
+		virtual llvm::Value* GetLValue(bool checkHas);
 	};
 
 }

@@ -182,6 +182,12 @@ std::unique_ptr<Type> ParseBasicType()
 			type = make_unique<IdentifierType>(iden);
 		ParseTemplateArgsForType(static_cast<GeneralIdentifierType*>(type.get()));
 	}
+	else if (tokenizer.CurTok == tok_script)
+	{
+		string iden = tokenizer.IdentifierStr;
+		tokenizer.GetNextToken();
+		type = make_unique<ScriptType>(iden);
+	}
 	else
 	{
 		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
@@ -781,7 +787,7 @@ std::unique_ptr<IfBlockAST> ParseIf()
 			ParseBasicBlock(false_block, tok_if);
 		}
 	}
-	CompileAssert(tokenizer.CurTok == tok_newline, "Expected a new line after \"if\" block");
+	CompileAssert(tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof, "Expected a new line after \"if\" block");
 	return make_unique<IfBlockAST>(std::move(cond), std::move(true_block), std::move(false_block), pos);
 }
 
@@ -1360,6 +1366,37 @@ void ParseImports()
 		else
 			break;
 	}
+}
+
+BD_CORE_API unique_ptr<StatementAST> ParseStatement()
+{
+	unique_ptr<StatementAST> ret;
+	switch (tokenizer.CurTok)
+	{
+	case tok_newline:
+		tokenizer.GetNextToken(); //eat newline
+		break;
+	case tok_for:
+		tokenizer.GetNextToken(); //eat for
+		ret=ParseFor();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after for block");
+		break;
+	case tok_while:
+		tokenizer.GetNextToken(); //eat while
+		ret = ParseWhile();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after while block");
+		break;
+	case tok_if:
+		tokenizer.GetNextToken(); //eat if
+		ret = ParseIf();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
+		break;
+	default:
+		ret = ParseExpressionUnknown();
+		CompileExpect({ tok_eof,tok_newline }, "Expect a new line after expression");
+		CompileAssert(ret != nullptr, "Compiler internal error: firstexpr=null");
+	}
+	return std::move(ret);
 }
 
 BD_CORE_API int ParseTopLevel()
