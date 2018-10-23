@@ -5,15 +5,15 @@ mklink: $(LIB_DIR)/libBirdeeBinding.so
 	ln $(LIB_DIR)/libBirdeeBinding.so $(LIB_DIR)/birdeec.so
 
 birdeec: Birdee.o $(LIB_DIR)/libBirdeeCompilerCore.so $(LIB_DIR)/libBirdeeBinding.so
-	$(CXX) -o $(BIN_DIR)/$@ $(CPPFLAGS)  -L$(LIB_DIR) -Wl,--start-group Birdee.o -lBirdeeCompilerCore -ldl -Wl,--end-group
+	$(CXX) -o $(BIN_DIR)/$@ $(CPPFLAGS)  -L$(LIB_DIR) -Wl,--start-group Birdee.o -lBirdeeCompilerCore -ldl -Wl,--end-group -Wl,-rpath='$$ORIGIN/../lib/'
 .PHONY:clean
 
 
 $(LIB_DIR)/libBirdeeBinding.so: PythonBinding.o PythonBinding2.o $(LIB_DIR)/libBirdeeCompilerCore.so 
-	$(CXX) -shared -o $@ $(CPPFLAGS) -L$(LIB_DIR) -Wl,--start-group PythonBinding.o PythonBinding2.o $(LIBS) $(PYLIBS) -lBirdeeCompilerCore -Wl,--end-group 
+	$(CXX) -shared -o $@ $(CPPFLAGS) -L$(LIB_DIR) -Wl,--start-group PythonBinding.o PythonBinding2.o $(LIBS) $(PYLIBS) -lBirdeeCompilerCore -Wl,--end-group  -Wl,-rpath='$$ORIGIN'
 
 $(LIB_DIR)/libBirdeeCompilerCore.so: CodeGen.o NumberCast.o Preprocessing.o Parser.o MetadataSerializer.o MetadataDeserializer.o CopyAST.o BirdeeShared.o
-	$(CXX) -shared -o $@ $(CPPFLAGS) -Wl,--start-group $^ -lLLVM-6.0 $(LIBS) -Wl,--end-group
+	$(CXX) -shared -o $@ $(CPPFLAGS) -Wl,--start-group $^ -lLLVM-6.0 $(LIBS) -Wl,--end-group -Wl,-rpath='$$ORIGIN'
 
 override CPPFLAGS := -fPIC $(CPPFLAGS)
 

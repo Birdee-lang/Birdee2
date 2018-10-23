@@ -65,15 +65,17 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 		exit(1);
 	}
 	dlerror();
-	impl = (PtrImpl)dlsym(handle, name);
+	auto impl=dlsym(handle, name);
 	if ((error = dlerror()) != NULL) {
 		fprintf(stderr, "%s\n", error);
 		exit(1);
 	}
+	return impl;
 }
 
 #define Birdee_AnnotationStatementAST_Phase1_NAME "_Z36Birdee_AnnotationStatementAST_Phase1PN6Birdee22AnnotationStatementASTE"
 #define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE"
+#define Birdee_ScriptType_Resolve_NAME "_Z25Birdee_ScriptType_ResolvePN6Birdee12ResolvedTypeEPNS_10ScriptTypeENS_9SourcePosE"
 #endif
 
 static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)

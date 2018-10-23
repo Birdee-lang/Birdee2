@@ -771,8 +771,11 @@ namespace Birdee {
 		}
 	};
 
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
 	class VariableMultiDefAST : public VariableDefAST {
-
+#else
+	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
+#endif
 	public:
 		BD_CORE_API void Phase1()
 		{
@@ -780,7 +783,7 @@ namespace Birdee {
 				a->Phase1();
 		}
 		BD_CORE_API llvm::Value* Generate();
-		std::unique_ptr<StatementAST> Copy();
+		BD_CORE_API std::unique_ptr<StatementAST> Copy();
 		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
 		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
 		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
