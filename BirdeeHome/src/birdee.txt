@@ -49,6 +49,14 @@ class string
 		return strcmp(addressof(buf[0]),addressof(other.buf[0]))==0
 	end
 
+	public function __ne__(other as string) as boolean
+		if __eq__(other) then
+			return false
+		else
+			return true
+		end
+	end
+
 	public function getRaw() as pointer
 		return addressof(buf[0])
 	end

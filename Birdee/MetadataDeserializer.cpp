@@ -468,29 +468,47 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 	}
 }
 
-string GetModulePath(const vector<string>& package)
+extern string GetModuleNameByArray(const vector<string>& package);
+
+string GetModuleFile(const vector<string>& package, std::ifstream& f)
 {
-	string ret = cu.homepath + "blib";
+	string ret;
+	string libpath;
 	for (auto& s : package)
 	{
-		ret += '/';
-		ret += s;
+		libpath += '/';
+		libpath += s;
 	}
-	ret += ".bmm";
-	return ret;
+	libpath += ".bmm";
+
+	for (auto& spath : cu.search_path)
+	{
+		ret = spath + libpath;
+		f = std::ifstream(ret, std::ios::in);
+		if (f)
+			return ret;
+	}
+	
+	string cur_dir_path = cu.directory + "/";
+	auto dot_cnt=std::count(cu.symbol_prefix.begin(), cu.symbol_prefix.end(), '.');
+	if (dot_cnt > 0)
+	{
+		for (int i = 0; i < dot_cnt - 1; i++)
+			cur_dir_path += "../";
+		ret = cur_dir_path + libpath;
+		f = std::ifstream(ret, std::ios::in);
+		if (f)
+			return ret;
+	}
+
+	ret = cu.homepath + "blib" + libpath;
+	f = std::ifstream(ret, std::ios::in);
+	if (f)
+		return ret;
+	return "";
+
 }
 
-string GetModulePathCurrentDir(const vector<string>& package)
-{
-	string ret = ".";
-	for (auto& s : package)
-	{
-		ret += '/';
-		ret += s;
-	}
-	ret += ".bmm";
-	return ret;
-}
 
 void Get2DStringArray(vector<vector<string>>& ret, const json& js)
 {
@@ -508,17 +526,13 @@ void Get2DStringArray(vector<vector<string>>& ret, const json& js)
 void ImportedModule::Init(const vector<string>& package, const string& module_name)
 {
 	json json;
-	string path = GetModulePathCurrentDir(package);
-	std::ifstream in(path, std::ios::in);
+	
+	std::ifstream in; 
+	string path = GetModuleFile(package, in);
 	if (!in)
 	{
-		path = GetModulePath(package);
-		in = std::ifstream(path, std::ios::in);
-		if (!in)
-		{
-			std::cerr << "Cannot open file " << path << '\n';
-			std::exit(2);
-		}
+		std::cerr << "Cannot find module " << GetModuleNameByArray(package) << '\n';
+		std::exit(2);
 	}
 	in >> json;
 	current_package_name = module_name;

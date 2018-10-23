@@ -110,6 +110,15 @@ void ParseParameters(int argc, char** argv)
 			{
 				cu.is_corelib = true;
 			}
+			else if (cmd=="-l") //L not 1
+			{
+				if (!args.HasNext())
+					goto fail;
+				string str = args.Get();
+				if (str.back() != '\\' && str.back() != '/')
+					str.push_back('/');
+				cu.search_path.push_back(std::move(str));
+			}
 			else
 				goto fail;
 		}

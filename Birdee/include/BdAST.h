@@ -293,6 +293,7 @@ namespace Birdee {
 		bool expose_main = false;
 		bool is_script_mode = false;
 		bool is_compiler_mode = false; //if the Birdee Compiler Core is called by birdeec, it should be set true; if called & loaded by python, remain false
+		vector<string> search_path; //the search paths, with "/" at the end
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;

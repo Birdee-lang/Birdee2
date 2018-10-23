@@ -1,0 +1,5 @@
+package test_package.a
+
+function func()
+	println("HAHA")
+end
