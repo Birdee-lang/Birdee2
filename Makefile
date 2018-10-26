@@ -6,6 +6,7 @@ MKDIR_P = mkdir -p
 PWD_DIR=$(shell pwd)
 COMPILER_DIR=$(PWD_DIR)/Birdee
 RUNTIME_DIR=$(PWD_DIR)/BirdeeRuntime
+BLIB_DIR=$(PWD_DIR)/BirdeeHome/src
 INC_DIR=$(PWD_DIR)/Birdee/include
 INC_DIR2=$(PWD_DIR)/dependency/include
 BIN_DIR=$(PWD_DIR)/bin
@@ -20,7 +21,7 @@ LIBS ?= -pthread
 export PWD_DIR CXX CPPFLAGS LIBS COMPILER_DIR INC_DIR BIN_DIR PYLIBS LIB_DIR
 
 ##
-all: directories compiler runtime
+all: directories compiler runtime libraries
 
 directories: ${BIN_DIR} ${LIB_DIR}
 
@@ -36,10 +37,14 @@ compiler:
 runtime:
 	$(MAKE)  -C $(RUNTIME_DIR)
 
+libraries: compiler runtime
+	$(MAKE) -C $(BLIB_DIR)
+
 ##
 clean:
 	$(MAKE)  -C $(COMPILER_DIR) clean
 	$(MAKE)  -C $(RUNTIME_DIR) clean
+	$(MAKE)  -C $(BLIB_DIR) clean
 	rm -rf ${BIN_DIR}
 	rm -rf ${LIB_DIR}
 
