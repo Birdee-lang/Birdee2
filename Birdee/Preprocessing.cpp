@@ -1342,15 +1342,27 @@ namespace Birdee
 		}
 		if (resolved_type.index_level == 0)
 		{
+			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
+			ClassAST* cls = resolved_type.class_ast;
 			if (!method.empty())
 			{
-				CompileAssert(resolved_type.type==tok_class, Pos, "new expression only supports class types");
-				ClassAST* cls = resolved_type.class_ast;
 				auto itr = cls->funcmap.find(method);
 				CompileAssert(itr != cls->funcmap.end(), Pos, "Cannot resolve name "+ method);
 				func = &cls->funcs[itr->second];
 				CompileAssert(func->access==access_public, Pos, "Accessing a private method");
 				CheckFunctionCallParameters(func->decl->Proto.get(), args, Pos);
+			} else { // no specifically calling __init__, complier tries to find one
+				string init_method = "__init__";
+				auto itr = cls->funcmap.find(init_method);
+				if (itr != cls->funcmap.end()) // check if available __init__() exists
+				{ 
+					auto tfunc = &cls->funcs[itr->second];
+					if (tfunc->access == access_public &&
+						tfunc->decl->Proto.get()->resolved_args.size() == 0)
+					{ 
+						func = tfunc;
+					}
+				}
 			}
 		}
 	}

@@ -336,14 +336,20 @@ std::unique_ptr<NewExprAST> ParseNew()
 	{
 		if (tokenizer.CurTok == tok_colon)
 		{
-			tokenizer.GetNextToken();//eat :
+			tokenizer.GetNextToken(); //eat :
 			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier after :");
 			method = tokenizer.IdentifierStr;
 			tokenizer.GetNextToken();
+			if (tokenizer.CurTok == tok_left_bracket)
+			{
+				tokenizer.GetNextToken(); //eat (
+				expr = ParseArguments();
+			}
 		}
-		if (tokenizer.CurTok == tok_left_bracket)
+		else if (tokenizer.CurTok == tok_left_bracket) // new Object(...)
 		{
-			tokenizer.GetNextToken();//eat (
+			method = "__init__";
+			tokenizer.GetNextToken(); // eat (
 			expr = ParseArguments();
 		}
 	}
