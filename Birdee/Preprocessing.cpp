@@ -1357,11 +1357,11 @@ namespace Birdee
 				if (itr != cls->funcmap.end()) // check if available __init__() exists
 				{ 
 					auto tfunc = &cls->funcs[itr->second];
-					if (tfunc->access == access_public &&
-						tfunc->decl->Proto.get()->resolved_args.size() == 0)
-					{ 
-						func = tfunc;
-					}
+					CompileAssert(tfunc->access == access_public, Pos, string("__init__ function of class ")
+						+ resolved_type.class_ast->GetUniqueName() + " is defined, but is not public");
+					CompileAssert(tfunc->decl->Proto.get()->resolved_args.size() == 0, Pos, string("__init__ function of class ")
+						+ resolved_type.class_ast->GetUniqueName() + " is defined, but has more than one arguments"); 
+					func = tfunc;
 				}
 			}
 		}

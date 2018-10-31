@@ -93,6 +93,7 @@ void Birdee::CompileUnit::Clear()
 	classmap.clear();
 	funcmap.clear();
 	dimmap.clear();
+	symbol_prefix.clear();
 
 	imported_classmap.clear();
 	imported_funcmap.clear();
