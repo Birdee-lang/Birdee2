@@ -14,10 +14,10 @@ test2.o:test2.txt ${BLIB_DIR}
 ${BLIB_DIR}/birdee.o: birdee.txt ${BLIB_DIR}
 	$(BIN_DIR)/birdeec --corelib -i birdee.txt -o $(BLIB_DIR)/birdee.o
 
-${BLIB_DIR}/list.o: list.txt ${BLIB_DIR}
+${BLIB_DIR}/list.o: list.txt ${BLIB_DIR}/birdee.o
 	$(BIN_DIR)/birdeec -i list.txt -o $(BLIB_DIR)/list.o
 
-${BLIB_DIR}/hash_map.o: hash_map.txt ${BLIB_DIR}
+${BLIB_DIR}/hash_map.o: hash_map.txt ${BLIB_DIR}/birdee.o
 	$(BIN_DIR)/birdeec -i hash_map.txt -o $(BLIB_DIR)/hash_map.o
 
 
