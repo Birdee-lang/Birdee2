@@ -37,7 +37,7 @@ Please view our [wiki](https://github.com/Menooker/Birdee2/wiki).
 
 ## Building Birdee on Ubuntu
 
-Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11 and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
+Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11, bdwgc and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
 
 Then, install LLVM. You may refer to [LLVM's apt site](https://apt.llvm.org/) for instructions. Here we provide commands for installing LLVM on Ubuntu 14.04. You need first add the following lines to /etc/apt/sources.list:
 
@@ -54,6 +54,7 @@ wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update
 sudo apt-get install llvm-6.0
 sudo apt-get install python3-dev
+sudo apt-get install libgc-dev
 pip3 install pybind11
 sudo ln -s -r /usr/include/llvm-6.0/llvm /usr/include/llvm
 sudo ln -s -r /usr/include/llvm-c-6.0/llvm-c/ /usr/include/llvm-c
@@ -102,7 +103,7 @@ First, you need a copy of LLVM 6.0 (or maybe newer). You can compile LLVM by you
 
 Assume that the root directory of Birdee source code is "Birdee". Then create directory "Birdee\\dependency" and "Birdee\\dependency\\bin".
 
-### Step 1 for VS
+### Step 1 for VS (Install pybind11)
 Then make sure you have installed an x64 version of Python. Copy/Link "python3.lib" and "python3X.lib" from Python to "Birdee\\dependency\\bin" ("X" in the file name is the exact subversion of your Python). These two files are located in "lib" directory of Python's installed directory.
 
 Run command
@@ -113,7 +114,7 @@ pip install pybind11
 
 Make sure the "pip" program is provided exactly by the same version of Python to be used by Birdee. Finally, link/copy the "include" directory from Python's installed directory to "Birdee\\dependency\\pyinclude"
 
-### Step 2 for VS
+### Step 2 for VS (Install LLVM)
 
 If you have compiled LLVM by yourself,
 
@@ -129,10 +130,26 @@ If you have downloaded pre-compiled LLVM,
  * extract "llvm.6.0.win.Debug.zip/lib" to "Birdee\\dependency\\bin\\llvm-debug" 
  * (Not currently needed, you can skip this step) extract "llvm.6.0.win.Release.zip/lib" to "Birdee\\dependency\\bin\\llvm-release" 
 
-### Step 3 for VS
+### Step 3 for VS (Install header-only dependencies)
 
 Create a directory "Birdee\\dependency\\include" and "Birdee\\dependency\\include\\nlohmann". Download [header](https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp) and [header](https://raw.githubusercontent.com/nlohmann/fifo_map/master/src/fifo_map.hpp) to "Birdee\\dependency\\include\\nlohmann".
 
+### Step 4 for VS (Install bdwgc)
+
+bdwgc is a library for conservative GC, which is used for Birdee's runtime. Like LLVM, you can either download a pre-built binary ([BaiduYun](https://pan.baidu.com/s/1T39OUmZBZcw5T5I9LEuiyg),[GoogleDrive](https://drive.google.com/open?id=1wA9ctJvcopfGAYxZVfEhacBzY9APw_S6)), or build the library by yourself. Here is some notes for building bdwgc.
+
+ * Make sure you have Visual Studio installed. Open Visual Studio x64 Commmand Prompt. (You can find it in the Visual Studio directory of the start menu.)
+ * Download and extract sources of [bdwgc](https://github.com/ivmai/bdwgc/releases) and [libatomic_ops](https://github.com/ivmai/libatomic_ops/releases). 
+ * In Visual Studio x64 Commmand Prompt, switch directory to "XXXXX/libatomic_ops-7.6.6/src", and run "nmake -f Makefile.msft"
+ * Copy "atomic_ops.h","atomic_ops","atomic_ops_stack.h","atomic_ops_malloc.h" and "libatomic_ops_gpl.lib" in "src" directory to the directory "XXXXX/gc-7.6.8/include" (source code for bdwgc)
+ * Then switch directory to "XXXXX/gc-7.6.8" (source code for bdwgc). Run "nmake -f NT_MAKEFILE cpu=AMD64 nodebug=1"
+
+The above sources and generated files are included in the pre-built binary. Then:
+ * Link/copy XXXXX\gc-7.6.8\gc64_dll.lib to Birdee\dependency\bin\gc64_dll.lib
+ * Link/copy XXXXX\gc-7.6.8\include to Birdee\dependency\gc_include
+ * Link/copy XXXXX\gc-7.6.8\gc64.dll to Birdee\x64\debug\gc64.dll
+
+
 ### Build Birdee with VS!
 
-Open "Birdee\\Birdee.sln" and build the project "Birdee".
+Open "Birdee\\Birdee.sln" and build the project "Birdee" and "CoreLibs".

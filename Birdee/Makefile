@@ -1,12 +1,12 @@
-all: birdeec mklink
+all: $(BIN_DIR)/birdeec mklink
 
 mklink: $(LIB_DIR)/libBirdeeBinding.so
 	rm -f $(LIB_DIR)/birdeec.so
 	ln $(LIB_DIR)/libBirdeeBinding.so $(LIB_DIR)/birdeec.so
 
-birdeec: Birdee.o $(LIB_DIR)/libBirdeeCompilerCore.so $(LIB_DIR)/libBirdeeBinding.so
-	$(CXX) -o $(BIN_DIR)/$@ $(CPPFLAGS)  -L$(LIB_DIR) -Wl,--start-group Birdee.o -lBirdeeCompilerCore -ldl -Wl,--end-group -Wl,-rpath='$$ORIGIN/../lib/'
-.PHONY:clean
+$(BIN_DIR)/birdeec: Birdee.o $(LIB_DIR)/libBirdeeCompilerCore.so $(LIB_DIR)/libBirdeeBinding.so
+	$(CXX) -o $@ $(CPPFLAGS)  -L$(LIB_DIR) -Wl,--start-group Birdee.o -lBirdeeCompilerCore -ldl -Wl,--end-group -Wl,-rpath='$$ORIGIN/../lib/'
+.PHONY:clean mklink remake
 
 
 $(LIB_DIR)/libBirdeeBinding.so: PythonBinding.o PythonBinding2.o $(LIB_DIR)/libBirdeeCompilerCore.so 

@@ -1,0 +1,4 @@
+dim i=0
+while true
+	println("Hello"+int2str(i))
+end

@@ -6,10 +6,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <gc.h>
 
 extern "C" void* BirdeeMallocObj(uint32_t sz)
 {
-	void* ret= malloc(sz);
+	void* ret= GC_malloc(sz);
 	return ret;
 }
 
@@ -41,13 +42,13 @@ static void* BirdeeAllocArr(va_list args, uint32_t sz,uint32_t cur, uint32_t par
 	uint32_t len = va_arg(args, uint32_t);
 	if (cur == param_sz)
 	{
-		void* alloc = malloc(sz*len+8);
+		void* alloc = GC_malloc(sz*len+8);
 		GenericArray* arr = (GenericArray*)alloc;
 		arr->packed.sz = len;
 		return alloc;
 	}
 
-	GenericArray* alloc = (GenericArray*)malloc(sizeof(void*)*len+8); //fix-me : +8 ??
+	GenericArray* alloc = (GenericArray*)GC_malloc(sizeof(void*)*len+8); //fix-me : +8 ??
 	alloc->unpacked.sz = len;
 	for (uint32_t i = 0; i < len; i++)
 	{
