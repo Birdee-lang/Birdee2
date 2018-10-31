@@ -152,4 +152,6 @@ The above sources and generated files are included in the pre-built binary. Then
 
 ### Build Birdee with VS!
 
+Add an environment variable "BIRDEE_HOME" and set its value to the absolute path "X:\XXXX\Birdee\BirdeeHome\bin"
+
 Open "Birdee\\Birdee.sln" and build the project "Birdee" and "CoreLibs".
