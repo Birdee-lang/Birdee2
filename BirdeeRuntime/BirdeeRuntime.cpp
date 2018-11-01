@@ -8,9 +8,11 @@
 #include <stdio.h>
 #include <gc.h>
 
-extern "C" void* BirdeeMallocObj(uint32_t sz)
+extern "C" void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
 {
 	void* ret= GC_malloc(sz);
+	if(proc)
+		GC_register_finalizer_no_order(ret, proc, nullptr, nullptr, nullptr);
 	return ret;
 }
 
@@ -75,7 +77,7 @@ extern "C" void prints(char* i)
 
 extern "C" BirdeeString* BirdeeP2S(void* i)
 {
-	BirdeeString* ret = (BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString));
+	BirdeeString* ret = (BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString),nullptr);
 	int sz = snprintf(nullptr, 0, "%p", i) + 1;
 	ret->arr = (GenericArray*)BirdeeMallocArr(1, 1, sz);
 	ret->sz = sz - 1;
@@ -86,7 +88,7 @@ extern "C" BirdeeString* BirdeeP2S(void* i)
 
 extern "C" BirdeeString* BirdeeI2S(int i)
 {
-	BirdeeString* ret=(BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString));
+	BirdeeString* ret=(BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString), nullptr);
 	int sz = snprintf(nullptr, 0, "%i", i) + 1;
 	ret->arr = (GenericArray*)BirdeeMallocArr(1, 1, sz);
 	ret->sz = sz - 1;

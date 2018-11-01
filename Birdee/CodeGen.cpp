@@ -712,7 +712,7 @@ llvm::Function* GetMallocObj()
 {
 	if (!gen_context.malloc_obj_func)
 	{
-		auto fty = FunctionType::get(builder.getInt8PtrTy(), { builder.getInt32Ty() }, false);
+		auto fty = FunctionType::get(builder.getInt8PtrTy(), { builder.getInt32Ty(),builder.getInt8PtrTy() }, false);
 		gen_context.malloc_obj_func = Function::Create(fty, Function::ExternalLinkage, "BirdeeMallocObj", module);
 	}
 	return gen_context.malloc_obj_func;
@@ -772,7 +772,15 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	auto llvm_ele_ty = resolved_type.class_ast->llvm_type;
 	size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
 	dinfo.emitLocation(this);
-	Value* ret= builder.CreateCall(GetMallocObj(), builder.getInt32(sz));
+	string del_func = "__del__";
+	auto class_ast = resolved_type.class_ast;
+	auto itr = class_ast->funcmap.find(del_func);
+	Value* finalizer;
+	if (itr != class_ast->funcmap.end())
+		finalizer = builder.CreatePointerCast(class_ast->funcs[itr->second].decl->llvm_func, builder.getInt8PtrTy());
+	else
+		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
+	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
 	if(func)
 		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args,this->Pos);
@@ -1031,7 +1039,6 @@ llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();
-	arr->print(errs(), true);
 	auto ptr = builder.CreateGEP(arr, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(0) });
 	return builder.CreateGEP(ptr, index);
 }
@@ -1045,7 +1052,6 @@ llvm::Value * Birdee::IndexExprAST::Generate()
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();
-	arr->getType()->print(errs(), true);
 	auto ptr=builder.CreateGEP(arr, {builder.getInt32(0),builder.getInt32(1),builder.getInt32(0) });
 	return builder.CreateLoad(builder.CreateGEP(ptr, index));
 }

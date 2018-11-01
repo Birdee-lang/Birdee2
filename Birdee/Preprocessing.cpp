@@ -353,6 +353,17 @@ public:
 		if (template_arg)
 			return std::move(template_arg);
 
+		auto cls_field = FindFieldInClass(name);
+		if (cls_field)
+		{
+			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), cls_field, pos);
+		}
+		auto func_field = FindFuncInClass(name);
+		if (func_field)
+		{
+			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
+		}
+
 		bool isInOtherModule = isInTemplateOfOtherModuleAndDoImport();
 		if (isInOtherModule)
 		{//if in template of another module, search global vars from the module
@@ -367,16 +378,6 @@ public:
 				return make_unique<LocalVarExprAST>(global_itr->second, pos);
 		}
 
-		auto cls_field = FindFieldInClass(name);
-		if (cls_field)
-		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(),pos), cls_field,pos);
-		}
-		auto func_field = FindFuncInClass(name);
-		if (func_field)
-		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(),pos), func_field,pos);
-		}
 		/*if (basic_blocks.size() != 1) // top-level variable finding disabled
 		{
 			auto global_dim = cu.dimmap.find(name);
@@ -1380,6 +1381,13 @@ namespace Birdee
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase1();
+			if (funcdef.decl->GetName() == "__del__")
+			{
+				CompileAssert(funcdef.decl->Proto->resolved_args.size() == 0, funcdef.decl->Pos, "__del__ destructor must have no arguments");
+				auto& type = funcdef.decl->Proto->resolved_type;
+				CompileAssert(type.type==tok_void && type.index_level==0, funcdef.decl->Pos, "__del__ destructor must not have return values");
+				CompileAssert(funcdef.access==access_public, funcdef.decl->Pos, "__del__ destructor must be public");
+			}
 		}
 		scope_mgr.PopClass();
 	}

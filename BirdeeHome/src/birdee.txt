@@ -2,7 +2,7 @@ declare function puts (str as pointer) as int
 declare function prints (str as pointer) as int
 declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
 declare function strcmp (a as pointer,b as pointer) as int
-declare function trap alias "llvm.trap" ()
+declare function trap alias "llvm.debugtrap" ()
 
 function breakpoint()
 	trap()
@@ -34,6 +34,10 @@ class string
 		memcpy(addressof(ret.buf[len]),addressof(other.buf[0]),other.len,1,false)
 		ret.len=len+other.len
 		return ret
+	end
+	public function __init__()
+		len=0
+		buf=null
 	end
 
 	public function __hash__() as uint

@@ -1,4 +1,17 @@
 dim i=0
+dim a =new ulong*128
+class clstest
+	public a as int
+	public function __init__(va as int)
+		a=va
+	end
+	public function __del__()
+		println("finalizer"+int2str(a))
+	end	
+end
+breakpoint()
 while true
 	println("Hello"+int2str(i))
+	a[0]=1
+	new clstest(32)
 end
