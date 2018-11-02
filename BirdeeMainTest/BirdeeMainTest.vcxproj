@@ -94,8 +94,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>BirdeeRuntime.lib;$(SolutionDir)\Birdee\gc_test.obj;birdee.obj;hash_map.obj;list.obj;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(BIRDEE_HOME)\blib;$(SolutionDir)x64\Debug</AdditionalLibraryDirectories>
+      <AdditionalDependencies>BirdeeRuntime.lib;birdee.obj;hash_map.obj;list.obj;template_link_test.obj;template_link_test_lib.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(BIRDEE_HOME)\blib;$(SolutionDir)x64\Debug;$(SolutionDir)tests\bin</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

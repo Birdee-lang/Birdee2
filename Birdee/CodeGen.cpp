@@ -701,7 +701,13 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		prefix = cu.symbol_prefix;
 	else
 		prefix = cu.imported_module_names[Proto->prefix_idx]+'.';
-	llvm_func = Function::Create(Proto->GenerateFunctionType(), Function::ExternalLinkage, prefix + Proto->GetName(), module);
+	GlobalValue::LinkageTypes linkage;
+	if (Proto->cls && Proto->cls->isTemplateInstance()
+		|| isTemplateInstance)
+		linkage = Function::LinkOnceODRLinkage;
+	else
+		linkage = Function::ExternalLinkage;
+	llvm_func = Function::Create(Proto->GenerateFunctionType(), linkage, prefix + Proto->GetName(), module);
 	DIType* ret = Proto->GenerateDebugType();
 	helper.dtypemap[resolved_type] = ret;
 	return ret;

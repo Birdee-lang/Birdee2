@@ -1,0 +1,14 @@
+#gcc -o  tests/bin/template_link_test tests/bin/template_link_test.o tests/bin/template_link_test_lib.o BirdeeHome/bin/blib/birdee.o BirdeeHome/bin/blib/list.o BirdeeHome/bin/blib/hash_map.o lib/libBirdeeRuntime.a  -lgc
+
+import template_link_test_lib
+import hash_map:hash_map
+
+dim map = new hash_map[string,int]:create()
+map.set("123",321)
+
+template_link_test_lib.test()
+
+declare function add alias "template_link_test_lib.add[int]" (a as int, b as int) as int
+println( "Add:"+int2str(add(23,32)))
+
+#template_link_test_lib.add[int](23,32)

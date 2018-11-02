@@ -1,0 +1,10 @@
+import hash_map:hash_map
+
+function test()
+	dim a = new hash_map[string,int]:create()
+	a.set("123",add[int](21,23))
+end
+
+function add[T](a as T, b as T) as T
+	return a+b
+end

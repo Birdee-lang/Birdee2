@@ -15,7 +15,7 @@ $(LIB_DIR)/libBirdeeBinding.so: PythonBinding.o PythonBinding2.o $(LIB_DIR)/libB
 $(LIB_DIR)/libBirdeeCompilerCore.so: CodeGen.o NumberCast.o Preprocessing.o Parser.o MetadataSerializer.o MetadataDeserializer.o CopyAST.o BirdeeShared.o
 	$(CXX) -shared -o $@ $(CPPFLAGS) -Wl,--start-group $^ -lLLVM-6.0 $(LIBS) -Wl,--end-group -Wl,-rpath='$$ORIGIN'
 
-override CPPFLAGS := -fPIC $(CPPFLAGS)
+override CPPFLAGS := -fPIC -fvisibility=hidden -flto=thin $(CPPFLAGS)
 
 clean:
 	# If .o does not exist, don't stop

@@ -14,7 +14,7 @@ LIB_DIR=$(PWD_DIR)/lib
 
 PYLIBS = $(shell python3-config --libs)
 CXX ?= g++
-CPPFLAGS ?= -g -fvisibility=hidden -DBIRDEE_USE_DYN_LIB -flto=thin -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(shell python3 -m pybind11 --includes)
+CPPFLAGS ?= -g -DBIRDEE_USE_DYN_LIB -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(shell python3 -m pybind11 --includes)
 LIBS ?= -pthread
 
 ##
