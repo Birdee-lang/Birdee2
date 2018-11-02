@@ -8,7 +8,7 @@ map.set("123",321)
 
 template_link_test_lib.test()
 
-declare function add alias "template_link_test_lib.add[int]" (a as int, b as int) as int
-println( "Add:"+int2str(add(23,32)))
+#declare function add alias "template_link_test_lib.add[int]" (a as int, b as int) as int
+#println( "Add:"+int2str(add(23,32)))
 
-#template_link_test_lib.add[int](23,32)
+template_link_test_lib.add[int](23,32)

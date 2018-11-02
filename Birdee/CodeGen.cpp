@@ -32,8 +32,15 @@ using std::unordered_map;
 using namespace Birdee;
 
 
-
-
+//https://stackoverflow.com/a/874160/4790873
+bool strHasEnding(std::string const &fullString, std::string const &ending) {
+	if (fullString.length() >= ending.length()) {
+		return (0 == fullString.compare(fullString.length() - ending.length(), ending.length(), ending));
+	}
+	else {
+		return false;
+	}
+}
 
 namespace std
 {
@@ -702,12 +709,16 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	else
 		prefix = cu.imported_module_names[Proto->prefix_idx]+'.';
 	GlobalValue::LinkageTypes linkage;
-	if (Proto->cls && Proto->cls->isTemplateInstance()
-		|| isTemplateInstance)
+	if (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance)
 		linkage = Function::LinkOnceODRLinkage;
 	else
 		linkage = Function::ExternalLinkage;
 	llvm_func = Function::Create(Proto->GenerateFunctionType(), linkage, prefix + Proto->GetName(), module);
+	if (strHasEnding(cu.targetpath,".obj") && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
+	{
+		llvm_func->setComdat(module->getOrInsertComdat(llvm_func->getName()));
+		llvm_func->setDSOLocal(true);
+	}
 	DIType* ret = Proto->GenerateDebugType();
 	helper.dtypemap[resolved_type] = ret;
 	return ret;
