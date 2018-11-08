@@ -87,6 +87,7 @@ namespace Birdee
 		tok_or,
 		tok_not,
 		tok_xor,
+		tok_into,
 	};
 
 	enum NodeType {

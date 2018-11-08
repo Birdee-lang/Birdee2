@@ -107,3 +107,14 @@ except CompileException:
 	print(e.linenumber,e.pos,e.msg)
 clear_compile_unit()
 
+
+#tests for one-line function
+top_level(
+'''
+function func1(a as int, b as int) as int => a+b
+function () => func1(1,2)
+'''
+)
+process_top_level()
+generate()
+clear_compile_unit()

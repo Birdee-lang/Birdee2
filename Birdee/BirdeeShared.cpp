@@ -82,11 +82,13 @@ namespace Birdee
 	{"<=",tok_le},
 	{"&&",tok_logic_and},
 	{"||",tok_logic_or},
+	{"=>",tok_into},
 	};
 }
 
 extern void ClearPreprocessingState();
 extern void RunGenerativeScript();
+extern void ClearParserState();
 void Birdee::CompileUnit::Clear()
 {
 	toplevel.clear();
@@ -108,6 +110,7 @@ void Birdee::CompileUnit::Clear()
 	imported_packages.mod = nullptr;
 	ClearPreprocessingState();
 	AbortGenerate();
+	ClearParserState();
 }
 
 

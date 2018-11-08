@@ -136,6 +136,13 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
 PrototypeAST *current_func_proto = nullptr;
+int unnamed_func_cnt = 0;
+
+void ClearParserState()
+{
+	current_func_proto = nullptr;
+	unnamed_func_cnt = 0;
+}
 
 void ParsePackageName(vector<string>& ret);
 
@@ -848,6 +855,14 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		name = tokenizer.IdentifierStr;
 		tokenizer.GetNextToken();
 	}
+	else
+	{
+		//if it is an unnamed function
+		std::stringstream buf;
+		buf << "!unnamed_function" << unnamed_func_cnt;
+		unnamed_func_cnt++;
+		name = buf.str();
+	}
 	if (tokenizer.CurTok == tok_left_index)
 	{
 		is_template = true;
@@ -869,15 +884,35 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		args = ParseDim();
 	CompileExpect(tok_right_bracket, "Expected \')\'");
 	auto rettype = ParseType();
+	bool is_return_void = false;
 	if (rettype->type == tok_auto)
+	{
+		is_return_void = true;
 		rettype->type = tok_void;
+	}
 	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos());
 	current_func_proto = funcproto.get();
 
 	ASTBasicBlock body;
 
-	//parse function body
-	ParseBasicBlock(body, tok_func);
+	if (tokenizer.CurTok == tok_into)
+	{
+		//one-line function
+		tokenizer.GetNextToken();
+		unique_ptr<ExprAST> expr = ParseExpressionUnknown();
+		auto pos = expr->Pos;
+		unique_ptr<StatementAST> stmt;
+		if (!is_return_void)
+			stmt = make_unique<ReturnAST>(std::move(expr), pos);
+		else
+			stmt = std::move(expr);
+		body.body.emplace_back(std::move(stmt));
+	}
+	else
+	{
+		//parse function body
+		ParseBasicBlock(body, tok_func);
+	}
 	current_func_proto = nullptr;
 	if (is_template)
 	{
