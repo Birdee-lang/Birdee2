@@ -17,6 +17,7 @@ using json = nlohmann::basic_json<my_workaround_fifo_map>;
 using namespace Birdee;
 
 static std::vector<ClassAST*> idx_to_class;
+static std::vector<PrototypeAST*> idx_to_proto;
 static std::vector<ClassAST*> orphan_idx_to_class;
 static string current_package_name;
 static int current_module_idx;
@@ -85,18 +86,28 @@ ResolvedType ConvertIdToType(const json& type)
 		ret.type = tok_byte;
 		break;
 	default:
-		BirdeeAssert(idtype >= 0 && idtype < MAX_CLASS_COUNT, "Bad type id");
-		ret.type = tok_class;
-		if (idtype < MAX_CLASS_DEF_COUNT)
+		if (idtype < 0)
 		{
-			BirdeeAssert(idtype < idx_to_class.size(), "Bad type id");
-			ret.class_ast = idx_to_class[idtype];
+			BirdeeAssert(idtype <= -MAX_BASIC_TYPE_COUNT && idtype >= -MAX_CLASS_COUNT, "Bad type id");
+			ret.type = tok_func;
+			BirdeeAssert(-MAX_BASIC_TYPE_COUNT-idtype < idx_to_proto.size(), "Bad type id");
+			ret.proto_ast = idx_to_proto[-MAX_BASIC_TYPE_COUNT - idtype];
 		}
 		else
 		{
-			idtype -= MAX_CLASS_DEF_COUNT;
-			BirdeeAssert(idtype < orphan_idx_to_class.size(), "Bad type id");
-			ret.class_ast = orphan_idx_to_class[idtype];
+			BirdeeAssert(idtype < MAX_CLASS_COUNT, "Bad type id");
+			ret.type = tok_class;
+			if (idtype < MAX_CLASS_DEF_COUNT)
+			{
+				BirdeeAssert(idtype < idx_to_class.size(), "Bad type id");
+				ret.class_ast = idx_to_class[idtype];
+			}
+			else
+			{
+				idtype -= MAX_CLASS_DEF_COUNT;
+				BirdeeAssert(idtype < orphan_idx_to_class.size(), "Bad type id");
+				ret.class_ast = orphan_idx_to_class[idtype];
+			}
 		}
 	}
 	ret.index_level = type["index"].get<int>();
@@ -421,7 +432,60 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 	}
 }
 
+void BuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
+{
+	BirdeeAssert(funcs.is_array(), "Expeccted a JSON array");
+	//we use a two-pass approach: first pass, add placeholder
+	//second pass, put real data into placeholder
+	//Why bother the two-pass approach? func_ty0 may reference func_ty1. This may cause some problems.
+	int idx = 0;
+	for (auto& func : funcs)
+	{
+		BirdeeAssert(func.is_object(), "Expected a JSON object");
+		string name = func["name"];
+		auto proto = make_unique<PrototypeAST>("", vector<unique_ptr<VariableSingleDefAST>>(),
+			ResolvedType(), (ClassAST*)nullptr, current_module_idx);
+		auto protoptr = proto.get();
+		if (name.size() != 0) //if it is a named prototype
+			mod.functypemap[name] = std::move(proto);
+		else
+		{
+			std::stringstream strbuf;
+			strbuf << idx; //just put a number as the unique name
+			mod.functypemap[strbuf.str()] = std::move(proto);
+		}
+		idx_to_proto.push_back(protoptr);
+		idx++;
+	}
+	idx = 0;
+	for (auto& func : funcs)
+	{
+		auto proto = idx_to_proto[idx];
+		vector<unique_ptr<VariableSingleDefAST>> Args;
 
+		const json& args = func["args"];
+		auto itr = func.find("class");
+		if (itr != func.end())
+		{
+			auto clstype = ConvertIdToType(*itr);
+			BirdeeAssert(clstype.type==tok_class, "Expected a class");
+			proto->cls = clstype.class_ast;
+		}
+		else
+		{
+			proto->cls = nullptr;
+		}
+		BirdeeAssert(args.is_array(), "Expected a JSON array");
+		BirdeeAssert(proto->resolved_args.empty(), "proto->resolved_args.empty()");
+		for (auto& arg : args)
+		{
+			proto->resolved_args.push_back(BuildVariableFromJson(arg));
+		}
+
+		proto->resolved_type = ConvertIdToType(func["return"]);
+		idx++;
+	}
+}
 
 void BuildClassFromJson(const json& cls, ImportedModule& mod)
 {
@@ -537,6 +601,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	in >> json;
 	current_package_name = module_name;
 	current_module_idx = cu.imported_module_names.size() - 1;
+	idx_to_proto.clear();
 	idx_to_class.clear();
 	orphan_idx_to_class.clear();
 	source_paths.push_back(path);
@@ -544,14 +609,21 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");
 
-	auto itr = json.find("FunctionTemplates");
-	if (itr != json.end())
-		BuildGlobalTemplateFuncFromJson(*itr, *this);
+	{
+		auto itr = json.find("FunctionTemplates");
+		if (itr != json.end())
+			BuildGlobalTemplateFuncFromJson(*itr, *this);
+	}
 
 	//we first make place holder for each class. Because classes may reference each other
 	PreBuildClassFromJson(json["Classes"], module_name, *this);
 	PreBuildOrphanClassFromJson(json["ImportedClasses"], *this);
-	//we then create the classes
+	//we then create the classes and prototypes
+	{
+		auto itr = json.find("FunctionTypes");
+		if (itr != json.end())
+			BuildPrototypeFromJson(*itr,*this);
+	}
 	BuildClassFromJson(json["Classes"], *this);
 	BuildOrphanClassFromJson(json["ImportedClasses"], *this);
 

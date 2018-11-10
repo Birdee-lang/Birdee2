@@ -1,0 +1,17 @@
+import test_package.b.functype_test_lib:*
+
+pfunc(3,4)
+
+dim a as tyfunc=function (a as int, b as int) as int => a-b
+
+a(4,5)
+
+dim b as test_package.b.functype_test_lib.tyfunc=a
+
+b(3,2)
+
+function caller(fun as tyfunc, a as int)
+	fun(a,3)
+end
+
+caller(function (a as int, b as int) as int => a*b ,  23)

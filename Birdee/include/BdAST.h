@@ -50,6 +50,7 @@ namespace std
 			return has((int)t);
 		}
 	};
+
 }
 namespace llvm
 {
@@ -79,6 +80,7 @@ namespace Birdee {
 	class ClassAST;
 	class FunctionAST;
 	class VariableSingleDefAST;
+	class PrototypeAST;
 
 	inline void formatprint(int level) {
 		for (int i = 0; i < level; i++)
@@ -93,10 +95,12 @@ namespace Birdee {
 		unordered_map<string, unique_ptr<ClassAST>> classmap;
 		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
 		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
+		unordered_map<string, unique_ptr<PrototypeAST>> functypemap;
 
 		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
 		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
 
 		vector<vector<string>> user_imports;
 		BD_CORE_API void HandleImport();
@@ -210,6 +214,8 @@ namespace Birdee {
 			return 	index_level >0 || type == tok_class || type==tok_null;
 		}
 
+		std::size_t rawhash() const;
+
 		bool isNull()
 		{
 			return 	index_level == 0 && type == tok_null;
@@ -292,6 +298,8 @@ namespace Birdee {
 		unique_ptr<StatementAST> Copy();
 	};
 
+	class PrototypeAST;
+
 	class BD_CORE_API CompileUnit
 	{
 	public:
@@ -312,11 +320,13 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
+		unordered_map<std::reference_wrapper<const string>, unique_ptr<PrototypeAST>> functypemap;
 
 		//maps from short names ("import a.b:c" => "c") to the imported AST
 		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
 		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
 
 		vector<ClassAST*> imported_class_templates;
 		vector<FunctionAST*> imported_func_templates;
@@ -741,6 +751,7 @@ namespace Birdee {
 		void PreGenerateForArgument(llvm::Value* init,int argno);
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
+		void Phase1InFunctionType(bool register_in_basic_block);
 		//parse the varible as a member of a class, will not add to the basic block environment
 		void Phase1InClass();
 		void move(unique_ptr<VariableDefAST>&& current,
@@ -822,9 +833,8 @@ namespace Birdee {
 		
 		std::unique_ptr<VariableDefAST> Args;
 		std::unique_ptr<Type> RetType;
-		SourcePos pos;
-		
 	public:
+		SourcePos pos;
 		std::string Name;
 		std::unique_ptr<PrototypeAST> Copy();
 		ClassAST * cls;
@@ -838,29 +848,9 @@ namespace Birdee {
 		llvm::DIType* GenerateDebugType();
 		//Put the definitions of arguments into a vector
 		//resolve the types in the arguments and the returned value 
-		void Phase0()
-		{
-			if (resolved_type.isResolved()) //if we have already resolved the type
-				return;
-			auto args = Args.get();
-			if (args)
-			{
-				vector<unique_ptr<VariableSingleDefAST>>& resolved_args = this->resolved_args;
-				args->move(std::move(Args), [&resolved_args](unique_ptr<VariableSingleDefAST>&& arg) {
-					arg->Phase0();
-					resolved_args.push_back(std::move(arg));
-				});
-			}
-			resolved_type = ResolvedType(*RetType,pos);
-		}
-		void Phase1()
-		{
-			Phase0();
-			for (auto&& dim : resolved_args)
-			{
-				dim->Phase1();
-			}
-		}
+		void Phase0();
+
+		void Phase1(bool register_in_basic_block);
 		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx)
 			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx){}
 		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos)
@@ -1240,3 +1230,14 @@ namespace Birdee {
 
 }
 
+namespace std
+{
+	template <>
+	struct hash<Birdee::ResolvedType>
+	{
+		std::size_t operator()(const Birdee::ResolvedType& a) const
+		{
+			return hash<uintptr_t>()(a.rawhash());
+		}
+	};
+}

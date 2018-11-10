@@ -13,6 +13,7 @@ namespace Birdee
 		tok_declare,
 		tok_import,
 		tok_package,
+		tok_functype,
 
 		// primary
 		tok_identifier,
