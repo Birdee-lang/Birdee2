@@ -609,7 +609,9 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	if (target.type == tok_func && val->resolved_type.type == tok_func)
 	{
 		if (target.proto_ast->IsSamePrototype(*val->resolved_type.proto_ast))
+		{
 			return make_unique<FunctionToClosureAST>(std::move(val));
+		}
 	}
 	if ( target.isReference() && val->resolved_type.isNull())
 	{
@@ -976,6 +978,8 @@ namespace Birdee
 	bool operator==(const PrototypeAST& ths, const PrototypeAST& other)
 	{
 		if (ths.is_closure != other.is_closure) //if is_closure field is not the same
+			return false;
+		if (ths.cls != other.cls)
 			return false;
 		return ths.IsSamePrototype(other);
 	}

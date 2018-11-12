@@ -1245,6 +1245,7 @@ namespace Birdee {
 			resolved_type.type = tok_func;
 			proto = this->func->resolved_type.proto_ast->Copy();
 			proto->is_closure = true;
+			proto->cls = nullptr;
 			resolved_type.proto_ast = proto.get();
 		}
 		virtual llvm::Value* GetLValue(bool checkHas)

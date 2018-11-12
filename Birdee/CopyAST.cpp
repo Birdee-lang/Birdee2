@@ -170,7 +170,10 @@ namespace Birdee
 
 	std::unique_ptr<StatementAST> Birdee::VariableSingleDefAST::Copy()
 	{
-		return make_unique<VariableSingleDefAST>(name, type->Copy(), val == nullptr? nullptr:ToExpr(val->Copy()), Pos);
+		auto ret = make_unique<VariableSingleDefAST>(name, type == nullptr ? nullptr : type->Copy(),
+			val == nullptr? nullptr:ToExpr(val->Copy()), Pos);
+		ret->resolved_type = resolved_type;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::VariableMultiDefAST::Copy()
@@ -199,7 +202,7 @@ namespace Birdee
 			for (auto& arg : resolved_args)
 			{
 				auto value = unique_ptr_cast<VariableSingleDefAST>(arg->Copy());
-				value->Phase1();
+				value->Phase1InFunctionType(false);
 				args.emplace_back(std::move(value));
 			}
 			ret= make_unique<PrototypeAST>(Name, std::move(args),
