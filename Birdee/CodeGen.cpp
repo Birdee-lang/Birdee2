@@ -42,21 +42,26 @@ bool strHasEnding(std::string const &fullString, std::string const &ending) {
 	}
 }
 
-namespace std
+
+std::size_t Birdee::ResolvedType::rawhash() const
 {
-
-	template <>
-	struct hash<Birdee::ResolvedType>
+	uintptr_t v = (((int)type) << 5) + index_level;
+	if (type != tok_func)
+		v += (uintptr_t)class_ast;
+	else
 	{
-		std::size_t operator()(const Birdee::ResolvedType& a) const
+		PrototypeAST* proto = proto_ast;
+		v ^= proto->resolved_type.rawhash() << 3; //return type
+		v ^= (uintptr_t)proto->cls; //belonging class
+		int offset = 6;
+		for (auto& arg : proto->resolved_args) //argument types
 		{
-			uintptr_t v = (((int)a.type) << 5) + a.index_level + (uintptr_t)a.proto_ast;
-			hash<uintptr_t> has;
-			return has(v);
+			v ^= arg->resolved_type.rawhash() << offset;
+			offset = (offset + 3) % 32;
 		}
-	};
+	}
+	return v;
 }
-
 
 namespace Birdee
 {
@@ -264,7 +269,7 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		dtype = DBuilder->createBasicType("pointer", 64, dwarf::DW_ATE_address);
 		break;
 	case tok_func:
-		base = type.proto_ast->GenerateFunctionType();
+		base = type.proto_ast->GenerateFunctionType()->getPointerTo();
 		dtype = type.proto_ast->GenerateDebugType();
 		break;
 	case tok_void:
@@ -367,6 +372,7 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	if (val)
 	{
 		auto v = val->Generate();
+		dinfo.emitLocation(this);
 		return builder.CreateStore(v, llvm_value);
 	}
 	else
@@ -1459,6 +1465,7 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		Value* lv = LHS->GetLValue(false);
 		assert(lv);
 		auto rv = RHS->Generate();
+		dinfo.emitLocation(this);
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}

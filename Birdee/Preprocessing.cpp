@@ -513,6 +513,15 @@ const T& GetItemByName(const unordered_map<T2, T>& M,
 	return itr->second;
 }
 
+template <typename T, typename T2>
+const T& GetItemByName(const unordered_map<T2, T>& M,
+	const string& name)
+{
+	auto itr = M.find(name);
+	if (itr == M.end())
+		return nullptr;
+	return itr->second;
+}
 
 #define CompileAssert(a, p ,msg)\
 do\
@@ -755,7 +764,6 @@ namespace Birdee
 		{
 			IdentifierType* ty = dynamic_cast<IdentifierType*>(&type);
 			assert(ty && "Type should be a IdentifierType");
-			this->type = tok_class;
 			auto rtype=scope_mgr.FindTemplateType(ty->name);
 			if (rtype.type != tok_error)
 			{
@@ -764,31 +772,73 @@ namespace Birdee
 			}
 			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
 			//if we are in a template and it is imported from another modules
-			auto find_in_template_env = [&pos](const ScopeManager::TemplateEnv& env, const string& str)
+			auto find_in_template_env = [&pos](ResolvedType& ths, const ScopeManager::TemplateEnv& env, const string& str)
 			{
+				//we are now acting as if we are compiling another module
+				auto& functypemap = env.imported_mod->functypemap;
+				auto fitr = functypemap.find(str);
+				if (fitr != functypemap.end())
+				{
+					ths.type = tok_func;
+					ths.proto_ast = fitr->second.get();
+				}
+				
+				auto& functypemap2 = env.imported_mod->imported_functypemap;
+				auto fitr2 = functypemap2.find(str);
+				if (fitr2 != functypemap2.end())
+				{
+					ths.type = tok_func;
+					ths.proto_ast = fitr2->second;
+				}
+
 				auto& classmap = env.imported_mod->classmap;
 				auto itr = classmap.find(str);
 				if (itr != classmap.end())
-					return itr->second.get();
-				ClassAST* ret= GetItemByName(env.imported_mod->imported_classmap, str, pos);
-				return ret;
+				{
+					ths.type = tok_class;
+					ths.class_ast = itr->second.get();
+					return;
+				}
+				ths.type = tok_class;
+				ths.class_ast = GetItemByName(env.imported_mod->imported_classmap, str, pos);
 			};
 			if (!scope_mgr.template_stack.empty() && scope_mgr.template_stack.back().imported_mod)
 			{
-				this->class_ast = find_in_template_env(scope_mgr.template_stack.back(),ty->name);
+				find_in_template_env(*this, scope_mgr.template_stack.back(),ty->name);
 			}
 			else if (!scope_mgr.template_class_stack.empty() && scope_mgr.template_class_stack.back().imported_mod)
 			{
-				this->class_ast = find_in_template_env(scope_mgr.template_class_stack.back(), ty->name);
+				find_in_template_env(*this, scope_mgr.template_class_stack.back(), ty->name);
 			}
 			else
 			{
-				auto itr = cu.classmap.find(ty->name);
-				if (itr == cu.classmap.end())
-					this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
+
+				auto& functypemap = cu.functypemap;
+				auto fitr = functypemap.find(ty->name);
+				if (fitr != functypemap.end())
+				{
+					this->type = tok_func;
+					this->proto_ast = fitr->second.get();
+				}
 				else
-					this->class_ast = &(itr->second.get());
-				//fix-me: should find function proto
+				{
+					auto& functypemap2 = cu.imported_functypemap;
+					auto fitr2 = functypemap2.find(ty->name);
+					if (fitr2 != functypemap2.end())
+					{
+						this->type = tok_func;
+						this->proto_ast = fitr2->second;
+					}
+					else
+					{
+						this->type = tok_class;
+						auto itr = cu.classmap.find(ty->name);
+						if (itr == cu.classmap.end())
+							this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
+						else
+							this->class_ast = &(itr->second.get());
+					}
+				}
 			}
 		}
 		else if (type.type == tok_package)
@@ -802,13 +852,23 @@ namespace Birdee
 			{
 				throw CompileError(pos.line,pos.pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
 			}
-			auto itr = node->mod->classmap.find(clsname);
-			if(itr== node->mod->classmap.end())
-				throw CompileError(pos.line, pos.pos, "Cannot find class " + clsname+" in module "+ GetModuleNameByArray(ty->name));
-			this->type = tok_class;
-			this->class_ast = itr->second.get();
+			auto& functypemap2 = node->mod->functypemap;
+			auto fitr2 = functypemap2.find(clsname);
+			if (fitr2 != functypemap2.end())
+			{
+				this->type = tok_func;
+				this->proto_ast = fitr2->second.get();
+			}
+			else
+			{
+				auto itr = node->mod->classmap.find(clsname);
+				if (itr == node->mod->classmap.end())
+					throw CompileError(pos.line, pos.pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
+				this->type = tok_class;
+				this->class_ast = itr->second.get();
+			}
 		}
-		if (type.type == tok_identifier || type.type == tok_package)
+		if (this->type==tok_class &&(type.type == tok_identifier || type.type == tok_package))
 		{
 			GeneralIdentifierType* ty = static_cast<GeneralIdentifierType*>(&type);
 			if (ty->template_args)
@@ -835,6 +895,10 @@ namespace Birdee
 		for (auto& node : classmap)
 		{
 			node.second.get().Phase0();
+		}
+		for (auto& node : functypemap)
+		{
+			node.second->Phase1(false);
 		}
 	}
 
@@ -1242,12 +1306,50 @@ namespace Birdee
 	void ASTBasicBlock::Phase1(PrototypeAST* proto)
 	{
 		scope_mgr.PushBasicBlock();
-		proto->Phase1();
+		proto->Phase1(true);
 		for (auto&& node : body)
 		{
 			node->Phase1();
 		}
 		scope_mgr.PopBasicBlock();
+	}
+
+	void PrototypeAST::Phase0()
+	{
+		if (resolved_type.isResolved()) //if we have already resolved the type
+			return;
+		auto args = Args.get();
+		if (args)
+		{
+			vector<unique_ptr<VariableSingleDefAST>>& resolved_args = this->resolved_args;
+			args->move(std::move(Args), [&resolved_args](unique_ptr<VariableSingleDefAST>&& arg) {
+				arg->Phase0();
+				resolved_args.push_back(std::move(arg));
+			});
+		}
+		resolved_type = ResolvedType(*RetType, pos);
+	}
+
+	void PrototypeAST::Phase1(bool register_in_basic_block)
+	{
+		Phase0();
+		for (auto&& dim : resolved_args)
+		{
+			dim->Phase1InFunctionType(register_in_basic_block);
+		}
+	}
+
+
+	void VariableSingleDefAST::Phase1InFunctionType(bool register_in_basic_block)
+	{
+		if (register_in_basic_block && !scope_mgr.basic_blocks.empty())
+			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
+				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
+		Phase0();
+		CompileAssert(resolved_type.type != tok_auto, Pos, "Must specify a type for the parameter");
+		CompileAssert(val.get()==nullptr, Pos, "Parameters cannot have initializers");
+		if(register_in_basic_block)
+			scope_mgr.GetCurrentBasicBlock()[name] = this;
 	}
 
 	void VariableSingleDefAST::Phase1()

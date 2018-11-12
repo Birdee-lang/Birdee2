@@ -300,6 +300,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("clear_compile_unit", []() {cu.Clear(); });
 		m.def("top_level", CompileTopLevel);
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
+		m.def("generate", []() {cu.Generate(); });
 		cu.InitForGenerate();
 	}
 	m.def("class_body", CompileClassBody);

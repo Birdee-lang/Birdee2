@@ -74,7 +74,7 @@ namespace Birdee
 		}
 	};
 
-	class Tokenizer
+	class BD_CORE_API Tokenizer
 	{
 
 		std::unique_ptr<Stream> f;
@@ -87,112 +87,16 @@ namespace Birdee
 		int source_idx;
 		bool is_recording = false;
 	private:
-		int GetChar()
-		{
-			int c = f->Getc();
-			if (is_recording)
-				template_source += c;
-			if (c == '\n')
-			{
-				line++;
-				pos = 0;
-			}
-			pos++;
-			return c;
-		}
-
-
-		void ParseString()
-		{
-			IdentifierStr = "";
-			LastChar = GetChar();
-			while (true)
-			{
-				switch (LastChar)
-				{
-				case '\n':
-					throw TokenizerError(line, pos, "New line is not allowed in simple string literal");
-					break;
-				case  EOF:
-					throw TokenizerError(line, pos, "Unexpected end of file when parsing a string literal: expected \"");
-					break;
-				case '\"':
-					LastChar = GetChar();
-					return;
-					break;
-				case '\\':
-					LastChar = GetChar();
-					switch (LastChar)
-					{
-					case 'n':
-						IdentifierStr += '\n';
-						break;
-					case '\\':
-						IdentifierStr += '\\';
-						break;
-					case '\'':
-						IdentifierStr += '\'';
-						break;
-					case '\"':
-						IdentifierStr += '\"';
-						break;
-					case '?':
-						IdentifierStr += '\?';
-						break;
-					case 'a':
-						IdentifierStr += '\a';
-						break;
-					case 'b':
-						IdentifierStr += '\b';
-						break;
-					case 'f':
-						IdentifierStr += '\f';
-						break;
-					case 'r':
-						IdentifierStr += '\r';
-						break;
-					case 't':
-						IdentifierStr += '\t';
-						break;
-					case 'v':
-						IdentifierStr += '\v';
-						break;
-					case '0':
-						IdentifierStr += '\0';
-						break;
-					case EOF:
-						throw TokenizerError(line, pos, "Unexpected end of file");
-						break;
-					default:
-						throw TokenizerError(line, pos, "Unknown escape sequence \\"+(char)LastChar);
-					}
-					break;
-				default:
-					IdentifierStr += (char)LastChar;
-				}
-				LastChar = GetChar();
-			}
-		}
+		int GetChar();
+		void ParseString();
 	public:
-		void StartRecording(const std::string& s)
-		{
-			template_source = s;
-			template_source+=LastChar;
-			assert(is_recording == false);
-			is_recording = true;
-		}
+		void StartRecording(const std::string& s);
 		int GetTemplateSourcePosition()
 		{
 			return template_source.size();
 		}
 
-		std::string&& StopRecording()
-		{
-			assert(is_recording);
-			is_recording = false;
-			template_source.pop_back();
-			return std::move(template_source);
-		}
+		std::string&& StopRecording();
 
 		SourcePos GetSourcePos()
 		{
@@ -209,225 +113,20 @@ namespace Birdee
 			*this = std::move(old_t);
 		}
 
-		Tokenizer& operator =(Tokenizer&& old_t)
-		{
-			f = std::move(old_t.f);
-			source_idx = old_t.source_idx;
-			line = old_t.line;
-			pos = old_t.pos;
-			CurTok = old_t.CurTok;
-			LastChar = old_t.LastChar;
-			IdentifierStr = std::move(old_t.IdentifierStr);
-			is_recording = old_t.is_recording;
-			NumVal = old_t.NumVal;
-			template_source = std::move(old_t.template_source);
-			return *this;
-		}
+		Tokenizer& operator =(Tokenizer&& old_t);
 
 		Tokenizer(std::unique_ptr<Stream>&& f,int source_idx):f(std::move(f)),source_idx (source_idx){ line = 1; pos = 1;}
 		NumberLiteral NumVal;		// Filled in if tok_number
 
-		static BD_CORE_API std::map<int, Token> single_operator_map;
-		static BD_CORE_API std::map<int, Token> single_token_map;
-		static BD_CORE_API std::map < std::string, Token > token_map;
+		static  std::map<int, Token> single_operator_map;
+		static  std::map<int, Token> single_token_map;
+		static  std::map < std::string, Token > token_map;
 		std::string IdentifierStr; // Filled in if tok_identifier
 
 
 
 		/// gettok - Return the next token from standard input.
-		Token gettok() {
-			if (!f)
-				return tok_error;
-			// Skip any whitespace.
-			while (isspace(LastChar)&& LastChar!='\n')
-				LastChar = GetChar();
-			auto single_token = single_token_map.find(LastChar);
-			if (single_token != single_token_map.end())
-			{
-				LastChar = GetChar();
-				return single_token->second;
-			}
-			single_token = single_operator_map.find(LastChar);
-			if (single_token != single_operator_map.end())
-			{
-				IdentifierStr = LastChar;
-				while (single_operator_map.find(LastChar=GetChar())!= single_operator_map.end())
-					IdentifierStr += LastChar;
-				if (IdentifierStr.size() > 1)
-				{
-					auto moperator = token_map.find(IdentifierStr);
-					if (moperator != token_map.end())
-						return moperator->second;
-					else
-						throw TokenizerError(line, pos, "Bad token");
-				}
-				else
-				{
-					return single_token->second;
-				}
-			}
-			if (isalpha(LastChar)|| LastChar=='_') { // identifier: [a-zA-Z][a-zA-Z0-9]*
-				IdentifierStr = LastChar;
-				LastChar = GetChar();
-				while (isalnum(LastChar) || LastChar == '_')
-				{
-					IdentifierStr += LastChar;
-					LastChar = GetChar();
-				}
-
-				auto single_token = token_map.find(IdentifierStr);
-				if (single_token != token_map.end())
-				{
-					return single_token->second;
-				}
-				return tok_identifier;
-			}
-
-			if (isdigit(LastChar) || LastChar == '.') { // Number: [0-9.]+
-				std::string NumStr;
-				bool isfloat = (LastChar == '.');
-				for(;;)
-				{
-					NumStr += LastChar;
-					LastChar = GetChar();
-					if (!isdigit(LastChar))
-					{
-						if (LastChar == '.')
-						{
-							if (isfloat)
-								throw TokenizerError(line, pos, "Bad number literal");
-							isfloat = true; //we only allow one dot in number literal
-							continue;
-						}
-						break;
-					}
-				} 
-				switch (LastChar)
-				{
-				case 'L':
-					if(isfloat)
-						throw TokenizerError(line, pos, "Should not have \'L\' after a float literal");
-					NumVal.type = tok_long;
-					NumVal.v_long = std::stoll(NumStr);
-					LastChar = GetChar();
-					break;
-				case 'U':
-					if (isfloat)
-						throw TokenizerError(line, pos, "Should not have \'U\' after a float literal");
-					NumVal.type = tok_ulong;
-					NumVal.v_ulong = std::stoull(NumStr);
-					LastChar = GetChar();
-					break;
-				case 'u':
-					if (isfloat)
-						throw TokenizerError(line, pos, "Should not have \'u\' after a float literal");
-					NumVal.type = tok_uint;
-					NumVal.v_uint = std::stoul(NumStr);
-					LastChar = GetChar();
-					break;
-				case 'f':
-					NumVal.type = tok_float;
-					NumVal.v_double = std::stof(NumStr);
-					LastChar = GetChar();
-					break;
-				case 'd':
-					NumVal.type = tok_double;
-					NumVal.v_double = std::stod(NumStr);
-					LastChar = GetChar();
-					break;
-				default:
-					if (isfloat)
-					{
-						NumVal.type = tok_float;
-						NumVal.v_double = std::stod(NumStr);
-					}
-					else
-					{
-						NumVal.type = tok_int;
-						NumVal.v_int = std::stoi(NumStr);
-					}
-				}
-				return tok_number;
-			}
-
-			if (LastChar == '\"') {
-				ParseString();
-				return tok_string_literal;
-			}
-			if (LastChar == '{') {
-				IdentifierStr="";
-				LastChar = GetChar();
-				if(LastChar != '@')
-					throw TokenizerError(line,pos,"Expect \'@\' after \'{\'");
-				LastChar = GetChar();
-				for(;;)
-				{
-					if(LastChar==EOF)
-						throw TokenizerError(line, pos, "Unexpected end of file: expected @}");
-					else if(LastChar=='}' && IdentifierStr.back()=='@')
-					{
-						IdentifierStr.pop_back();
-						LastChar = GetChar();
-						break;
-					}
-					else
-					{
-						IdentifierStr+=(char)LastChar;
-						LastChar = GetChar();
-					}
-				}
-				return tok_script;
-			}
-
-			if (LastChar == '#') {
-				// Comment until end of line.
-				LastChar = GetChar();
-				if (LastChar == '#')
-				{
-					int cnt_sharp = 0;
-					while (LastChar != EOF)
-					{
-						LastChar = GetChar();
-						if (LastChar == '#')
-						{
-							cnt_sharp++;
-							if (cnt_sharp == 2)
-								break;
-						}
-						else
-							cnt_sharp = 0;
-					}
-					if (LastChar == EOF)
-						throw TokenizerError(line, pos, "Unexpected end of file: expected ##");
-				}
-				else
-				{
-					while (LastChar != EOF && LastChar != '\n' && LastChar != '\r')
-						LastChar = GetChar();
-				}
-
-				
-
-				if (LastChar != EOF)
-					return gettok();
-			}
-			if (LastChar == '@')
-			{
-				LastChar = GetChar();
-				Token ret = gettok();
-				if(ret!=tok_identifier)
-					throw TokenizerError(line, pos, "Expected an identifier after \'@\'");
-				return tok_annotation;
-			}
-			// Check for end of file.  Don't eat the EOF.
-			if (LastChar == EOF)
-				return tok_eof;
-
-			// Otherwise, just return the character as its ascii value.
-			int ThisChar = LastChar;
-			LastChar = GetChar();
-			return tok_error;
-		}
+		Token gettok();
 
 	};
 }

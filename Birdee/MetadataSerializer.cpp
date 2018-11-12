@@ -16,12 +16,30 @@ using json = nlohmann::basic_json<my_workaround_fifo_map>;
 using namespace Birdee;
 
 
+namespace std
+{
+	template <>
+	struct hash<Birdee::PrototypeAST*>
+	{
+		std::size_t operator()(Birdee::PrototypeAST* a) const
+		{
+			ResolvedType t;
+			t.type = tok_func;
+			t.proto_ast = a;
+			return hash<Birdee::ResolvedType>()(t);
+		}
+	};
+}
+
 //fix-me: export: remember to include imported classes that is referenced by exported var/class/func
 //fix-me: import: first check if the DEFINED class has already been imported in CompileModule::orphan_classes
 //fix-me: import: first check if the IMPORTED class has already been imported in imported_package.find(..).class[...], then no need to add to orphan
 //fix-me: import: deserialize into ImportedModule & CompileModule::orphan_classes
 //fix-me: generate: pre-generate extern for var/class/func
 
+static unordered_map<PrototypeAST*, int> functype_idx_map;
+static vector<json> exported_functype;
+static long NextFunctionTypeIndex = -MAX_BASIC_TYPE_COUNT;
 static unordered_map<ClassAST*, int> class_idx_map;
 static vector<json> imported_class;
 static long NextImportedIndex = MAX_CLASS_DEF_COUNT;
@@ -139,6 +157,46 @@ int ConvertClassToIndex(ClassAST* class_ast)
 		return current_idx;
 	}
 }
+
+json BuildVariableJson(VariableSingleDefAST* var);
+
+json BuildPrototypeJson(PrototypeAST* func)
+{
+	std::unique_ptr<VariableDefAST> Args;
+	json ret;
+	ret["name"] = func->GetName();
+	if (func->cls)
+		ret["class"] = ConvertClassToIndex(func->cls);
+	json args = json::array();
+	for (auto& arg : func->resolved_args)
+	{
+		args.push_back(BuildVariableJson(arg.get()));
+	}
+	ret["args"] = args;
+	ret["return"] = ConvertTypeToIndex(func->resolved_type);
+	return ret;
+}
+
+int ConvertPrototypeToIndex(PrototypeAST* proto)
+{
+	auto itr = functype_idx_map.find(proto);
+	if (itr != functype_idx_map.end())
+	{
+		return itr->second;
+	}
+	int current_idx = NextFunctionTypeIndex;
+	if (NextFunctionTypeIndex <= -MAX_CLASS_COUNT)
+	{
+		std::cerr << "Too many prototypes\n";
+		abort();
+	}
+	NextFunctionTypeIndex--;
+	functype_idx_map.insert(std::make_pair(proto, current_idx));
+	int out_idx = exported_functype.size();
+	exported_functype.push_back(json());
+	exported_functype[out_idx] = BuildPrototypeJson(proto);
+	return current_idx;
+}
 json ConvertTypeToIndex(ResolvedType& type)
 {
 	json ret;
@@ -170,7 +228,7 @@ json ConvertTypeToIndex(ResolvedType& type)
 		ret["base"] = -8;
 		break;
 	case tok_func:
-		BirdeeAssert(0 , "Error type");
+		ret["base"] = ConvertPrototypeToIndex(type.proto_ast);
 		break;
 	case tok_void:
 		ret["base"] = -9;
@@ -341,25 +399,58 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	return json_cls;
 }
 
+//build placeholders for function types. We do not build functypes here, because
+//classes are not resolved yet
+void BuildExportedPrototypePlaceholders()
+{
+	for (auto& node : cu.functypemap)
+	{
+		functype_idx_map[node.second.get()] = NextFunctionTypeIndex--;
+		exported_functype.push_back(json());
+	}
+	if (functype_idx_map.size() >= MAX_CLASS_DEF_COUNT)
+	{
+		std::cerr << "Defined too many prototypes\n";
+		abort();
+	}
+}
+
+//ready to build functypes after classes are built
+void BuildExportedPrototypes()
+{
+	int idx = 0;
+	for (auto& itr : cu.functypemap)
+	{
+		exported_functype[idx]=BuildPrototypeJson(itr.second.get());
+		idx++;
+	}
+}
 
 BD_CORE_API void SeralizeMetadata(std::ostream& out)
 {
 	json outjson;
 	imported_class.clear();
+	exported_functype.clear();
 	class_idx_map.clear();
-	imported_class.clear();
+	functype_idx_map.clear();
 	NextImportedIndex = MAX_CLASS_DEF_COUNT;
+	NextFunctionTypeIndex = -MAX_BASIC_TYPE_COUNT;
 	outjson["Type"] = "Birdee Module Metadata";
 	outjson["Version"] = META_DATA_VERSION;
 	outjson["Package"] = cu.symbol_prefix.substr(0, cu.symbol_prefix.size() - 1);
 	outjson["Classes"] = json::array();
 	defined_classes = &outjson["Classes"];
+
+	BuildExportedPrototypePlaceholders();
 	BuildClassJson(outjson["Classes"]);
+	BuildExportedPrototypes();
+
 	outjson["Variables"] = BuildGlobalVaribleJson();
 	json func_template;
 	outjson["Functions"] = BuildGlobalFuncJson(func_template);
 	outjson["FunctionTemplates"] = func_template;
 	outjson["Imports"] = cu.imports;
 	outjson["ImportedClasses"] = imported_class;
+	outjson["FunctionTypes"] = exported_functype;
 	out << std::setw(4)<< outjson;
 }

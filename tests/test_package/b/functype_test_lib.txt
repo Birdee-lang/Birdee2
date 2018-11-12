@@ -1,0 +1,12 @@
+package test_package.b
+
+functype tyfunc(a as int, b as int) as int
+functype tyfunc2(a as int, b as float) as string
+
+
+function add (a as int, b as int) as int
+	return a+b
+end
+
+dim pfunc as tyfunc = add
+pfunc(1,2)

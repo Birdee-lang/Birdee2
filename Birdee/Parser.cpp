@@ -136,6 +136,13 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
 PrototypeAST *current_func_proto = nullptr;
+int unnamed_func_cnt = 0;
+
+void ClearParserState()
+{
+	current_func_proto = nullptr;
+	unnamed_func_cnt = 0;
+}
 
 void ParsePackageName(vector<string>& ret);
 
@@ -474,7 +481,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	case tok_func:
 		tokenizer.GetNextToken(); //eat function
 		firstexpr = ParseFunction(nullptr);
-		CompileAssert(tok_newline == tokenizer.CurTok, "Expected newline after function definition");
+		//CompileAssert(tok_newline == tokenizer.CurTok, "Expected newline after function definition");
 		return firstexpr; //don't eat the newline token!
 		break;
 	case tok_eof:
@@ -848,6 +855,14 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		name = tokenizer.IdentifierStr;
 		tokenizer.GetNextToken();
 	}
+	else
+	{
+		//if it is an unnamed function
+		std::stringstream buf;
+		buf << "!unnamed_function" << unnamed_func_cnt;
+		unnamed_func_cnt++;
+		name = buf.str();
+	}
 	if (tokenizer.CurTok == tok_left_index)
 	{
 		is_template = true;
@@ -869,15 +884,35 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		args = ParseDim();
 	CompileExpect(tok_right_bracket, "Expected \')\'");
 	auto rettype = ParseType();
+	bool is_return_void = false;
 	if (rettype->type == tok_auto)
+	{
+		is_return_void = true;
 		rettype->type = tok_void;
+	}
 	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos());
 	current_func_proto = funcproto.get();
 
 	ASTBasicBlock body;
 
-	//parse function body
-	ParseBasicBlock(body, tok_func);
+	if (tokenizer.CurTok == tok_into)
+	{
+		//one-line function
+		tokenizer.GetNextToken();
+		unique_ptr<ExprAST> expr = ParseExpressionUnknown();
+		auto pos = expr->Pos;
+		unique_ptr<StatementAST> stmt;
+		if (!is_return_void)
+			stmt = make_unique<ReturnAST>(std::move(expr), pos);
+		else
+			stmt = std::move(expr);
+		body.body.emplace_back(std::move(stmt));
+	}
+	else
+	{
+		//parse function body
+		ParseBasicBlock(body, tok_func);
+	}
 	current_func_proto = nullptr;
 	if (is_template)
 	{
@@ -892,14 +927,16 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	}
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
-std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
+
+std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
 	CompileExpect(tok_identifier, "Expected an identifier");
-	string link_name;
+	string& link_name=*out_link_name;
 	if (tokenizer.CurTok == tok_alias)
 	{
+		CompileAssert(allow_alias, "Alias is not allowed here, in function types");
 		if (tokenizer.GetNextToken() != tok_string_literal)
 		{
 			throw CompileError("Expected a string literal after alias");
@@ -916,8 +953,14 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 	CompileExpect({ tok_newline, tok_eof }, "Expected a new line after function declaration");
 	if (rettype->type == tok_auto)
 		rettype->type = tok_void;
-	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos());
-	return make_unique<FunctionAST>(std::move(funcproto), link_name, pos);
+	return make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, pos);
+}
+
+std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
+{
+	string link_name;
+	auto funcproto = ParseFunctionPrototype(cls, true, &link_name);
+	return make_unique<FunctionAST>(std::move(funcproto), link_name, funcproto->pos);
 }
 
 BD_CORE_API bool ParseClassBody(ClassAST* ret)
@@ -1226,6 +1269,16 @@ void InsertName(unordered_map<strref, FunctionAST*>& imported_funcmap, const str
 	if (itr2 != imported_funcmap.end()) imported_funcmap.erase(itr2);
 	imported_funcmap.insert(std::make_pair(strref(name), ptr));
 }
+
+void InsertName(unordered_map<strref, PrototypeAST*>& imported_funcmap, const string& name, PrototypeAST* ptr)
+{
+	auto itr2 = imported_funcmap.find(name);
+	WarnAssert(itr2 == imported_funcmap.end(),
+		string("The imported function type ") + ptr->GetName()
+		+ " has overwritten the previously imported function type.");
+	if (itr2 != imported_funcmap.end()) imported_funcmap.erase(itr2);
+	imported_funcmap.insert(std::make_pair(strref(name), ptr));
+}
 void DoImportPackageAll(const vector<string>& package)
 {
 	auto mod = DoImportPackage(package);
@@ -1240,6 +1293,10 @@ void DoImportPackageAll(const vector<string>& package)
 	for (auto& itr : mod->funcmap)
 	{
 		InsertName(cu.imported_funcmap, itr.first, itr.second.get());
+	}
+	for (auto& itr : mod->functypemap)
+	{
+		InsertName(cu.imported_functypemap, itr.first, itr.second.get());
 	}
 }
 
@@ -1261,6 +1318,7 @@ void DoImportName(const vector<string>& package, const string& name)
 	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
 	if (FindAndInsertName(cu.imported_funcmap, mod->funcmap, name)) return;
 	if (FindAndInsertName(cu.imported_classmap, mod->classmap, name)) return;
+	if (FindAndInsertName(cu.imported_functypemap, mod->functypemap, name)) return;
 	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
 }
 
@@ -1280,6 +1338,7 @@ void DoImportNameInImportedModule(ImportedModule* to_mod,const vector<string>& p
 	if (FindAndInsertName(to_mod->imported_dimmap, mod->dimmap, name)) return;
 	if (FindAndInsertName(to_mod->imported_funcmap, mod->funcmap, name)) return;
 	if (FindAndInsertName(to_mod->imported_classmap, mod->classmap, name)) return;
+	if (FindAndInsertName(to_mod->imported_functypemap, mod->functypemap, name)) return;
 	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
 }
 
@@ -1297,6 +1356,10 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 	for (auto& itr : mod->funcmap)
 	{
 		InsertName(to_mod->imported_funcmap, itr.first, itr.second.get());
+	}
+	for (auto& itr : mod->functypemap)
+	{
+		InsertName(to_mod->imported_functypemap, itr.first, itr.second.get());
 	}
 }
 
@@ -1437,6 +1500,7 @@ BD_CORE_API int ParseTopLevel()
 		switch (tokenizer.CurTok)
 		{
 		case tok_newline:
+			CompileAssert(anno.size() == 0, "No empty line allowed after annotations");
 			tokenizer.GetNextToken(); //eat newline
 			continue;
 			break;
@@ -1446,6 +1510,7 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after variable definition");
 			break;
 		case tok_eof:
+			CompileAssert(anno.size() == 0, "Annotations cannot be put on the end of the file");
 			return 0;
 			break;
 		case tok_for:
@@ -1468,6 +1533,16 @@ BD_CORE_API int ParseTopLevel()
 			cu.funcmap.insert(std::make_pair(funcname, funcref));
 			push_expr(std::move(funcast));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after function definition");
+			break;
+		}
+		case tok_functype:
+		{
+			CompileAssert(anno.size() == 0, "No function type allowed after annotations");
+			tokenizer.GetNextToken(); //eat function
+			auto funcast = ParseFunctionPrototype(nullptr, false, nullptr);
+			std::reference_wrapper<const string> funcname = funcast->GetName();
+			CompileCheckGlobalConflict(funcast->pos, funcname);
+			cu.functypemap.insert(std::make_pair(funcname, std::move(funcast)));
 			break;
 		}
 		case tok_declare:
