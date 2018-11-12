@@ -192,9 +192,25 @@ namespace Birdee
 
 	std::unique_ptr<PrototypeAST> Birdee::PrototypeAST::Copy()
 	{
-		auto ret = make_unique<PrototypeAST>(Name, Args==nullptr ? nullptr: unique_ptr_cast<VariableDefAST>(Args->Copy()),
-			RetType->Copy(), cur_cls ? cur_cls : cls, pos);
-		ret->prefix_idx = prefix_idx;
+		std::unique_ptr<PrototypeAST> ret;
+		if (resolved_type.isResolved())
+		{
+			vector<unique_ptr<VariableSingleDefAST>> args;
+			for (auto& arg : resolved_args)
+			{
+				auto value = unique_ptr_cast<VariableSingleDefAST>(arg->Copy());
+				value->Phase1();
+				args.emplace_back(std::move(value));
+			}
+			ret= make_unique<PrototypeAST>(Name, std::move(args),
+				resolved_type, cur_cls ? cur_cls : cls,  prefix_idx, is_closure);
+		}
+		else
+		{
+			ret = make_unique<PrototypeAST>(Name, Args == nullptr ? nullptr : unique_ptr_cast<VariableDefAST>(Args->Copy()),
+				RetType->Copy(), cur_cls ? cur_cls : cls, pos, is_closure);
+			ret->prefix_idx = prefix_idx;
+		}
 		return std::move(ret);
 	}
 
@@ -322,5 +338,11 @@ namespace Birdee
 	std::unique_ptr<StatementAST> Birdee::WhileBlockAST::Copy()
 	{
 		return std::make_unique<WhileBlockAST>(ToExpr(cond->Copy()),block.Copy(),Pos);
+	}
+
+
+	unique_ptr<StatementAST> Birdee::FunctionToClosureAST::Copy()
+	{
+		return make_unique<FunctionToClosureAST>(ToExpr(func->Copy()));
 	}
 }

@@ -606,6 +606,11 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	{
 		return std::move(val);
 	}
+	if (target.type == tok_func && val->resolved_type.type == tok_func)
+	{
+		if (target.proto_ast->IsSamePrototype(*val->resolved_type.proto_ast))
+			return make_unique<FunctionToClosureAST>(std::move(val));
+	}
 	if ( target.isReference() && val->resolved_type.isNull())
 	{
 		FixNull(val.get(), target);
@@ -932,8 +937,9 @@ namespace Birdee
 		return buf.str();
 	}
 
-	BD_CORE_API bool operator==(const PrototypeAST& ths, const PrototypeAST& other)
+	bool PrototypeAST::IsSamePrototype(const PrototypeAST& other) const
 	{
+		auto& ths = *this;
 		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
 		if (!(ths.resolved_type == other.resolved_type))
 			return false;
@@ -950,7 +956,28 @@ namespace Birdee
 				return false;
 		}
 		return true;
+	}
 
+	std::size_t PrototypeAST::rawhash() const
+	{
+		const PrototypeAST* proto = this;
+		size_t v = proto->resolved_type.rawhash() << 3; //return type
+		v ^= (uintptr_t)proto->cls; //belonging class
+		v ^= proto->is_closure;
+		int offset = 6;
+		for (auto& arg : proto->resolved_args) //argument types
+		{
+			v ^= arg->resolved_type.rawhash() << offset;
+			offset = (offset + 3) % 32;
+		}
+		return v;
+	}
+
+	bool operator==(const PrototypeAST& ths, const PrototypeAST& other)
+	{
+		if (ths.is_closure != other.is_closure) //if is_closure field is not the same
+			return false;
+		return ths.IsSamePrototype(other);
 	}
 	bool ResolvedType::operator<(const ResolvedType & that) const
 	{

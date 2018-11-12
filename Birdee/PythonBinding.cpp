@@ -96,6 +96,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("name", &PrototypeAST::Name)
 		.def_readwrite("return_type", &PrototypeAST::resolved_type)
 		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); })
+		.def_readwrite("is_closure", &PrototypeAST::is_closure)
 		.def_readwrite("cls", &PrototypeAST::cls);
 
 	py::class_ < TemplateParameter>(m, "TemplateParameter")
@@ -309,6 +310,9 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("vardef", &LocalVarExprAST::def)
 		.def("run", [](LocalVarExprAST& ths, py::object& func) { });
 
-
+	py::class_< FunctionToClosureAST, ExprAST>(m, "FunctionToClosureAST")
+		.def_property("func", [](FunctionToClosureAST& ths) {return GetRef(ths.func); },
+			[](FunctionToClosureAST& ths, UniquePtrStatementAST& v) {ths.func = v.move_expr(); })
+		.def("run", [](FunctionToClosureAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.func)); });
 
 }

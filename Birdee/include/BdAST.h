@@ -725,12 +725,6 @@ namespace Birdee {
 			: Callee(std::move(Callee)), Args(std::move(Args)) {}
 	};
 
-
-
-
-
-	class VariableSingleDefAST;
-
 	class BD_CORE_API VariableDefAST : public StatementAST {
 	public:
 		virtual void move(unique_ptr<VariableDefAST>&& current,
@@ -841,7 +835,12 @@ namespace Birdee {
 		//the index in CompileUnit.imported_module_names
 		//if -1, means it is not imported from other modules
 		int prefix_idx=-1;
+		bool is_closure;
 		friend BD_CORE_API bool operator == (const PrototypeAST&, const PrototypeAST&);
+		
+		std::size_t rawhash() const; 
+		//compare the arguments, return type and the belonging class, without comparing is_closure field
+		bool IsSamePrototype(const PrototypeAST&) const;
 		ResolvedType resolved_type;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 		llvm::FunctionType* GenerateFunctionType();
@@ -851,10 +850,10 @@ namespace Birdee {
 		void Phase0();
 
 		void Phase1(bool register_in_basic_block);
-		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx)
-			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx){}
-		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos)
-			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls) {}
+		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx, bool is_closure)
+			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx), is_closure(is_closure){}
+		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos, bool is_closure)
+			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls), is_closure(is_closure){}
 
 		const std::string &GetName() const { return Name; }
 		void print(int level)
@@ -1228,7 +1227,35 @@ namespace Birdee {
 		virtual llvm::Value* GetLValue(bool checkHas);
 	};
 
+	class BD_CORE_API FunctionToClosureAST : public ExprAST
+	{
+	public:
+		unique_ptr<ExprAST> func;
+		unique_ptr<PrototypeAST> proto;
+		virtual Value* Generate();
+		virtual void Phase1() {};
+		virtual unique_ptr<StatementAST> Copy();
+		virtual void print(int level) {
+			ExprAST::print(level);
+			std::cout << "FunctionToClosureAST \n";
+			func->print(level + 1);
+		}
+		FunctionToClosureAST(unique_ptr<ExprAST>&& func) :func(std::move(func))
+		{
+			resolved_type.type = tok_func;
+			proto = this->func->resolved_type.proto_ast->Copy();
+			proto->is_closure = true;
+			resolved_type.proto_ast = proto.get();
+		}
+		virtual llvm::Value* GetLValue(bool checkHas)
+		{
+			return nullptr;
+		};
+	};
+
 }
+
+
 
 namespace std
 {
@@ -1238,6 +1265,14 @@ namespace std
 		std::size_t operator()(const Birdee::ResolvedType& a) const
 		{
 			return hash<uintptr_t>()(a.rawhash());
+		}
+	};
+	template <>
+	struct hash<reference_wrapper<Birdee::PrototypeAST>>
+	{
+		std::size_t operator()(const reference_wrapper<Birdee::PrototypeAST> a) const
+		{
+			return a.get().rawhash();
 		}
 	};
 }

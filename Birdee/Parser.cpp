@@ -890,7 +890,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		is_return_void = true;
 		rettype->type = tok_void;
 	}
-	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos());
+	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos(),/*is_closure*/false);
 	current_func_proto = funcproto.get();
 
 	ASTBasicBlock body;
@@ -928,7 +928,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 
-std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name)
+std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name , bool is_closure = false)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
@@ -953,7 +953,7 @@ std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_a
 	CompileExpect({ tok_newline, tok_eof }, "Expected a new line after function declaration");
 	if (rettype->type == tok_auto)
 		rettype->type = tok_void;
-	return make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, pos);
+	return make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, pos,is_closure);
 }
 
 std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
@@ -1536,10 +1536,12 @@ BD_CORE_API int ParseTopLevel()
 			break;
 		}
 		case tok_functype:
+		case tok_closure:
 		{
 			CompileAssert(anno.size() == 0, "No function type allowed after annotations");
+			bool is_closure = tokenizer.CurTok == tok_closure;
 			tokenizer.GetNextToken(); //eat function
-			auto funcast = ParseFunctionPrototype(nullptr, false, nullptr);
+			auto funcast = ParseFunctionPrototype(nullptr, false, nullptr, is_closure);
 			std::reference_wrapper<const string> funcname = funcast->GetName();
 			CompileCheckGlobalConflict(funcast->pos, funcname);
 			cu.functypemap.insert(std::make_pair(funcname, std::move(funcast)));
