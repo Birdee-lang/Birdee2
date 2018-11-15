@@ -788,6 +788,7 @@ namespace Birdee
 				{
 					ths.type = tok_func;
 					ths.proto_ast = fitr->second.get();
+					return;
 				}
 				
 				auto& functypemap2 = env.imported_mod->imported_functypemap;
@@ -796,6 +797,7 @@ namespace Birdee
 				{
 					ths.type = tok_func;
 					ths.proto_ast = fitr2->second;
+					return;
 				}
 
 				auto& classmap = env.imported_mod->classmap;
