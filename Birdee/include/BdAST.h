@@ -739,6 +739,16 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> val;
 		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
+
+		//the capture index in the "context" object
+		int capture_idx = 0;
+		enum CaptureType
+		{
+			CAPTURE_NONE, //do not capture. allocate on stack
+			CAPTURE_VAL,  //the variable itself is in "context" object
+			CAPTURE_REF,  //the variable is in "context" object of another function, this variable is a reference to it
+		}capture_type= CAPTURE_NONE;
+
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
 		void PreGenerateExternForGlobal(const string& package_name);
@@ -974,6 +984,18 @@ namespace Birdee {
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
 		llvm::Function* llvm_func=nullptr;
+		vector<VariableSingleDefAST*> captured_var;
+		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
+
+		//capture the variable (defined in this function)
+		//in "context" object instead of on stack.
+		//the variable must be defined in this function.
+		//Returns the index of the variable in "context"
+		size_t CaptureVariable(VariableSingleDefAST* var);
+
+		//get the VariableSingleDefAST of imported captured var
+		VariableSingleDefAST* GetImportedCapturedVariable(const string& name);
+
 		llvm::DIType* PreGenerate();
 		llvm::Value* Generate();
 		std::unique_ptr<StatementAST> Copy();

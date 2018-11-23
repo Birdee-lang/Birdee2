@@ -123,7 +123,15 @@ public:
 	typedef unordered_map<reference_wrapper<const string>, VariableSingleDefAST*> BasicBlock;
 	vector<ClassAST*> class_stack;
 	BasicBlock top_level_bb;
-	vector <BasicBlock> basic_blocks;
+	//the scopes for nested functions
+	//function_scopes.back() is the lowest level of nested function
+	struct FunctionScope
+	{
+		vector<BasicBlock> scope;
+		FunctionAST* func;
+		FunctionScope(FunctionAST* f) :func(f) {}
+	};
+	vector<FunctionScope> function_scopes;
 	struct TemplateEnv
 	{
 		unordered_map<string, ResolvedType> typemap;
@@ -225,7 +233,7 @@ public:
 		return nullptr;
 	}
 
-	VariableSingleDefAST* FindLocalVar(const string& name)
+	VariableSingleDefAST* FindLocalVar(const string& name,const vector<BasicBlock>& basic_blocks)
 	{
 		if (basic_blocks.size() > 0)
 		{
@@ -286,11 +294,11 @@ public:
 
 	void PushBasicBlock()
 	{
-		basic_blocks.push_back(BasicBlock());
+		function_scopes.back().scope.push_back(BasicBlock());
 	}
 	void PopBasicBlock()
 	{
-		basic_blocks.pop_back();
+		function_scopes.back().scope.pop_back();
 	}
 	void PushClass(ClassAST* cls)
 	{
@@ -341,10 +349,44 @@ public:
 		return check_template_module(template_class_stack); //will return null if not in template
 	}
 
+	unique_ptr<LocalVarExprAST> FindAndCreateCaptureVar(const string& name, SourcePos pos)
+	{
+		if (function_scopes.size() < 2)
+			return nullptr;
+		auto already_imported = function_scopes.back().func->GetImportedCapturedVariable(name);
+		if (already_imported)
+			return make_unique<LocalVarExprAST>(already_imported, pos);
+
+		auto sz = function_scopes.end() - 1;
+		//iterate from the second last function scope
+		/*for (auto itr = sz; itr !=function_scopes.begin() - 1; itr--)
+		{
+			auto orig_var = FindLocalVar(name, itr->scope);
+			if (orig_var)
+			{
+				for (auto itr2 = itr; itr2!=function_scopes.end(); itr2++)
+				{
+					itr2->func->CaptureVariable(orig_var);
+				}
+				return make_unique<LocalVarExprAST>(CaptureVariable(orig_var), pos);
+			}
+		}*/
+		auto orig_var = FindLocalVar(name, sz->scope);
+		if (orig_var)
+		{
+			auto capture_idx = sz->func->CaptureVariable(orig_var);
+			unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(orig_var->Copy());
+			var->capture_idx = capture_idx;
+			function_scopes.back().func->imported_captured_var
+				.insert(std::make_pair(std::reference_wrapper<const string>(var->name), std::move(var)));
+
+		}
+		return nullptr;
+	}
 
 	unique_ptr<ResolvedIdentifierExprAST> ResolveNameNoThrow(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
-		auto bb = FindLocalVar(name);
+		auto bb = function_scopes.empty() ? nullptr : FindLocalVar(name, function_scopes.back().scope);
 		if (bb)
 		{
 			return make_unique<LocalVarExprAST>(bb,pos);
@@ -352,6 +394,10 @@ public:
 		auto template_arg = FindAndCopyTemplateArgument(name);
 		if (template_arg)
 			return std::move(template_arg);
+
+		auto capture_var = FindAndCreateCaptureVar(name);
+		if (capture_var)
+			return std::move(capture_var);
 
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
@@ -446,10 +492,10 @@ public:
 	}
 	BasicBlock& GetCurrentBasicBlock()
 	{
-		if (basic_blocks.empty())
+		if (function_scopes.empty())
 			return top_level_bb;
 		else
-			return basic_blocks.back();
+			return function_scopes.back().scope.back();
 	}
 
 };
@@ -1038,6 +1084,26 @@ namespace Birdee
 		Birdee_AnnotationStatementAST_Phase1(this);
 	}
 
+	VariableSingleDefAST * FunctionAST::GetImportedCapturedVariable(const string & name)
+	{
+		auto itr=imported_captured_var.find(name);
+		if (itr != imported_captured_var.end())
+		{
+			return itr->second.get();
+		}
+		return nullptr;
+	}
+	size_t FunctionAST::CaptureVariable(VariableSingleDefAST * var)
+	{
+		auto itr=std::find(captured_var.begin(),captured_var.end(),var);
+		if (itr != captured_var.end())
+			return itr - captured_var.begin();
+		assert(var->capture_type == VariableSingleDefAST::CAPTURE_NONE);
+		var->capture_type = VariableSingleDefAST::CAPTURE_VAL;
+		captured_var.push_back(var);
+		return captured_var.size() - 1;
+	}
+
 	bool Birdee::TemplateArgument::operator<(const TemplateArgument & that) const
 	{
 		if (kind != that.kind)
@@ -1205,14 +1271,14 @@ namespace Birdee
 		}
 		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
-		auto basic_blocks_backup = std::move(scope_mgr.basic_blocks);
-		scope_mgr.basic_blocks = vector <ScopeManager::BasicBlock>();
+		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
+		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
-		scope_mgr.basic_blocks = std::move(basic_blocks_backup);
+		scope_mgr.function_scopes = std::move(basic_blocks_backup);
 		if (cls_template)
 		{
 			scope_mgr.PopClass();
@@ -1375,7 +1441,7 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1InFunctionType(bool register_in_basic_block)
 	{
-		if (register_in_basic_block && !scope_mgr.basic_blocks.empty())
+		if (register_in_basic_block && !scope_mgr.function_scopes.empty())
 			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
 				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
@@ -1387,7 +1453,7 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1()
 	{
-		if (!scope_mgr.basic_blocks.empty())			
+		if (!scope_mgr.function_scopes.empty())
 			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
 				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
@@ -1412,11 +1478,13 @@ namespace Birdee
 	{
 		if (isTemplate())
 			return;
+		scope_mgr.function_scopes.emplace_back(ScopeManager::FunctionScope(this));
 		auto prv_func = cur_func;
 		cur_func = this;
 		Phase0();
 		Body.Phase1(Proto.get());
 		cur_func = prv_func;
+		scope_mgr.function_scopes.pop_back();
 	}
 
 	void VariableSingleDefAST::Phase1InClass()
