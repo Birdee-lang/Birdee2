@@ -891,6 +891,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		rettype->type = tok_void;
 	}
 	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos(),/*is_closure*/false);
+	auto old_current_func_proto = current_func_proto;
 	current_func_proto = funcproto.get();
 
 	ASTBasicBlock body;
@@ -913,7 +914,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		//parse function body
 		ParseBasicBlock(body, tok_func);
 	}
-	current_func_proto = nullptr;
+	current_func_proto = old_current_func_proto;
 	if (is_template)
 	{
 		if (!view_pos)
@@ -925,6 +926,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 			template_param->source.set(string("function ") + name + " [", view_pos, curlen - 1 - view_pos);
 		}
 	}
+
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 

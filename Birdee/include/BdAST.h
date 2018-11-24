@@ -741,13 +741,14 @@ namespace Birdee {
 		ResolvedType resolved_type;
 
 		//the capture index in the "context" object
-		int capture_idx = 0;
+		int capture_import_idx = -1;
+		int capture_export_idx = -1;
 		enum CaptureType
 		{
 			CAPTURE_NONE, //do not capture. allocate on stack
 			CAPTURE_VAL,  //the variable itself is in "context" object
 			CAPTURE_REF,  //the variable is in "context" object of another function, this variable is a reference to it
-		}capture_type= CAPTURE_NONE;
+		}capture_import_type= CAPTURE_NONE, capture_export_type=CAPTURE_NONE;
 
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
@@ -983,9 +984,21 @@ namespace Birdee {
 		bool isImported=false;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
-		llvm::Function* llvm_func=nullptr;
+		
 		vector<VariableSingleDefAST*> captured_var;
+		bool capture_this = false;
 		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
+		FunctionAST* parent = nullptr;
+
+		llvm::Value* exported_capture_pointer;
+		llvm::Value* imported_capture_pointer;
+		llvm::Function* llvm_func = nullptr;
+		llvm::StructType* exported_capture_type = nullptr;
+		llvm::StructType* imported_capture_type = nullptr;
+
+		//the "this" pointer imported from parent function
+		//we reuse this variable in Phase1, captured_parent_this = 1 when this function uses "this"
+		llvm::Value* captured_parent_this = nullptr; 
 
 		//capture the variable (defined in this function)
 		//in "context" object instead of on stack.

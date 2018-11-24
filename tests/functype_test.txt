@@ -1,3 +1,4 @@
+##
 import test_package.b.functype_test_lib:*
 
 pfunc(3,4)
@@ -15,3 +16,34 @@ function caller(fun as tyfunc, a as int)
 end
 
 caller(function (a as int, b as int) as int => a*b ,  23)
+
+##
+
+closure consumer () 
+
+function aaa () as consumer
+	dim a=1,b=2
+	dim fun as consumer = function() => println("hello")
+	fun()
+	
+	return function () => println(int2str(a+b))
+end
+
+
+class clsa
+	private a as int
+	public function aaa()
+		dim b as int=3
+		dim fun as consumer = function () => println(int2str(a+b))
+		fun()			
+	end
+
+	public function __init__()
+		a=123
+	end
+end
+
+dim a = aaa()
+a()
+dim b as clsa = new clsa
+b.aaa()

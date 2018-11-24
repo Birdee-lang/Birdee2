@@ -173,8 +173,10 @@ namespace Birdee
 		auto ret = make_unique<VariableSingleDefAST>(name, type == nullptr ? nullptr : type->Copy(),
 			val == nullptr? nullptr:ToExpr(val->Copy()), Pos);
 		ret->resolved_type = resolved_type;
-		ret->capture_type = capture_type;
-		ret->capture_idx = capture_idx;
+		ret->capture_import_type = capture_import_type;
+		ret->capture_import_idx = capture_import_idx;
+		ret->capture_export_type = capture_export_type;
+		ret->capture_export_idx = capture_export_idx;
 		return std::move(ret);
 	}
 
