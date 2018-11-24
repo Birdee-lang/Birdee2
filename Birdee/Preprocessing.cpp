@@ -357,7 +357,7 @@ public:
 		if (already_imported)
 			return make_unique<LocalVarExprAST>(already_imported, pos);
 
-		auto sz = function_scopes.end() - 1;
+		auto sz = function_scopes.end() - 2;
 		//iterate from the second last function scope
 		/*for (auto itr = sz; itr !=function_scopes.begin() - 1; itr--)
 		{
@@ -376,10 +376,15 @@ public:
 		{
 			auto capture_idx = sz->func->CaptureVariable(orig_var);
 			unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(orig_var->Copy());
-			var->capture_idx = capture_idx;
+			auto v = var.get();
+			var->capture_import_type = orig_var->capture_export_type;
+			var->capture_import_idx = orig_var->capture_export_idx;
+			var->capture_export_idx = VariableSingleDefAST::CAPTURE_NONE;
+			var->capture_export_idx = -1;
+
 			function_scopes.back().func->imported_captured_var
 				.insert(std::make_pair(std::reference_wrapper<const string>(var->name), std::move(var)));
-
+			return make_unique<LocalVarExprAST>(v, pos);
 		}
 		return nullptr;
 	}
@@ -395,14 +400,16 @@ public:
 		if (template_arg)
 			return std::move(template_arg);
 
-		auto capture_var = FindAndCreateCaptureVar(name);
+		auto capture_var = FindAndCreateCaptureVar(name, pos);
 		if (capture_var)
 			return std::move(capture_var);
 
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
 		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), cls_field, pos);
+			auto ret = make_unique<ThisExprAST>(class_stack.back(), pos);
+			ret->Phase1();
+			return make_unique<MemberExprAST>(std::move(ret), cls_field, pos);
 		}
 		auto func_field = FindFuncInClass(name);
 		if (func_field)
@@ -1098,10 +1105,11 @@ namespace Birdee
 		auto itr=std::find(captured_var.begin(),captured_var.end(),var);
 		if (itr != captured_var.end())
 			return itr - captured_var.begin();
-		assert(var->capture_type == VariableSingleDefAST::CAPTURE_NONE);
-		var->capture_type = VariableSingleDefAST::CAPTURE_VAL;
+		assert(var->capture_export_type == VariableSingleDefAST::CAPTURE_NONE);
+		var->capture_export_type = VariableSingleDefAST::CAPTURE_VAL;
 		captured_var.push_back(var);
-		return captured_var.size() - 1;
+		var->capture_export_idx = captured_var.size() - 1;
+		return var->capture_export_idx;
 	}
 
 	bool Birdee::TemplateArgument::operator<(const TemplateArgument & that) const
@@ -1478,11 +1486,23 @@ namespace Birdee
 	{
 		if (isTemplate())
 			return;
+		if (scope_mgr.function_scopes.size() > 0)
+			parent = scope_mgr.function_scopes.back().func;
 		scope_mgr.function_scopes.emplace_back(ScopeManager::FunctionScope(this));
 		auto prv_func = cur_func;
 		cur_func = this;
 		Phase0();
+		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
+			Proto->cls = nullptr;   //"this" pointer in included in the captured lambda
 		Body.Phase1(Proto.get());
+
+		if (captured_parent_this) //if "this" is used, capture "this" in all parent functions
+		{
+			for (int i = 0; i <= scope_mgr.function_scopes.size() - 2; i++)
+				scope_mgr.function_scopes[i].func->capture_this = true;
+		}
+		if (!imported_captured_var.empty() || captured_parent_this) //if captured any parent var, set the function type: is_closure=true
+			Proto->is_closure = true;
 		cur_func = prv_func;
 		scope_mgr.function_scopes.pop_back();
 	}
@@ -1699,6 +1719,10 @@ namespace Birdee
 	void ThisExprAST::Phase1()
 	{
 		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"this\" outside of a class");
+		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
+		{
+			scope_mgr.function_scopes.back().func->captured_parent_this = (llvm::Value*)1;
+		}
 		resolved_type.type = tok_class;
 		resolved_type.class_ast = scope_mgr.class_stack.back();
 	}

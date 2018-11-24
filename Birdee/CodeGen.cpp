@@ -156,6 +156,8 @@ struct GeneratorContext
 	llvm::Type* byte_arr_ty = nullptr;
 	ClassAST* array_cls = nullptr;
 	LLVMHelper helper;
+	FunctionAST* cur_func = nullptr;
+
 
 	//the wrappers for raw functions, useful for conversion from functype to closure
 	unordered_map<Function*, Function*> function_wrapper_cache;
@@ -383,18 +385,20 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 
 void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int argno)
 {
-	DIType* ty;
-	llvm_value = builder.CreateAlloca(helper.GetType(resolved_type, ty), nullptr, name);
-	
-	// Create a debug descriptor for the variable.
-	DILocalVariable *D = DBuilder->createParameterVariable(
-		dinfo.LexicalBlocks.back(), name, argno, dinfo.cu->getFile(), Pos.line, ty,
-		true);
-	
-	DBuilder->insertDeclare(llvm_value, D, DBuilder->createExpression(),
-		DebugLoc::get(Pos.line, Pos.pos, dinfo.LexicalBlocks.back()),
-		builder.GetInsertBlock());
+	if (!llvm_value)
+	{
+		DIType* ty;
+		llvm_value = builder.CreateAlloca(helper.GetType(resolved_type, ty), nullptr, name);
 
+		// Create a debug descriptor for the variable.
+		DILocalVariable *D = DBuilder->createParameterVariable(
+			dinfo.LexicalBlocks.back(), name, argno, dinfo.cu->getFile(), Pos.line, ty,
+			true);
+
+		DBuilder->insertDeclare(llvm_value, D, DBuilder->createExpression(),
+			DebugLoc::get(Pos.line, Pos.pos, dinfo.LexicalBlocks.back()),
+			builder.GetInsertBlock());
+	}
 	builder.CreateStore(init, llvm_value);
 }
 
@@ -404,7 +408,19 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	if (!llvm_value)
 	{
 		DIType* ty;
-		llvm_value = builder.CreateAlloca(helper.GetType(resolved_type, ty), nullptr, name);
+		auto t = helper.GetType(resolved_type, ty);
+		assert(capture_import_type == CAPTURE_NONE);
+		if (capture_export_type == CAPTURE_VAL)
+		{
+			assert(gen_context.cur_func && gen_context.cur_func->exported_capture_pointer);
+			llvm_value = builder.CreateGEP(gen_context.cur_func->exported_capture_pointer,
+				{ builder.getInt32(0),builder.getInt32(capture_export_idx + (gen_context.cur_func->capture_this ? 1 : 0))}, name);
+		}
+		else
+		{
+			assert(capture_export_type == CAPTURE_NONE);
+			llvm_value = builder.CreateAlloca(t, nullptr, name);
+		}
 
 		// Create a debug descriptor for the variable.
 		DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), name, dinfo.cu->getFile(), Pos.line, ty,
@@ -665,6 +681,7 @@ llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
 	if (is_closure)
 	{
 		args.push_back(builder.getInt8PtrTy());
+		assert(cls == nullptr);
 	}
 	for (auto& arg : resolved_args)
 	{
@@ -884,7 +901,17 @@ bool Birdee::ASTBasicBlock::Generate()
 llvm::Value * Birdee::ThisExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	return helper.cur_llvm_func->args().begin();
+	if (gen_context.cur_func && gen_context.cur_func->parent)//(gen_context.cur_func && gen_context.cur_func->parent && gen_context.cur_func->parent->capture_this)
+	{
+		//if we are in a function & the function is a lambda & the parent function has captured this
+		assert(gen_context.cur_func->Proto->is_closure);
+		return gen_context.cur_func->captured_parent_this;
+	}
+	else
+	{
+		assert(gen_context.cur_func->Proto->cls);
+		return helper.cur_llvm_func->args().begin();
+	}
 }
 
 llvm::Value * Birdee::FunctionAST::Generate()
@@ -898,10 +925,13 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		}
 		return nullptr;
 	}
+
 	auto dbginfo = PrepareFunctionDebugInfo(llvm_func, functy, Pos);
 
 	if (!isDeclare)
 	{
+		auto curfunc_backup = gen_context.cur_func;
+		gen_context.cur_func = this;
 		dinfo.LexicalBlocks.push_back(dbginfo);
 		auto IP = builder.saveIP();
 		auto func_backup = helper.cur_llvm_func;
@@ -910,10 +940,62 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		builder.SetInsertPoint(BB);
 
 		dinfo.emitLocation(this);
-		int i = 0;
 		auto itr = llvm_func->args().begin();
 		if (Proto->cls)
+		{
 			itr++;
+		}
+		if (Proto->is_closure)
+		{//if is closure, generate the imported captured var
+			imported_capture_pointer = builder.CreatePointerCast(itr,parent->exported_capture_type->getPointerTo());
+			size_t idx = parent->capture_this ? 1 : 0;
+			if (captured_parent_this) //if "this" is referenced in the function
+			{//get the real "this" in the imported captured context
+				captured_parent_this = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
+			}
+			for (auto& v : imported_captured_var)
+			{
+				auto var = v.second.get();
+				assert(var->capture_import_type == VariableSingleDefAST::CAPTURE_VAL);
+				DIType* ty;
+				helper.GetType(var->resolved_type, ty);
+				var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }, var->name);
+
+				// Create a debug descriptor for the variable.
+				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
+					true);
+
+				DBuilder->insertDeclare(var->llvm_value, D, DBuilder->createExpression(),
+					DebugLoc::get(var->Pos.line, var->Pos.pos, dinfo.LexicalBlocks.back()),
+					builder.GetInsertBlock());
+				idx++;
+			}
+			itr++;
+		}
+		if (captured_var.size())
+		{ //if my own variables are captured by children functions
+			vector<llvm::Type*> captype;
+			if (capture_this)
+			{
+				assert(Proto->cls);
+				captype.push_back(Proto->cls->llvm_type->getPointerTo());
+			}
+			for (auto v : captured_var)
+			{
+				captype.push_back(helper.GetType(v->resolved_type));
+			}
+			exported_capture_type = StructType::create(context, captype, (llvm_func->getName() + ".!context").str());
+			size_t sz = module->getDataLayout().getTypeAllocSize(exported_capture_type);
+			exported_capture_pointer = builder.CreatePointerCast(
+				builder.CreateCall(GetMallocObj(), { builder.getInt32(sz),Constant::getNullValue(builder.getInt8PtrTy()) }),
+				exported_capture_type->getPointerTo(), "!export_capture_pointer");
+			if (capture_this)
+			{
+				builder.CreateStore(llvm_func->args().begin(), builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }));
+			}
+			//the exported variables will be generated in variable definition statements
+		}
+		int i = 0;
 		for (; itr != llvm_func->args().end(); itr++)
 		{
 			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1);
@@ -932,6 +1014,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		dinfo.LexicalBlocks.pop_back();
 		builder.restoreIP(IP);
 		helper.cur_llvm_func = func_backup;
+		gen_context.cur_func = curfunc_backup;
 	}
 	else if (!isImported) //if is declaration and is a c-style extern function
 	{
@@ -940,7 +1023,17 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		else
 			llvm_func->setName(link_name);
 	}
-	return llvm_func;
+	if (Proto->is_closure)
+	{
+		dinfo.emitLocation(this);
+		auto type = helper.GetType(resolved_type);
+		assert(llvm::isa<StructType>(*type));
+		auto ptr = builder.CreateInsertValue(UndefValue::get(type), llvm_func, 0);
+		return builder.CreateInsertValue(ptr, 
+			builder.CreatePointerCast(parent->exported_capture_pointer,builder.getInt8PtrTy()), 1);
+	}
+	else
+		return llvm_func;
 }
 
 llvm::Value * Birdee::IdentifierExprAST::Generate()
