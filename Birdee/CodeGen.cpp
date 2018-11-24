@@ -1025,6 +1025,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 	}
 	if (Proto->is_closure)
 	{
+		llvm_func->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
 		dinfo.emitLocation(this);
 		auto type = helper.GetType(resolved_type);
 		assert(llvm::isa<StructType>(*type));
