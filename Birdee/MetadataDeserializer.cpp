@@ -155,7 +155,7 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 	{
 		Args.push_back(BuildVariableFromJson(arg));
 	}
-	auto proto = make_unique<PrototypeAST>(name, std::move(Args), ConvertIdToType(func["return"]), cls, current_module_idx);
+	auto proto = make_unique<PrototypeAST>(name, std::move(Args), ConvertIdToType(func["return"]), cls, current_module_idx, /*is_closure*/false);
 	auto protoptr = proto.get();
 	auto ret = make_unique<FunctionAST>(std::move(proto));
 	ret->resolved_type.type = tok_func;
@@ -443,8 +443,9 @@ void BuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
 	{
 		BirdeeAssert(func.is_object(), "Expected a JSON object");
 		string name = func["name"];
+		bool is_closure = func["is_closure"].get<bool>();
 		auto proto = make_unique<PrototypeAST>("", vector<unique_ptr<VariableSingleDefAST>>(),
-			ResolvedType(), (ClassAST*)nullptr, current_module_idx);
+			ResolvedType(), (ClassAST*)nullptr, current_module_idx, is_closure);
 		auto protoptr = proto.get();
 		if (name.size() != 0) //if it is a named prototype
 			mod.functypemap[name] = std::move(proto);

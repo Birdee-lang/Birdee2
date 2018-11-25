@@ -123,7 +123,15 @@ public:
 	typedef unordered_map<reference_wrapper<const string>, VariableSingleDefAST*> BasicBlock;
 	vector<ClassAST*> class_stack;
 	BasicBlock top_level_bb;
-	vector <BasicBlock> basic_blocks;
+	//the scopes for nested functions
+	//function_scopes.back() is the lowest level of nested function
+	struct FunctionScope
+	{
+		vector<BasicBlock> scope;
+		FunctionAST* func;
+		FunctionScope(FunctionAST* f) :func(f) {}
+	};
+	vector<FunctionScope> function_scopes;
 	struct TemplateEnv
 	{
 		unordered_map<string, ResolvedType> typemap;
@@ -225,7 +233,7 @@ public:
 		return nullptr;
 	}
 
-	VariableSingleDefAST* FindLocalVar(const string& name)
+	VariableSingleDefAST* FindLocalVar(const string& name,const vector<BasicBlock>& basic_blocks)
 	{
 		if (basic_blocks.size() > 0)
 		{
@@ -286,11 +294,11 @@ public:
 
 	void PushBasicBlock()
 	{
-		basic_blocks.push_back(BasicBlock());
+		function_scopes.back().scope.push_back(BasicBlock());
 	}
 	void PopBasicBlock()
 	{
-		basic_blocks.pop_back();
+		function_scopes.back().scope.pop_back();
 	}
 	void PushClass(ClassAST* cls)
 	{
@@ -341,10 +349,55 @@ public:
 		return check_template_module(template_class_stack); //will return null if not in template
 	}
 
+	unique_ptr<LocalVarExprAST> FindAndCreateCaptureVar(const string& name, SourcePos pos)
+	{
+		if (function_scopes.size() < 2)
+			return nullptr;
+		auto already_imported = function_scopes.back().func->GetImportedCapturedVariable(name);
+		if (already_imported)
+			return make_unique<LocalVarExprAST>(already_imported, pos);
+
+		//iterate from the second last function scope
+		for (auto itr = function_scopes.rbegin() + 1; itr !=function_scopes.rend(); itr++)
+		{
+			auto orig_var = FindLocalVar(name, itr->scope);
+			if (!orig_var)
+			{
+				orig_var = itr->func->GetImportedCapturedVariable(name);
+			}
+			if (orig_var) //if variable is found
+			{
+				VariableSingleDefAST* v = orig_var;
+				//import the variable in a chain back to the current function
+				//(itr+1).base() converts itr from reverse iterator to normal iterator. They points to the same element
+				for (auto itr2 = (itr+1).base(); itr2!=function_scopes.end()-1; itr2++)
+				{
+					//"v" is defined in function "*itr2"
+					//first export v from *itr2
+					auto capture_idx = itr2->func->CaptureVariable(v);
+					unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(v->Copy());
+					
+					//then create a variable to import the variable
+					var->capture_import_type = v->capture_export_type;
+					var->capture_import_idx = v->capture_export_idx;
+					var->capture_export_idx = VariableSingleDefAST::CAPTURE_NONE;
+					var->capture_export_idx = -1;
+
+					//v is set to be the imported variable for the next iteration
+					v = var.get();
+					//in the child function, insert the imported variable
+					(itr2 + 1)->func->imported_captured_var
+						.insert(std::make_pair(std::reference_wrapper<const string>(var->name), std::move(var)));
+				}
+				return make_unique<LocalVarExprAST>(v, pos);
+			}
+		}
+		return nullptr;
+	}
 
 	unique_ptr<ResolvedIdentifierExprAST> ResolveNameNoThrow(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
-		auto bb = FindLocalVar(name);
+		auto bb = function_scopes.empty() ? nullptr : FindLocalVar(name, function_scopes.back().scope);
 		if (bb)
 		{
 			return make_unique<LocalVarExprAST>(bb,pos);
@@ -353,10 +406,16 @@ public:
 		if (template_arg)
 			return std::move(template_arg);
 
+		auto capture_var = FindAndCreateCaptureVar(name, pos);
+		if (capture_var)
+			return std::move(capture_var);
+
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
 		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), cls_field, pos);
+			auto ret = make_unique<ThisExprAST>(class_stack.back(), pos);
+			ret->Phase1();
+			return make_unique<MemberExprAST>(std::move(ret), cls_field, pos);
 		}
 		auto func_field = FindFuncInClass(name);
 		if (func_field)
@@ -446,10 +505,10 @@ public:
 	}
 	BasicBlock& GetCurrentBasicBlock()
 	{
-		if (basic_blocks.empty())
+		if (function_scopes.empty())
 			return top_level_bb;
 		else
-			return basic_blocks.back();
+			return function_scopes.back().scope.back();
 	}
 
 };
@@ -532,19 +591,31 @@ do\
 	}\
 }while(0)\
 
+template<typename Derived>
+Derived* dyncast_resolve_anno(StatementAST* p)
+{
+	if (typeid(*p) == typeid(AnnotationStatementAST)) {
+		return dyncast_resolve_anno<Derived>( static_cast<AnnotationStatementAST*>(p)->impl.get() );
+	}
+	if (typeid(*p) == typeid(Derived)) {
+		return static_cast<Derived*>(p);
+	}
+	return nullptr;
+}
+
 static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
 {
 	FunctionAST* func = nullptr;
-	IdentifierExprAST*  iden = dynamic_cast<IdentifierExprAST*>(expr);
+	IdentifierExprAST*  iden = dyncast_resolve_anno<IdentifierExprAST>(expr);
 	if (iden)
 	{
-		auto resolvedfunc = dynamic_cast<ResolvedFuncExprAST*>(iden->impl.get());
+		auto resolvedfunc = dyncast_resolve_anno<ResolvedFuncExprAST>(iden->impl.get());
 		if(resolvedfunc)
 			func = resolvedfunc->def;
 	}
 	else
 	{
-		MemberExprAST*  mem = dynamic_cast<MemberExprAST*>(expr);
+		MemberExprAST*  mem = dyncast_resolve_anno<MemberExprAST>(expr);
 		if (mem)
 		{
 			if (mem->kind == MemberExprAST::member_function)
@@ -595,7 +666,7 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 
 void FixNull(ExprAST* v, ResolvedType& target)
 {
-	NullExprAST* expr = dynamic_cast<NullExprAST*>(v);
+	NullExprAST* expr = dyncast_resolve_anno<NullExprAST>(v);
 	assert(expr);
 	expr->resolved_type = target;
 }
@@ -605,6 +676,13 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	if (target == val->resolved_type)
 	{
 		return std::move(val);
+	}
+	if (target.type == tok_func && val->resolved_type.type == tok_func)
+	{
+		if (target.proto_ast->IsSamePrototype(*val->resolved_type.proto_ast))
+		{
+			return make_unique<FunctionToClosureAST>(std::move(val));
+		}
 	}
 	if ( target.isReference() && val->resolved_type.isNull())
 	{
@@ -700,7 +778,7 @@ namespace Birdee
 				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 			},
 				[&this_template_args](FunctionTemplateInstanceExprAST* ex) {
-				if (instance_of<IdentifierExprAST>(ex->expr.get()))
+				if (isa<IdentifierExprAST>(ex->expr.get()))
 				{
 					IdentifierExprAST* iden = (IdentifierExprAST*)ex->expr.get();
 					IdentifierType type(iden->Name);
@@ -708,18 +786,22 @@ namespace Birdee
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 				}
-				else if (instance_of<MemberExprAST>(ex->expr.get()))
+				else if (isa<MemberExprAST>(ex->expr.get()))
 				{
 					QualifiedIdentifierType type = QualifiedIdentifierType(((MemberExprAST*)ex->expr.get())->ToStringArray());
 					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>(std::move(ex->raw_template_args));
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 				}
+				else if (isa<AnnotationStatementAST>(ex->expr.get()))
+				{
+					throw CompileError(ex->expr->Pos.line, ex->expr->Pos.pos, "The template argument cannot be annotated");
+				}
 				else
 					assert(0 && "Not implemented");
 			},
 				[&this_template_args](IndexExprAST* ex) {
-				if (instance_of<IdentifierExprAST>(ex->Expr.get()))
+				if (isa<IdentifierExprAST>(ex->Expr.get()))
 				{
 					IdentifierType type(((IdentifierExprAST*)ex->Expr.get())->Name);
 					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>();
@@ -727,13 +809,17 @@ namespace Birdee
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 				}
-				else if (instance_of<MemberExprAST>(ex->Expr.get()))
+				else if (isa<MemberExprAST>(ex->Expr.get()))
 				{
 					QualifiedIdentifierType type = QualifiedIdentifierType(((MemberExprAST*)ex->Expr.get())->ToStringArray());
 					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>();
 					type.template_args->push_back(std::move(ex->Index));
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
+				else if (isa<AnnotationStatementAST>(ex->Expr.get()))
+				{
+					throw CompileError(ex->Expr->Pos.line, ex->Expr->Pos.pos, "The template argument cannot be annotated");
 				}
 				else
 					assert(0 && "Not implemented");
@@ -745,8 +831,8 @@ namespace Birdee
 				[&this_template_args, &template_arg](StringLiteralAST* ex) {
 				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
 			},
-				[]() {
-				throw CompileError("Invalid template argument expression type");
+				[&template_arg]() {
+				throw CompileError(template_arg->Pos.line, template_arg->Pos.pos,  "Invalid template argument expression type");
 			}
 			);
 		}
@@ -781,6 +867,7 @@ namespace Birdee
 				{
 					ths.type = tok_func;
 					ths.proto_ast = fitr->second.get();
+					return;
 				}
 				
 				auto& functypemap2 = env.imported_mod->imported_functypemap;
@@ -789,6 +876,7 @@ namespace Birdee
 				{
 					ths.type = tok_func;
 					ths.proto_ast = fitr2->second;
+					return;
 				}
 
 				auto& classmap = env.imported_mod->classmap;
@@ -932,8 +1020,9 @@ namespace Birdee
 		return buf.str();
 	}
 
-	BD_CORE_API bool operator==(const PrototypeAST& ths, const PrototypeAST& other)
+	bool PrototypeAST::IsSamePrototype(const PrototypeAST& other) const
 	{
+		auto& ths = *this;
 		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
 		if (!(ths.resolved_type == other.resolved_type))
 			return false;
@@ -950,7 +1039,30 @@ namespace Birdee
 				return false;
 		}
 		return true;
+	}
 
+	std::size_t PrototypeAST::rawhash() const
+	{
+		const PrototypeAST* proto = this;
+		size_t v = proto->resolved_type.rawhash() << 3; //return type
+		v ^= (uintptr_t)proto->cls; //belonging class
+		v ^= proto->is_closure;
+		int offset = 6;
+		for (auto& arg : proto->resolved_args) //argument types
+		{
+			v ^= arg->resolved_type.rawhash() << offset;
+			offset = (offset + 3) % 32;
+		}
+		return v;
+	}
+
+	bool operator==(const PrototypeAST& ths, const PrototypeAST& other)
+	{
+		if (ths.is_closure != other.is_closure) //if is_closure field is not the same
+			return false;
+		if (ths.cls != other.cls)
+			return false;
+		return ths.IsSamePrototype(other);
 	}
 	bool ResolvedType::operator<(const ResolvedType & that) const
 	{
@@ -1000,9 +1112,43 @@ namespace Birdee
 		Birdee_ScriptAST_Phase1(this);
 	}
 
+	llvm::Value* Birdee::AnnotationStatementAST::GetLValue(bool checkHas)
+	{
+		CompileAssert(is_expr, Pos, "Cannot get LValue of an non-expression");
+		return GetLValueNoCheckExpr(checkHas);
+	}
+
+
 	void Birdee::AnnotationStatementAST::Phase1()
 	{
 		Birdee_AnnotationStatementAST_Phase1(this);
+		if (is_expr)
+		{
+			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
+		}
+	}
+
+	VariableSingleDefAST * FunctionAST::GetImportedCapturedVariable(const string & name)
+	{
+		auto itr=imported_captured_var.find(name);
+		if (itr != imported_captured_var.end())
+		{
+			return itr->second.get();
+		}
+		return nullptr;
+	}
+	size_t FunctionAST::CaptureVariable(VariableSingleDefAST * var)
+	{
+		auto itr=std::find(captured_var.begin(),captured_var.end(),var);
+		if (itr != captured_var.end())
+			return itr - captured_var.begin();
+		if (var->capture_import_type == VariableSingleDefAST::CAPTURE_NONE)
+			var->capture_export_type = VariableSingleDefAST::CAPTURE_VAL;
+		else // if CAPTURE_VAL or CAPTURE_REF
+			var->capture_export_type = VariableSingleDefAST::CAPTURE_REF;
+		captured_var.push_back(var);
+		var->capture_export_idx = captured_var.size() - 1;
+		return var->capture_export_idx;
 	}
 
 	bool Birdee::TemplateArgument::operator<(const TemplateArgument & that) const
@@ -1021,7 +1167,7 @@ namespace Birdee
 				return true;
 			if (n2)
 				return n1->Val < n2->Val;
-			assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
+			throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
 		else if(s1)
 		{
@@ -1029,9 +1175,9 @@ namespace Birdee
 				return s1->Val < s2->Val;
 			if (n2)
 				return false; 
-			assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
+			throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
-		assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
+		throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		return false;
 	}
 
@@ -1073,9 +1219,10 @@ namespace Birdee
 		ExprAST* cur = Obj.get();
 		for(;;)
 		{
-			if (!instance_of<MemberExprAST>(cur))
+			if (!isa<MemberExprAST>(cur))
 			{
-				CompileAssert(instance_of<IdentifierExprAST>(cur), cur->Pos, "Expected an identifier for template");
+				CompileAssert(!isa<AnnotationStatementAST>(cur), cur->Pos, "Template arugments cannot be annotated");
+				CompileAssert(isa<IdentifierExprAST>(cur), cur->Pos, "Expected an identifier for template");
 				reverse.push_back(&((IdentifierExprAST*)cur)->Name);
 				break;
 			}
@@ -1118,7 +1265,7 @@ namespace Birdee
 				else
 				{
 					NumberExprAST* number = dynamic_cast<NumberExprAST*>(arg.expr.get());
-					assert(number && "Template arg should be string or number constant");
+					CompileAssert(number , arg.expr->Pos, "Template arg should be string or number constant");
 					number->ToString(buf);
 					buf << suffix;
 				}
@@ -1172,14 +1319,14 @@ namespace Birdee
 		}
 		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
-		auto basic_blocks_backup = std::move(scope_mgr.basic_blocks);
-		scope_mgr.basic_blocks = vector <ScopeManager::BasicBlock>();
+		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
+		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
-		scope_mgr.basic_blocks = std::move(basic_blocks_backup);
+		scope_mgr.function_scopes = std::move(basic_blocks_backup);
 		if (cls_template)
 		{
 			scope_mgr.PopClass();
@@ -1342,7 +1489,7 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1InFunctionType(bool register_in_basic_block)
 	{
-		if (register_in_basic_block && !scope_mgr.basic_blocks.empty())
+		if (register_in_basic_block && !scope_mgr.function_scopes.empty())
 			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
 				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
@@ -1354,7 +1501,7 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1()
 	{
-		if (!scope_mgr.basic_blocks.empty())			
+		if (!scope_mgr.function_scopes.empty())
 			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
 				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
@@ -1379,11 +1526,25 @@ namespace Birdee
 	{
 		if (isTemplate())
 			return;
+		if (scope_mgr.function_scopes.size() > 0)
+			parent = scope_mgr.function_scopes.back().func;
+		scope_mgr.function_scopes.emplace_back(ScopeManager::FunctionScope(this));
 		auto prv_func = cur_func;
 		cur_func = this;
 		Phase0();
+		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
+			Proto->cls = nullptr;   //"this" pointer in included in the captured lambda
 		Body.Phase1(Proto.get());
+
+		if (captured_parent_this) //if "this" is used, capture "this" in all parent functions
+		{
+			for (int i = 0; i <= scope_mgr.function_scopes.size() - 2; i++)
+				scope_mgr.function_scopes[i].func->capture_this = true;
+		}
+		if (!imported_captured_var.empty() || captured_parent_this) //if captured any parent var, set the function type: is_closure=true
+			Proto->is_closure = true;
 		cur_func = prv_func;
+		scope_mgr.function_scopes.pop_back();
 	}
 
 	void VariableSingleDefAST::Phase1InClass()
@@ -1418,7 +1579,7 @@ namespace Birdee
 		if (proto->resolved_args.size() != Args.size())
 		{
 			std::stringstream buf;
-			buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << "are given";
+			buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << " are given";
 			CompileAssert(false, Pos, buf.str());
 		}
 
@@ -1598,6 +1759,10 @@ namespace Birdee
 	void ThisExprAST::Phase1()
 	{
 		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"this\" outside of a class");
+		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
+		{
+			scope_mgr.function_scopes.back().func->captured_parent_this = (llvm::Value*)1;
+		}
 		resolved_type.type = tok_class;
 		resolved_type.class_ast = scope_mgr.class_stack.back();
 	}
@@ -1668,11 +1833,11 @@ namespace Birdee
 		RHS->Phase1();
 		if (Op == tok_assign)
 		{
-			if (IdentifierExprAST* idexpr = dynamic_cast<IdentifierExprAST*>(LHS.get()))
+			if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
 				CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (MemberExprAST* memexpr = dynamic_cast<MemberExprAST*>(LHS.get()))
+			else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
 				CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (instance_of<IndexExprAST>(LHS.get()))
+			else if (dyncast_resolve_anno<IndexExprAST>(LHS.get()))
 			{}
 			else
 				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
@@ -1769,7 +1934,7 @@ namespace Birdee
 		init->Phase1();
 		if (!isdim)
 		{
-			auto bin = dynamic_cast<BinaryExprAST*>(init.get());
+			auto bin = dyncast_resolve_anno<BinaryExprAST>(init.get());
 			if (bin)
 			{
 				CompileAssert(bin->Op == tok_assign, Pos, "Expected an assignment expression after for");

@@ -84,6 +84,7 @@ namespace Birdee
 	{"||",tok_logic_or},
 	{"=>",tok_into},
 	{"functype",tok_functype},
+	{"closure",tok_closure},
 	};
 }
 

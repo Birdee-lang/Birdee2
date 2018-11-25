@@ -287,13 +287,15 @@ namespace Birdee {
 			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
 		}
 	};
-	class BD_CORE_API AnnotationStatementAST : public StatementAST {
+	class BD_CORE_API AnnotationStatementAST : public ExprAST {
 	public:
 		std::vector<std::string> anno;
 		unique_ptr< StatementAST> impl;
-		AnnotationStatementAST(vector<string>&& anno, unique_ptr< StatementAST>&& impl)
-			:anno(std::move(anno)), impl(std::move(impl)) {}
+		bool is_expr;
+		AnnotationStatementAST(vector<string>&& anno, unique_ptr< StatementAST>&& impl);
 		virtual Value* Generate();
+		llvm::Value* GetLValueNoCheckExpr(bool checkHas);
+		virtual llvm::Value* GetLValue(bool checkHas);
 		virtual void Phase1();
 		unique_ptr<StatementAST> Copy();
 	};
@@ -725,12 +727,6 @@ namespace Birdee {
 			: Callee(std::move(Callee)), Args(std::move(Args)) {}
 	};
 
-
-
-
-
-	class VariableSingleDefAST;
-
 	class BD_CORE_API VariableDefAST : public StatementAST {
 	public:
 		virtual void move(unique_ptr<VariableDefAST>&& current,
@@ -745,6 +741,17 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> val;
 		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
+
+		//the capture index in the "context" object
+		int capture_import_idx = -1;
+		int capture_export_idx = -1;
+		enum CaptureType
+		{
+			CAPTURE_NONE, //do not capture. allocate on stack
+			CAPTURE_VAL,  //the variable itself is in "context" object
+			CAPTURE_REF,  //the variable is in "context" object of another function, this variable is a reference to it
+		}capture_import_type= CAPTURE_NONE, capture_export_type=CAPTURE_NONE;
+
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
 		void PreGenerateExternForGlobal(const string& package_name);
@@ -841,7 +848,12 @@ namespace Birdee {
 		//the index in CompileUnit.imported_module_names
 		//if -1, means it is not imported from other modules
 		int prefix_idx=-1;
+		bool is_closure;
 		friend BD_CORE_API bool operator == (const PrototypeAST&, const PrototypeAST&);
+		
+		std::size_t rawhash() const; 
+		//compare the arguments, return type and the belonging class, without comparing is_closure field
+		bool IsSamePrototype(const PrototypeAST&) const;
 		ResolvedType resolved_type;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 		llvm::FunctionType* GenerateFunctionType();
@@ -851,10 +863,10 @@ namespace Birdee {
 		void Phase0();
 
 		void Phase1(bool register_in_basic_block);
-		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx)
-			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx){}
-		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos)
-			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls) {}
+		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx, bool is_closure)
+			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx), is_closure(is_closure){}
+		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos, bool is_closure)
+			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls), is_closure(is_closure){}
 
 		const std::string &GetName() const { return Name; }
 		void print(int level)
@@ -974,7 +986,32 @@ namespace Birdee {
 		bool isImported=false;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
-		llvm::Function* llvm_func=nullptr;
+		
+		vector<VariableSingleDefAST*> captured_var;
+		bool capture_this = false;
+		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
+		FunctionAST* parent = nullptr;
+		bool capture_on_stack = false;
+
+		llvm::Value* exported_capture_pointer;
+		llvm::Value* imported_capture_pointer;
+		llvm::Function* llvm_func = nullptr;
+		llvm::StructType* exported_capture_type = nullptr;
+		llvm::StructType* imported_capture_type = nullptr;
+
+		//the "this" pointer imported from parent function
+		//we reuse this variable in Phase1, captured_parent_this = 1 when this function uses "this"
+		llvm::Value* captured_parent_this = nullptr; 
+
+		//capture the variable (defined in this function)
+		//in "context" object instead of on stack.
+		//the variable must be defined in this function.
+		//Returns the index of the variable in "context"
+		size_t CaptureVariable(VariableSingleDefAST* var);
+
+		//get the VariableSingleDefAST of imported captured var
+		VariableSingleDefAST* GetImportedCapturedVariable(const string& name);
+
 		llvm::DIType* PreGenerate();
 		llvm::Value* Generate();
 		std::unique_ptr<StatementAST> Copy();
@@ -1228,7 +1265,36 @@ namespace Birdee {
 		virtual llvm::Value* GetLValue(bool checkHas);
 	};
 
+	class BD_CORE_API FunctionToClosureAST : public ExprAST
+	{
+	public:
+		unique_ptr<ExprAST> func;
+		unique_ptr<PrototypeAST> proto;
+		virtual Value* Generate();
+		virtual void Phase1() {};
+		virtual unique_ptr<StatementAST> Copy();
+		virtual void print(int level) {
+			ExprAST::print(level);
+			std::cout << "FunctionToClosureAST \n";
+			func->print(level + 1);
+		}
+		FunctionToClosureAST(unique_ptr<ExprAST>&& func) :func(std::move(func))
+		{
+			resolved_type.type = tok_func;
+			proto = this->func->resolved_type.proto_ast->Copy();
+			proto->is_closure = true;
+			proto->cls = nullptr;
+			resolved_type.proto_ast = proto.get();
+		}
+		virtual llvm::Value* GetLValue(bool checkHas)
+		{
+			return nullptr;
+		};
+	};
+
 }
+
+
 
 namespace std
 {
@@ -1238,6 +1304,14 @@ namespace std
 		std::size_t operator()(const Birdee::ResolvedType& a) const
 		{
 			return hash<uintptr_t>()(a.rawhash());
+		}
+	};
+	template <>
+	struct hash<reference_wrapper<Birdee::PrototypeAST>>
+	{
+		std::size_t operator()(const reference_wrapper<Birdee::PrototypeAST> a) const
+		{
+			return a.get().rawhash();
 		}
 	};
 }

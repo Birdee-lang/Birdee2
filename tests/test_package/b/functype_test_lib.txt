@@ -2,11 +2,28 @@ package test_package.b
 
 functype tyfunc(a as int, b as int) as int
 functype tyfunc2(a as int, b as float) as string
-
+closure closure1(a as int, b as int) as int
 
 function add (a as int, b as int) as int
 	return a+b
 end
 
+##
 dim pfunc as tyfunc = add
+dim pfunc2 as tyfunc = add
 pfunc(1,2)
+
+dim pclosure as closure1 = add
+pclosure = add
+pclosure = pfunc
+
+pclosure = pfunc2
+
+pclosure(1,2)
+##
+
+closure pstradd(other as string) as string
+
+dim stradd as pstradd= "hello".__add__
+
+stradd("hi")

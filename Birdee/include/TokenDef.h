@@ -14,6 +14,7 @@ namespace Birdee
 		tok_import,
 		tok_package,
 		tok_functype,
+		tok_closure,
 
 		// primary
 		tok_identifier,
