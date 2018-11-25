@@ -287,13 +287,15 @@ namespace Birdee {
 			StatementAST::print(level); std::cout << "Type: "<< resolved_type.GetString()<<" ";
 		}
 	};
-	class BD_CORE_API AnnotationStatementAST : public StatementAST {
+	class BD_CORE_API AnnotationStatementAST : public ExprAST {
 	public:
 		std::vector<std::string> anno;
 		unique_ptr< StatementAST> impl;
-		AnnotationStatementAST(vector<string>&& anno, unique_ptr< StatementAST>&& impl)
-			:anno(std::move(anno)), impl(std::move(impl)) {}
+		bool is_expr;
+		AnnotationStatementAST(vector<string>&& anno, unique_ptr< StatementAST>&& impl);
 		virtual Value* Generate();
+		llvm::Value* GetLValueNoCheckExpr(bool checkHas);
+		virtual llvm::Value* GetLValue(bool checkHas);
 		virtual void Phase1();
 		unique_ptr<StatementAST> Copy();
 	};
@@ -989,6 +991,7 @@ namespace Birdee {
 		bool capture_this = false;
 		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
 		FunctionAST* parent = nullptr;
+		bool capture_on_stack = false;
 
 		llvm::Value* exported_capture_pointer;
 		llvm::Value* imported_capture_pointer;

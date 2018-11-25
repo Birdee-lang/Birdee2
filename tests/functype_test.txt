@@ -1,4 +1,4 @@
-
+##
 import test_package.b.functype_test_lib:*
 
 #pfunc(3,4)
@@ -17,11 +17,11 @@ end
 
 caller(function (a as int, b as int) as int => a*b ,  23)
 
-
+##
 
 closure consumer () 
 
-
+##
 function aaa () as consumer
 	dim a=1,b=2
 	dim fun as consumer = function() => println("hello")
@@ -50,14 +50,14 @@ a()
 dim b as clsa = new clsa
 b.aaa()
 
-
+##
 
 function nested(d as int) as consumer
 	dim a=1,b=2
-	dim fun as consumer = function my_function()
+	dim fun as consumer = @stack_capture function my_function()
 		dim f = function ()
 			dim str as string
-			dim f2 = function(c as int) as string => int2str(a+b+c+d)
+			dim f2 = @stack_capture function(c as int) as string => int2str(a+b+c+d)
 			str=f2(3)
 			println(str)
 		end

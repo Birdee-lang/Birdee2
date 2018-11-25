@@ -138,6 +138,32 @@ std::unique_ptr<IfBlockAST> ParseIf();
 PrototypeAST *current_func_proto = nullptr;
 int unnamed_func_cnt = 0;
 
+static unordered_map<string, std::function<void(StatementAST*)>> interal_annontation_map = {
+	{"stack_capture", [](StatementAST* stmt) {
+		CompileAssert(isa<FunctionAST>(stmt),"The stack_capture can only be applied on functions");
+		FunctionAST* func = static_cast<FunctionAST*>(stmt);
+		func->capture_on_stack = true;
+	}},
+};
+
+//for all annotation, find interal annotation and apply them
+static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt)
+{
+	for (auto itr = anno.begin(); itr != anno.end();)
+	{
+		auto mapitr = interal_annontation_map.find(*itr);
+		if (mapitr != interal_annontation_map.end())
+		{
+			mapitr->second(stmt); //call the annotation function
+			itr = anno.erase(itr);
+		}
+		else
+		{
+			itr++;
+		}
+	}
+}
+
 void ClearParserState()
 {
 	current_func_proto = nullptr;
@@ -426,6 +452,22 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
 {
 	std::unique_ptr<ExprAST> firstexpr;
+
+	vector<string> anno;
+	while (tokenizer.CurTok == tok_annotation)
+	{
+		anno.push_back(tokenizer.IdentifierStr);
+		tokenizer.GetNextToken();
+	}
+	auto push_expr = [&anno, &firstexpr](std::unique_ptr<ExprAST>&& st)
+	{
+		ApplyInternalAnnotations(anno, st.get());
+		if (anno.size())
+			firstexpr = make_unique<AnnotationStatementAST>(std::move(anno), std::move(st));
+		else
+			firstexpr = std::move(st);
+	};
+
 	switch (tokenizer.CurTok)
 	{
 	case tok_address_of:
@@ -437,63 +479,64 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
-		firstexpr = make_unique<AddressOfExprAST>(std::move(firstexpr),tok== tok_address_of, pos);
+		push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
 		break;
 	}
 	case tok_new:
 	{
-		firstexpr = ParseNew();
+		push_expr(ParseNew());
 		break;
 	}
 	case tok_true:
-		firstexpr = make_unique<BoolLiteralExprAST>(true);
+		push_expr(make_unique<BoolLiteralExprAST>(true));
 		tokenizer.GetNextToken();
 		break;
 	case tok_false:
-		firstexpr = make_unique<BoolLiteralExprAST>(false);
+		push_expr(make_unique<BoolLiteralExprAST>(false));
 		tokenizer.GetNextToken();
 		break;
 	case tok_this:
-		firstexpr = make_unique<ThisExprAST>();
+		push_expr(make_unique<ThisExprAST>());
 		tokenizer.GetNextToken();
 		break;
 	case tok_null:
-		firstexpr = make_unique<NullExprAST>();
+		push_expr(make_unique<NullExprAST>());
 		tokenizer.GetNextToken();
 		break;
 	case tok_identifier:
-		firstexpr = make_unique<IdentifierExprAST>(tokenizer.IdentifierStr);
+		push_expr(make_unique<IdentifierExprAST>(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		break;
 	case tok_number:
-		firstexpr = make_unique<NumberExprAST>(tokenizer.NumVal);
+		push_expr(make_unique<NumberExprAST>(tokenizer.NumVal));
 		tokenizer.GetNextToken();
 		break;
 	case tok_string_literal:
-		firstexpr = make_unique<StringLiteralAST>(tokenizer.IdentifierStr);
+		push_expr(make_unique<StringLiteralAST>(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		break;
 	case tok_left_bracket:
 		tokenizer.GetNextToken();
-		firstexpr = ParseExpressionUnknown();
+		push_expr(ParseExpressionUnknown());
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		break;
 	case tok_func:
 		tokenizer.GetNextToken(); //eat function
-		firstexpr = ParseFunction(nullptr);
-		//CompileAssert(tok_newline == tokenizer.CurTok, "Expected newline after function definition");
+		push_expr(ParseFunction(nullptr));
 		return firstexpr; //don't eat the newline token!
 		break;
 	case tok_eof:
+		CompileAssert(anno.empty(), "Annotations cannot be put on the end of the file");
 		return nullptr;
 		break;
 	case tok_script:
-		firstexpr = make_unique<ScriptAST>(tokenizer.IdentifierStr);
+		push_expr(make_unique<ScriptAST>(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		break;
 	default:
 		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
 		{
+			CompileAssert(anno.empty(), "Annotations cannot be applied on types");
 			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok,tokenizer.GetSourcePos());
 			tokenizer.GetNextToken();
 		}
@@ -632,8 +675,6 @@ BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 		CompileExpectNotNull(ParsePrimaryExpression(), "Expected an expression"));
 }
 
-
-
 std::unique_ptr<ForBlockAST> ParseFor();
 std::unique_ptr<WhileBlockAST> ParseWhile();
 void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
@@ -652,6 +693,7 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 		}
 		auto push_expr = [&anno, &body](std::unique_ptr<StatementAST>&& st)
 		{
+			ApplyInternalAnnotations(anno, st.get());
 			if (anno.size())
 				body.body.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else
@@ -1494,6 +1536,7 @@ BD_CORE_API int ParseTopLevel()
 		}
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
+			ApplyInternalAnnotations(anno, st.get());
 			if (anno.size())
 				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else
@@ -1512,7 +1555,7 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after variable definition");
 			break;
 		case tok_eof:
-			CompileAssert(anno.size() == 0, "Annotations cannot be put on the end of the file");
+			CompileAssert(anno.empty(), "Annotations cannot be put on the end of the file");
 			return 0;
 			break;
 		case tok_for:
@@ -1590,4 +1633,10 @@ BD_CORE_API int ParseTopLevel()
 	}
 
 	return 0;
+}
+
+Birdee::AnnotationStatementAST::AnnotationStatementAST(vector<string>&& anno, unique_ptr<StatementAST>&& impl)
+	:anno(std::move(anno)), impl(std::move(impl))
+{
+	is_expr = instance_of<ExprAST>(impl.get());
 }

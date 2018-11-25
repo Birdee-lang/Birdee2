@@ -1019,10 +1019,17 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				captype.push_back(type);
 			}
 			exported_capture_type = StructType::create(context, captype, (llvm_func->getName() + "..context").str());
-			size_t sz = module->getDataLayout().getTypeAllocSize(exported_capture_type);
-			exported_capture_pointer = builder.CreatePointerCast(
-				builder.CreateCall(GetMallocObj(), { builder.getInt32(sz),Constant::getNullValue(builder.getInt8PtrTy()) }),
-				exported_capture_type->getPointerTo(), ".export_capture_pointer");
+			if (capture_on_stack)
+			{
+				exported_capture_pointer = builder.CreateAlloca(exported_capture_type, nullptr, ".export_capture_pointer");
+			}
+			else
+			{
+				size_t sz = module->getDataLayout().getTypeAllocSize(exported_capture_type);
+				exported_capture_pointer = builder.CreatePointerCast(
+					builder.CreateCall(GetMallocObj(), { builder.getInt32(sz),Constant::getNullValue(builder.getInt8PtrTy()) }),
+					exported_capture_type->getPointerTo(), ".export_capture_pointer");
+			}
 			if (capture_this)
 			{
 				auto target = builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) });
@@ -1682,6 +1689,12 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		return BinaryGenerateFloat(Op, LHS->Generate(), RHS->Generate());
 	}
 	return nullptr;
+}
+
+llvm::Value* Birdee::AnnotationStatementAST::GetLValueNoCheckExpr(bool checkHas)
+{
+	assert(is_expr);
+	return static_cast<ExprAST*>(impl.get())->GetLValue(checkHas);
 }
 
 Value * Birdee::AnnotationStatementAST::Generate()

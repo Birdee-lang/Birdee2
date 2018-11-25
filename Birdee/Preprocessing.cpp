@@ -1092,9 +1092,20 @@ namespace Birdee
 		Birdee_ScriptAST_Phase1(this);
 	}
 
+	llvm::Value* Birdee::AnnotationStatementAST::GetLValue(bool checkHas)
+	{
+		CompileAssert(is_expr, Pos, "Cannot get LValue of an non-expression");
+		return GetLValueNoCheckExpr(checkHas);
+	}
+
+
 	void Birdee::AnnotationStatementAST::Phase1()
 	{
 		Birdee_AnnotationStatementAST_Phase1(this);
+		if (is_expr)
+		{
+			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
+		}
 	}
 
 	VariableSingleDefAST * FunctionAST::GetImportedCapturedVariable(const string & name)
