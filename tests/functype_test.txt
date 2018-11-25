@@ -21,7 +21,11 @@ caller(function (a as int, b as int) as int => a*b ,  23)
 
 closure consumer () 
 
-##
+{@
+def dummy(f):
+	print(f)
+@}
+
 function aaa () as consumer
 	dim a=1,b=2
 	dim fun as consumer = function() => println("hello")
@@ -48,9 +52,9 @@ end
 dim a = aaa()
 a()
 dim b as clsa = new clsa
-b.aaa()
+(@dummy (b.aaa) )()
 
-##
+
 
 function nested(d as int) as consumer
 	dim a=1,b=2

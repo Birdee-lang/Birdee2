@@ -182,28 +182,40 @@ DIBuilder* GetDBuilder()
 #define dinfo  (gen_context.dinfo)
 
 
+template<typename Derived>
+Derived* dyncast_resolve_anno(StatementAST* p)
+{
+	if (typeid(*p) == typeid(AnnotationStatementAST)) {
+		return dyncast_resolve_anno<Derived>(static_cast<AnnotationStatementAST*>(p)->impl.get());
+	}
+	if (typeid(*p) == typeid(Derived)) {
+		return static_cast<Derived*>(p);
+	}
+	return nullptr;
+}
+
 Value* GetObjOfMemberFunc(ExprAST* Callee)
 {
 	auto proto = Callee->resolved_type.proto_ast;
 	Value* obj = nullptr;
 	if (proto->cls)
 	{
-		auto pobj = dynamic_cast<MemberExprAST*>(Callee);
+		auto pobj = dyncast_resolve_anno<MemberExprAST>(Callee);
 		if (pobj)
 			obj = pobj->llvm_obj;
 		else
 		{
-			auto piden = dynamic_cast<IdentifierExprAST*>(Callee);
+			auto piden = dyncast_resolve_anno<IdentifierExprAST>(Callee);
 			if (piden)
 			{
-				assert(isa<MemberExprAST>(piden->impl.get()));
-				obj = dynamic_cast<MemberExprAST*>(piden->impl.get())->llvm_obj;
+				assert(dyncast_resolve_anno<MemberExprAST>(piden->impl.get()));
+				obj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get())->llvm_obj;
 			}
 			else
 			{
-				auto pidx = dynamic_cast<IndexExprAST*>(Callee);
+				auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee);
 				assert(pidx);
-				pobj = dynamic_cast<MemberExprAST*>(pidx->instance->expr.get());
+				pobj = dyncast_resolve_anno<MemberExprAST>(pidx->instance->expr.get());
 				assert(pobj);
 				obj = pobj->llvm_obj;
 			}
@@ -623,7 +635,7 @@ void Birdee::CompileUnit::Generate()
 		{
 			stmt->Generate();
 		}
-		if (!instance_of<ReturnAST>(toplevel.back().get()))
+		if (!dyncast_resolve_anno<ReturnAST>(toplevel.back().get()))
 		{
 			dinfo.emitLocation(toplevel.back().get());
 			builder.CreateRetVoid();
@@ -920,7 +932,7 @@ bool Birdee::ASTBasicBlock::Generate()
 	{
 		stmt->Generate();
 	}
-	if (!body.empty() && instance_of<ReturnAST>(body.back().get()))
+	if (!body.empty() && dyncast_resolve_anno<ReturnAST>(body.back().get()))
 	{
 		return true;
 	}

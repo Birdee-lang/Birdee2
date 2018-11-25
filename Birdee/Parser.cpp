@@ -1638,5 +1638,5 @@ BD_CORE_API int ParseTopLevel()
 Birdee::AnnotationStatementAST::AnnotationStatementAST(vector<string>&& anno, unique_ptr<StatementAST>&& impl)
 	:anno(std::move(anno)), impl(std::move(impl))
 {
-	is_expr = instance_of<ExprAST>(impl.get());
+	is_expr = instance_of<ExprAST>(this->impl.get());
 }

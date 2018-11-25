@@ -591,19 +591,31 @@ do\
 	}\
 }while(0)\
 
+template<typename Derived>
+Derived* dyncast_resolve_anno(StatementAST* p)
+{
+	if (typeid(*p) == typeid(AnnotationStatementAST)) {
+		return dyncast_resolve_anno<Derived>( static_cast<AnnotationStatementAST*>(p)->impl.get() );
+	}
+	if (typeid(*p) == typeid(Derived)) {
+		return static_cast<Derived*>(p);
+	}
+	return nullptr;
+}
+
 static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
 {
 	FunctionAST* func = nullptr;
-	IdentifierExprAST*  iden = dynamic_cast<IdentifierExprAST*>(expr);
+	IdentifierExprAST*  iden = dyncast_resolve_anno<IdentifierExprAST>(expr);
 	if (iden)
 	{
-		auto resolvedfunc = dynamic_cast<ResolvedFuncExprAST*>(iden->impl.get());
+		auto resolvedfunc = dyncast_resolve_anno<ResolvedFuncExprAST>(iden->impl.get());
 		if(resolvedfunc)
 			func = resolvedfunc->def;
 	}
 	else
 	{
-		MemberExprAST*  mem = dynamic_cast<MemberExprAST*>(expr);
+		MemberExprAST*  mem = dyncast_resolve_anno<MemberExprAST>(expr);
 		if (mem)
 		{
 			if (mem->kind == MemberExprAST::member_function)
@@ -654,7 +666,7 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 
 void FixNull(ExprAST* v, ResolvedType& target)
 {
-	NullExprAST* expr = dynamic_cast<NullExprAST*>(v);
+	NullExprAST* expr = dyncast_resolve_anno<NullExprAST>(v);
 	assert(expr);
 	expr->resolved_type = target;
 }
@@ -766,7 +778,7 @@ namespace Birdee
 				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 			},
 				[&this_template_args](FunctionTemplateInstanceExprAST* ex) {
-				if (instance_of<IdentifierExprAST>(ex->expr.get()))
+				if (isa<IdentifierExprAST>(ex->expr.get()))
 				{
 					IdentifierExprAST* iden = (IdentifierExprAST*)ex->expr.get();
 					IdentifierType type(iden->Name);
@@ -774,18 +786,22 @@ namespace Birdee
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 				}
-				else if (instance_of<MemberExprAST>(ex->expr.get()))
+				else if (isa<MemberExprAST>(ex->expr.get()))
 				{
 					QualifiedIdentifierType type = QualifiedIdentifierType(((MemberExprAST*)ex->expr.get())->ToStringArray());
 					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>(std::move(ex->raw_template_args));
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 				}
+				else if (isa<AnnotationStatementAST>(ex->expr.get()))
+				{
+					throw CompileError(ex->expr->Pos.line, ex->expr->Pos.pos, "The template argument cannot be annotated");
+				}
 				else
 					assert(0 && "Not implemented");
 			},
 				[&this_template_args](IndexExprAST* ex) {
-				if (instance_of<IdentifierExprAST>(ex->Expr.get()))
+				if (isa<IdentifierExprAST>(ex->Expr.get()))
 				{
 					IdentifierType type(((IdentifierExprAST*)ex->Expr.get())->Name);
 					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>();
@@ -793,13 +809,17 @@ namespace Birdee
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
 				}
-				else if (instance_of<MemberExprAST>(ex->Expr.get()))
+				else if (isa<MemberExprAST>(ex->Expr.get()))
 				{
 					QualifiedIdentifierType type = QualifiedIdentifierType(((MemberExprAST*)ex->Expr.get())->ToStringArray());
 					type.template_args = make_unique<vector<unique_ptr<ExprAST>>>();
 					type.template_args->push_back(std::move(ex->Index));
 					Type& dummy = type;
 					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
+				else if (isa<AnnotationStatementAST>(ex->Expr.get()))
+				{
+					throw CompileError(ex->Expr->Pos.line, ex->Expr->Pos.pos, "The template argument cannot be annotated");
 				}
 				else
 					assert(0 && "Not implemented");
@@ -811,8 +831,8 @@ namespace Birdee
 				[&this_template_args, &template_arg](StringLiteralAST* ex) {
 				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
 			},
-				[]() {
-				throw CompileError("Invalid template argument expression type");
+				[&template_arg]() {
+				throw CompileError(template_arg->Pos.line, template_arg->Pos.pos,  "Invalid template argument expression type");
 			}
 			);
 		}
@@ -1147,7 +1167,7 @@ namespace Birdee
 				return true;
 			if (n2)
 				return n1->Val < n2->Val;
-			assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
+			throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
 		else if(s1)
 		{
@@ -1155,9 +1175,9 @@ namespace Birdee
 				return s1->Val < s2->Val;
 			if (n2)
 				return false; 
-			assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
+			throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
-		assert(0 && "The expression is neither NumberExprAST nor StringLiteralAST");
+		throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		return false;
 	}
 
@@ -1199,9 +1219,10 @@ namespace Birdee
 		ExprAST* cur = Obj.get();
 		for(;;)
 		{
-			if (!instance_of<MemberExprAST>(cur))
+			if (!isa<MemberExprAST>(cur))
 			{
-				CompileAssert(instance_of<IdentifierExprAST>(cur), cur->Pos, "Expected an identifier for template");
+				CompileAssert(!isa<AnnotationStatementAST>(cur), cur->Pos, "Template arugments cannot be annotated");
+				CompileAssert(isa<IdentifierExprAST>(cur), cur->Pos, "Expected an identifier for template");
 				reverse.push_back(&((IdentifierExprAST*)cur)->Name);
 				break;
 			}
@@ -1244,7 +1265,7 @@ namespace Birdee
 				else
 				{
 					NumberExprAST* number = dynamic_cast<NumberExprAST*>(arg.expr.get());
-					assert(number && "Template arg should be string or number constant");
+					CompileAssert(number , arg.expr->Pos, "Template arg should be string or number constant");
 					number->ToString(buf);
 					buf << suffix;
 				}
@@ -1812,11 +1833,11 @@ namespace Birdee
 		RHS->Phase1();
 		if (Op == tok_assign)
 		{
-			if (IdentifierExprAST* idexpr = dynamic_cast<IdentifierExprAST*>(LHS.get()))
+			if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
 				CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (MemberExprAST* memexpr = dynamic_cast<MemberExprAST*>(LHS.get()))
+			else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
 				CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (instance_of<IndexExprAST>(LHS.get()))
+			else if (dyncast_resolve_anno<IndexExprAST>(LHS.get()))
 			{}
 			else
 				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
@@ -1913,7 +1934,7 @@ namespace Birdee
 		init->Phase1();
 		if (!isdim)
 		{
-			auto bin = dynamic_cast<BinaryExprAST*>(init.get());
+			auto bin = dyncast_resolve_anno<BinaryExprAST>(init.get());
 			if (bin)
 			{
 				CompileAssert(bin->Op == tok_assign, Pos, "Expected an assignment expression after for");
