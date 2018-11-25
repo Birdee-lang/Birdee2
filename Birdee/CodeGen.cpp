@@ -388,7 +388,20 @@ void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int 
 	if (!llvm_value)
 	{
 		DIType* ty;
-		llvm_value = builder.CreateAlloca(helper.GetType(resolved_type, ty), nullptr, name);
+		auto t = helper.GetType(resolved_type, ty);
+		assert(capture_import_type == CAPTURE_NONE);
+		if (capture_export_type == CAPTURE_VAL)
+		{
+			assert(gen_context.cur_func && gen_context.cur_func->exported_capture_pointer);
+			llvm_value = builder.CreateGEP(gen_context.cur_func->exported_capture_pointer,
+				{ builder.getInt32(0),builder.getInt32(capture_export_idx + (gen_context.cur_func->capture_this ? 1 : 0)) }, name);
+		}
+		else
+		{
+			assert(capture_export_type == CAPTURE_NONE);
+			llvm_value = builder.CreateAlloca(t, nullptr, name);
+		}
+
 
 		// Create a debug descriptor for the variable.
 		DILocalVariable *D = DBuilder->createParameterVariable(
@@ -784,6 +797,22 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		prefix = cu.symbol_prefix;
 	else
 		prefix = cu.imported_module_names[Proto->prefix_idx]+'.';
+	if (parent)
+	{
+		auto f = parent;
+		vector<string*> names;
+		while (f)
+		{
+			names.push_back(&f->Proto->Name);
+			f = f->parent;
+		}
+		for (auto itr = names.rbegin(); itr != names.rend(); itr++)
+		{
+			prefix += **itr;
+			prefix += '.';
+		}
+
+	}
 	GlobalValue::LinkageTypes linkage;
 	if (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance)
 		linkage = Function::LinkOnceODRLinkage;
@@ -956,11 +985,13 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			for (auto& v : imported_captured_var)
 			{
 				auto var = v.second.get();
-				assert(var->capture_import_type == VariableSingleDefAST::CAPTURE_VAL);
 				DIType* ty;
 				helper.GetType(var->resolved_type, ty);
-				var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }, var->name);
-
+				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
+				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
+					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }, var->name);
+				else
+					var->llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }), var->name);
 				// Create a debug descriptor for the variable.
 				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
 					true);
@@ -982,16 +1013,33 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			}
 			for (auto v : captured_var)
 			{
-				captype.push_back(helper.GetType(v->resolved_type));
+				auto type = helper.GetType(v->resolved_type);
+				if (v->capture_export_type == VariableSingleDefAST::CAPTURE_REF)
+					type = type->getPointerTo();
+				captype.push_back(type);
 			}
-			exported_capture_type = StructType::create(context, captype, (llvm_func->getName() + ".!context").str());
+			exported_capture_type = StructType::create(context, captype, (llvm_func->getName() + "..context").str());
 			size_t sz = module->getDataLayout().getTypeAllocSize(exported_capture_type);
 			exported_capture_pointer = builder.CreatePointerCast(
 				builder.CreateCall(GetMallocObj(), { builder.getInt32(sz),Constant::getNullValue(builder.getInt8PtrTy()) }),
-				exported_capture_type->getPointerTo(), "!export_capture_pointer");
+				exported_capture_type->getPointerTo(), ".export_capture_pointer");
 			if (capture_this)
 			{
-				builder.CreateStore(llvm_func->args().begin(), builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }));
+				auto target = builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) });
+				if(Proto->is_closure)
+					builder.CreateStore(captured_parent_this, target);
+				else
+					builder.CreateStore(llvm_func->args().begin(), target);
+			}
+			for (auto v : captured_var)
+			{
+				if (v->capture_export_type == VariableSingleDefAST::CAPTURE_REF)
+				{
+					//export the variables that are captured by reference from imported context
+					assert(v->capture_import_type != VariableSingleDefAST::CAPTURE_NONE && v->llvm_value);
+					builder.CreateStore(v->llvm_value,
+						builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32((capture_this ? 1 : 0) + v->capture_export_idx) }));
+				}
 			}
 			//the exported variables will be generated in variable definition statements
 		}
@@ -1673,7 +1721,7 @@ Value * Birdee::FunctionToClosureAST::Generate()
 			{
 				//if the value is a function definition, we can better optimize by creating a
 				//warpper function specially for the function
-				outfunc = Function::Create(proto->GenerateFunctionType(), GlobalValue::InternalLinkage, target->getName() + ".!wrapper", module);
+				outfunc = Function::Create(proto->GenerateFunctionType(), GlobalValue::InternalLinkage, target->getName() + "..wrapper", module);
 				outfunc_value = outfunc;
 				auto dbginfo = PrepareFunctionDebugInfo(outfunc, static_cast<DISubroutineType*>(proto->GenerateDebugType()), func->Pos);
 

@@ -859,7 +859,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	{
 		//if it is an unnamed function
 		std::stringstream buf;
-		buf << "!unnamed_function" << unnamed_func_cnt;
+		buf << ".unnamed_function" << unnamed_func_cnt;
 		unnamed_func_cnt++;
 		name = buf.str();
 	}

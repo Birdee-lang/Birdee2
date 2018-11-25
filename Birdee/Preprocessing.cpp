@@ -357,34 +357,40 @@ public:
 		if (already_imported)
 			return make_unique<LocalVarExprAST>(already_imported, pos);
 
-		auto sz = function_scopes.end() - 2;
 		//iterate from the second last function scope
-		/*for (auto itr = sz; itr !=function_scopes.begin() - 1; itr--)
+		for (auto itr = function_scopes.rbegin() + 1; itr !=function_scopes.rend(); itr++)
 		{
 			auto orig_var = FindLocalVar(name, itr->scope);
-			if (orig_var)
+			if (!orig_var)
 			{
-				for (auto itr2 = itr; itr2!=function_scopes.end(); itr2++)
-				{
-					itr2->func->CaptureVariable(orig_var);
-				}
-				return make_unique<LocalVarExprAST>(CaptureVariable(orig_var), pos);
+				orig_var = itr->func->GetImportedCapturedVariable(name);
 			}
-		}*/
-		auto orig_var = FindLocalVar(name, sz->scope);
-		if (orig_var)
-		{
-			auto capture_idx = sz->func->CaptureVariable(orig_var);
-			unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(orig_var->Copy());
-			auto v = var.get();
-			var->capture_import_type = orig_var->capture_export_type;
-			var->capture_import_idx = orig_var->capture_export_idx;
-			var->capture_export_idx = VariableSingleDefAST::CAPTURE_NONE;
-			var->capture_export_idx = -1;
+			if (orig_var) //if variable is found
+			{
+				VariableSingleDefAST* v = orig_var;
+				//import the variable in a chain back to the current function
+				//(itr+1).base() converts itr from reverse iterator to normal iterator. They points to the same element
+				for (auto itr2 = (itr+1).base(); itr2!=function_scopes.end()-1; itr2++)
+				{
+					//"v" is defined in function "*itr2"
+					//first export v from *itr2
+					auto capture_idx = itr2->func->CaptureVariable(v);
+					unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(v->Copy());
+					
+					//then create a variable to import the variable
+					var->capture_import_type = v->capture_export_type;
+					var->capture_import_idx = v->capture_export_idx;
+					var->capture_export_idx = VariableSingleDefAST::CAPTURE_NONE;
+					var->capture_export_idx = -1;
 
-			function_scopes.back().func->imported_captured_var
-				.insert(std::make_pair(std::reference_wrapper<const string>(var->name), std::move(var)));
-			return make_unique<LocalVarExprAST>(v, pos);
+					//v is set to be the imported variable for the next iteration
+					v = var.get();
+					//in the child function, insert the imported variable
+					(itr2 + 1)->func->imported_captured_var
+						.insert(std::make_pair(std::reference_wrapper<const string>(var->name), std::move(var)));
+				}
+				return make_unique<LocalVarExprAST>(v, pos);
+			}
 		}
 		return nullptr;
 	}
@@ -1105,8 +1111,10 @@ namespace Birdee
 		auto itr=std::find(captured_var.begin(),captured_var.end(),var);
 		if (itr != captured_var.end())
 			return itr - captured_var.begin();
-		assert(var->capture_export_type == VariableSingleDefAST::CAPTURE_NONE);
-		var->capture_export_type = VariableSingleDefAST::CAPTURE_VAL;
+		if (var->capture_import_type == VariableSingleDefAST::CAPTURE_NONE)
+			var->capture_export_type = VariableSingleDefAST::CAPTURE_VAL;
+		else // if CAPTURE_VAL or CAPTURE_REF
+			var->capture_export_type = VariableSingleDefAST::CAPTURE_REF;
 		captured_var.push_back(var);
 		var->capture_export_idx = captured_var.size() - 1;
 		return var->capture_export_idx;
@@ -1539,7 +1547,7 @@ namespace Birdee
 		if (proto->resolved_args.size() != Args.size())
 		{
 			std::stringstream buf;
-			buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << "are given";
+			buf << "The function requires " << proto->resolved_args.size() << " Arguments, but " << Args.size() << " are given";
 			CompileAssert(false, Pos, buf.str());
 		}
 

@@ -1,15 +1,15 @@
-##
+
 import test_package.b.functype_test_lib:*
 
-pfunc(3,4)
+#pfunc(3,4)
 
-dim a as tyfunc=function (a as int, b as int) as int => a-b
+dim fa as tyfunc=function (a as int, b as int) as int => a-b
 
-a(4,5)
+fa(4,5)
 
-dim b as test_package.b.functype_test_lib.tyfunc=a
+dim fb as test_package.b.functype_test_lib.tyfunc=fa
 
-b(3,2)
+fb(3,2)
 
 function caller(fun as tyfunc, a as int)
 	fun(a,3)
@@ -17,15 +17,17 @@ end
 
 caller(function (a as int, b as int) as int => a*b ,  23)
 
-##
+
 
 closure consumer () 
+
 
 function aaa () as consumer
 	dim a=1,b=2
 	dim fun as consumer = function() => println("hello")
 	fun()
-	
+	function my_function()
+	end
 	return function () => println(int2str(a+b))
 end
 
@@ -47,3 +49,21 @@ dim a = aaa()
 a()
 dim b as clsa = new clsa
 b.aaa()
+
+
+
+function nested(d as int) as consumer
+	dim a=1,b=2
+	dim fun as consumer = function my_function()
+		dim f = function ()
+			dim str as string
+			dim f2 = function(c as int) as string => int2str(a+b+c+d)
+			str=f2(3)
+			println(str)
+		end
+		f()
+	end
+	return fun
+end
+
+nested(3)()
