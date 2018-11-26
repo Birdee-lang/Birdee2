@@ -6,10 +6,76 @@ Birdee Language compiler and runtime. Birdee language aims to help construct rob
  * easy-to-use meta-programming (templates + compile-time scripts = ?)
  * memory management (GC, ...)
 
+## Script-based meta-programming
+
+Script-based meta-programming is the most important feature of Birdee. It enables developers to use Python scripts to do the job of the "macro" system and template-based meta-programming of C++, which is powerful but hard to learn and understand. Birdee allows Python scripts to be embedded in Birdee code and the script will be run at compile time. The embeded script is surrounded by a pair of {@ ... @} .The script can:
+ 
+ * Generate Birdee code - Like what "macro" did in C++:
+```vb
+{@
+py_var = 0
+def counter():
+  global py_var
+  py_var += 1
+  return str(py_var)
+@}
+dim variable1 as int = {@ set_ast(expr(counter())) @}
+dim variable2 as int = {@ set_ast(expr(counter())) @}
+```
+The above Birdee code defines a compile-time Python function which runs as a compile-time counter. The script "set_ast(expr(counter()))" will call the python function to get strings "1", "2", "3", ..., and it then generate a Birdee expression with the string. 
+
+ * Compile-time meta-programming - Get types/members/names/... of variables/classes/... to automatically generate different code
+```vb
+function hash[T](v as T) as uint
+	return {@
+ty=resolve_type("T")
+if ty.is_integer():
+	set_ast(expr("int_hash(v)"))
+elif ty.index_level==0 and ty.base==BasicType.CLASS:
+	set_ast(expr("v.__hash__()"))
+else:
+	raise Exception(f"Cannot hash the type: {ty}")
+@}
+end
+```
+The above "hash" template function generates hash functions for different types.
+
+ * Annotate a part of code - Just like Java's annotation, but only better. Birdee's annotation scripts can change the existing code
+```vb
+{@
+def change_str(stmt):
+    if isinstance(stmt, StringLiteralAST):
+      stmt.value = stmt.value + "_test"
+    else
+      stmt.run(change_str)
+@}
+
+@change_str
+function print_hello()
+  println("hello")
+end
+```
+The annotation "change\_str" will change the string "hello" to "hello_test".
+
+Another interesting feature of Birdee is that the compiler itself can be invoked as a library of Python. You can run Python code to generate Birdee code:
+
+```python
+from birdeec import *
+top_level('''
+dim a =true
+dim b =1
+while a
+	a= b%2==0
+end while
+	''')
+process_top_level()
+clear_compile_unit()
+```
+
 ## (Planned) Feature list
 
 ### Language features
-- [ ] garbage collection
+- [x] garbage collection
 - [x] templates 
 - [x] script-based meta-programming
 - [x] classes
@@ -17,7 +83,7 @@ Birdee Language compiler and runtime. Birdee language aims to help construct rob
 - [x] array
 - [ ] array boundary checking
 - [ ] array initializer
-- [ ] lambda expressions, functor
+- [x] lambda expressions, functor
 - [ ] exceptions
 - [ ] threading
 - [x] operator overloading
