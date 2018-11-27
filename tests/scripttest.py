@@ -118,3 +118,21 @@ function () => func1(1,2)
 process_top_level()
 generate()
 clear_compile_unit()
+
+#test for closure assignment
+try:
+	top_level(
+'''
+closure cii_i(a as int,b as int) as int
+functype fii_i(a as int,b as int) as int
+
+dim a as cii_i, b as fii_i
+b=a
+'''
+)
+	process_top_level()
+	assert(False)
+except CompileException:
+	e=get_compile_error()
+	print(e.linenumber,e.pos,e.msg)
+clear_compile_unit()
