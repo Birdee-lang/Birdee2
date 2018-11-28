@@ -158,6 +158,19 @@ namespace Birdee {
 		}
 	};
 
+	class PrototypeAST;
+	class BD_CORE_API PrototypeType :public Type {
+
+	public:
+		virtual unique_ptr<Type> Copy();
+		unique_ptr<PrototypeAST> proto;
+		PrototypeType(unique_ptr<PrototypeAST> proto) :Type(tok_func), proto(std::move(proto)) {}
+		void print(int level)
+		{
+			Type::print(level);
+			std::cout << " PrototypeAST\n";
+		}
+	};
 
 	class BD_CORE_API IdentifierType :public GeneralIdentifierType {
 		

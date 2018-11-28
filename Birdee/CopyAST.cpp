@@ -99,6 +99,14 @@ namespace Birdee
 		return std::move(v);
 	}
 
+	unique_ptr<Type> Birdee::PrototypeType::Copy()
+	{
+		assert(proto);
+		auto v = make_unique<PrototypeType>(proto->Copy());
+		v->index_level = index_level;
+		return v;
+	}
+
 	unique_ptr<Type> Birdee::ScriptType::Copy()
 	{
 		string str = script;

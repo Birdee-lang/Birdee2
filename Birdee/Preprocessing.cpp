@@ -867,6 +867,15 @@ namespace Birdee
 			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type),pos);
 			return;
 		}
+		if (type.type == tok_func)
+		{
+			auto t = static_cast<PrototypeType*>(&type);
+			t->proto->Phase1(false);
+			this->type = tok_func;
+			this->index_level = type.index_level;
+			this->proto_ast = t->proto.get();
+			return;
+		}
 
 		if (type.type == tok_identifier)
 		{
