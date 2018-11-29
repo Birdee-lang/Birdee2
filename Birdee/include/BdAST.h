@@ -740,8 +740,8 @@ namespace Birdee {
 
 
 	class BD_CORE_API VariableSingleDefAST : public VariableDefAST {
-		std::unique_ptr<Type> type;
 	public:
+		std::unique_ptr<Type> type;
 		std::unique_ptr<ExprAST> val;
 		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
@@ -831,7 +831,6 @@ namespace Birdee {
 	class BD_CORE_API PrototypeAST {
 	protected:
 		
-		std::unique_ptr<VariableDefAST> Args;
 		std::unique_ptr<Type> RetType;
 	public:
 		SourcePos pos;
@@ -843,6 +842,7 @@ namespace Birdee {
 		int prefix_idx=-1;
 		friend BD_CORE_API bool operator == (const PrototypeAST&, const PrototypeAST&);
 		ResolvedType resolved_type;
+		std::unique_ptr<VariableDefAST> Args;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
 		llvm::FunctionType* GenerateFunctionType();
 		llvm::DIType* GenerateDebugType();
