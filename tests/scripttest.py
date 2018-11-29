@@ -80,7 +80,7 @@ class AAA
 
 end
 
-dim a = new AAA2
+dim a = new AAA
 '''
 	)
 	process_top_level()
