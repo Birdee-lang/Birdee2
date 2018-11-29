@@ -5,6 +5,7 @@
 #include "CastAST.h"
 #include <sstream>
 #include "TemplateUtil.h"
+#include <algorithm>
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
