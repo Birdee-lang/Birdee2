@@ -138,6 +138,32 @@ std::unique_ptr<IfBlockAST> ParseIf();
 PrototypeAST *current_func_proto = nullptr;
 int unnamed_func_cnt = 0;
 
+static unordered_map<string, std::function<void(StatementAST*)>> interal_annontation_map = {
+	{"stack_capture", [](StatementAST* stmt) {
+		CompileAssert(isa<FunctionAST>(stmt),"The stack_capture can only be applied on functions");
+		FunctionAST* func = static_cast<FunctionAST*>(stmt);
+		func->capture_on_stack = true;
+	}},
+};
+
+//for all annotation, find interal annotation and apply them
+static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt)
+{
+	for (auto itr = anno.begin(); itr != anno.end();)
+	{
+		auto mapitr = interal_annontation_map.find(*itr);
+		if (mapitr != interal_annontation_map.end())
+		{
+			mapitr->second(stmt); //call the annotation function
+			itr = anno.erase(itr);
+		}
+		else
+		{
+			itr++;
+		}
+	}
+}
+
 void ClearParserState()
 {
 	current_func_proto = nullptr;
@@ -206,9 +232,21 @@ std::unique_ptr<Type> ParseBasicType()
 	return std::move(type);
 }
 
+std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name,
+	bool is_closure = false, bool needs_newline = true, bool needs_name = true);
+
 BD_CORE_API std::unique_ptr<Type> ParseTypeName()
 {
-	std::unique_ptr<Type> type = ParseBasicType();
+	std::unique_ptr<Type> type;
+	if (tokenizer.CurTok == tok_functype || tokenizer.CurTok == tok_closure)
+	{
+		bool is_closure = tokenizer.CurTok == tok_closure;
+		tokenizer.GetNextToken();
+		type = make_unique<PrototypeType> ( ParseFunctionPrototype(/*cls*/nullptr, /*alias*/false,
+			/*out name*/nullptr, /*is_closure*/is_closure, /*newline*/false, /*needs name*/ false) );
+	}
+	else
+		type = ParseBasicType();
 	while (tokenizer.CurTok == tok_left_index)
 	{
 		type->index_level++;
@@ -426,6 +464,22 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
 {
 	std::unique_ptr<ExprAST> firstexpr;
+
+	vector<string> anno;
+	while (tokenizer.CurTok == tok_annotation)
+	{
+		anno.push_back(tokenizer.IdentifierStr);
+		tokenizer.GetNextToken();
+	}
+	auto push_expr = [&anno, &firstexpr](std::unique_ptr<ExprAST>&& st)
+	{
+		ApplyInternalAnnotations(anno, st.get());
+		if (anno.size())
+			firstexpr = make_unique<AnnotationStatementAST>(std::move(anno), std::move(st));
+		else
+			firstexpr = std::move(st);
+	};
+
 	switch (tokenizer.CurTok)
 	{
 	case tok_address_of:
@@ -437,63 +491,64 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
-		firstexpr = make_unique<AddressOfExprAST>(std::move(firstexpr),tok== tok_address_of, pos);
+		push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
 		break;
 	}
 	case tok_new:
 	{
-		firstexpr = ParseNew();
+		push_expr(ParseNew());
 		break;
 	}
 	case tok_true:
-		firstexpr = make_unique<BoolLiteralExprAST>(true);
+		push_expr(make_unique<BoolLiteralExprAST>(true));
 		tokenizer.GetNextToken();
 		break;
 	case tok_false:
-		firstexpr = make_unique<BoolLiteralExprAST>(false);
+		push_expr(make_unique<BoolLiteralExprAST>(false));
 		tokenizer.GetNextToken();
 		break;
 	case tok_this:
-		firstexpr = make_unique<ThisExprAST>();
+		push_expr(make_unique<ThisExprAST>());
 		tokenizer.GetNextToken();
 		break;
 	case tok_null:
-		firstexpr = make_unique<NullExprAST>();
+		push_expr(make_unique<NullExprAST>());
 		tokenizer.GetNextToken();
 		break;
 	case tok_identifier:
-		firstexpr = make_unique<IdentifierExprAST>(tokenizer.IdentifierStr);
+		push_expr(make_unique<IdentifierExprAST>(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		break;
 	case tok_number:
-		firstexpr = make_unique<NumberExprAST>(tokenizer.NumVal);
+		push_expr(make_unique<NumberExprAST>(tokenizer.NumVal));
 		tokenizer.GetNextToken();
 		break;
 	case tok_string_literal:
-		firstexpr = make_unique<StringLiteralAST>(tokenizer.IdentifierStr);
+		push_expr(make_unique<StringLiteralAST>(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		break;
 	case tok_left_bracket:
 		tokenizer.GetNextToken();
-		firstexpr = ParseExpressionUnknown();
+		push_expr(ParseExpressionUnknown());
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		break;
 	case tok_func:
 		tokenizer.GetNextToken(); //eat function
-		firstexpr = ParseFunction(nullptr);
-		//CompileAssert(tok_newline == tokenizer.CurTok, "Expected newline after function definition");
+		push_expr(ParseFunction(nullptr));
 		return firstexpr; //don't eat the newline token!
 		break;
 	case tok_eof:
+		CompileAssert(anno.empty(), "Annotations cannot be put on the end of the file");
 		return nullptr;
 		break;
 	case tok_script:
-		firstexpr = make_unique<ScriptAST>(tokenizer.IdentifierStr);
+		push_expr(make_unique<ScriptAST>(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		break;
 	default:
 		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
 		{
+			CompileAssert(anno.empty(), "Annotations cannot be applied on types");
 			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok,tokenizer.GetSourcePos());
 			tokenizer.GetNextToken();
 		}
@@ -632,8 +687,6 @@ BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 		CompileExpectNotNull(ParsePrimaryExpression(), "Expected an expression"));
 }
 
-
-
 std::unique_ptr<ForBlockAST> ParseFor();
 std::unique_ptr<WhileBlockAST> ParseWhile();
 void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
@@ -652,6 +705,7 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 		}
 		auto push_expr = [&anno, &body](std::unique_ptr<StatementAST>&& st)
 		{
+			ApplyInternalAnnotations(anno, st.get());
 			if (anno.size())
 				body.body.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else
@@ -859,7 +913,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	{
 		//if it is an unnamed function
 		std::stringstream buf;
-		buf << "!unnamed_function" << unnamed_func_cnt;
+		buf << ".unnamed_function" << unnamed_func_cnt;
 		unnamed_func_cnt++;
 		name = buf.str();
 	}
@@ -890,7 +944,8 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		is_return_void = true;
 		rettype->type = tok_void;
 	}
-	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos());
+	auto funcproto = make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, tokenizer.GetSourcePos(),/*is_closure*/false);
+	auto old_current_func_proto = current_func_proto;
 	current_func_proto = funcproto.get();
 
 	ASTBasicBlock body;
@@ -913,7 +968,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		//parse function body
 		ParseBasicBlock(body, tok_func);
 	}
-	current_func_proto = nullptr;
+	current_func_proto = old_current_func_proto;
 	if (is_template)
 	{
 		if (!view_pos)
@@ -925,14 +980,19 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 			template_param->source.set(string("function ") + name + " [", view_pos, curlen - 1 - view_pos);
 		}
 	}
+
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 
-std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name)
+std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name , bool is_closure , bool needs_newline ,bool needs_name)
 {
 	auto pos = tokenizer.GetSourcePos();
-	std::string name = tokenizer.IdentifierStr;
-	CompileExpect(tok_identifier, "Expected an identifier");
+	std::string name;
+	if (needs_name)
+	{
+		 name = tokenizer.IdentifierStr;
+		CompileExpect(tok_identifier, "Expected an identifier");
+	}
 	string& link_name=*out_link_name;
 	if (tokenizer.CurTok == tok_alias)
 	{
@@ -950,10 +1010,11 @@ std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_a
 		args = ParseDim();
 	CompileExpect(tok_right_bracket, "Expected \')\'");
 	auto rettype = ParseType();
-	CompileExpect({ tok_newline, tok_eof }, "Expected a new line after function declaration");
+	if (needs_newline)
+		CompileExpect({ tok_newline, tok_eof }, "Expected a new line after function declaration");
 	if (rettype->type == tok_auto)
 		rettype->type = tok_void;
-	return make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, pos);
+	return make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, pos,is_closure);
 }
 
 std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
@@ -1492,6 +1553,7 @@ BD_CORE_API int ParseTopLevel()
 		}
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
+			ApplyInternalAnnotations(anno, st.get());
 			if (anno.size())
 				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else
@@ -1510,7 +1572,7 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after variable definition");
 			break;
 		case tok_eof:
-			CompileAssert(anno.size() == 0, "Annotations cannot be put on the end of the file");
+			CompileAssert(anno.empty(), "Annotations cannot be put on the end of the file");
 			return 0;
 			break;
 		case tok_for:
@@ -1536,10 +1598,12 @@ BD_CORE_API int ParseTopLevel()
 			break;
 		}
 		case tok_functype:
+		case tok_closure:
 		{
 			CompileAssert(anno.size() == 0, "No function type allowed after annotations");
+			bool is_closure = tokenizer.CurTok == tok_closure;
 			tokenizer.GetNextToken(); //eat function
-			auto funcast = ParseFunctionPrototype(nullptr, false, nullptr);
+			auto funcast = ParseFunctionPrototype(nullptr, false, nullptr, is_closure);
 			std::reference_wrapper<const string> funcname = funcast->GetName();
 			CompileCheckGlobalConflict(funcast->pos, funcname);
 			cu.functypemap.insert(std::make_pair(funcname, std::move(funcast)));
@@ -1586,4 +1650,10 @@ BD_CORE_API int ParseTopLevel()
 	}
 
 	return 0;
+}
+
+Birdee::AnnotationStatementAST::AnnotationStatementAST(vector<string>&& anno, unique_ptr<StatementAST>&& impl)
+	:anno(std::move(anno)), impl(std::move(impl))
+{
+	is_expr = instance_of<ExprAST>(this->impl.get());
 }

@@ -84,6 +84,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_static("new", [](vector<string>&& anno, UniquePtrStatementAST& impl) {
 			return new UniquePtrStatementAST(std::make_unique< AnnotationStatementAST>(std::move(anno), impl.move()));
 		})
+		.def_readwrite("is_expr", &AnnotationStatementAST::is_expr)
 		.def_readwrite("anno",&AnnotationStatementAST::anno)
 		.def_property("impl", [](AnnotationStatementAST& ths) {return GetRef(ths.impl); },
 			[](AnnotationStatementAST& ths, UniquePtrStatementAST& impl) {ths.impl = impl.move(); })
@@ -96,6 +97,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("name", &PrototypeAST::Name)
 		.def_readwrite("return_type", &PrototypeAST::resolved_type)
 		.def_property_readonly("args", [](const PrototypeAST& ths) {return GetRef(ths.resolved_args); })
+		.def_readwrite("is_closure", &PrototypeAST::is_closure)
 		.def_readwrite("cls", &PrototypeAST::cls);
 
 	py::class_ < TemplateParameter>(m, "TemplateParameter")
@@ -119,6 +121,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_property_readonly("proto", [](FunctionAST& ths) {
 			return std::reference_wrapper<PrototypeAST>(*ths.Proto.get());
 		})
+		.def_readwrite("capture_on_stack", &FunctionAST::capture_on_stack)
 		.def_readwrite("is_declare", &FunctionAST::isDeclare)
 		.def_readwrite("is_template_instance", &FunctionAST::isTemplateInstance)
 		.def_readwrite("is_imported", &FunctionAST::isImported)
@@ -126,7 +129,12 @@ void RegisiterClassForBinding2(py::module& m) {
 			for (auto& v : ths.Body.body)
 				func(GetRef(v));
 		})
+		.def_readwrite("capture_this",&FunctionAST::capture_this)
+		//fix-me: add capture interface
 		.def("is_template", &FunctionAST::isTemplate)
+		.def_property_readonly("parent", [](FunctionAST& ths) {
+			return std::reference_wrapper<FunctionAST>(*ths.parent);
+		})
 		.def_readwrite("link_name", &FunctionAST::link_name)
 		.def_property_readonly("template_param", [](FunctionAST& ths) {return GetRef(*(TemplateParameterFake<FunctionAST>*)ths.template_param.get()); });
 
@@ -288,11 +296,20 @@ void RegisiterClassForBinding2(py::module& m) {
 				func(GetRef(v));
 		});
 
-	py::class_< VariableSingleDefAST, StatementAST>(m, "VariableSingleDefAST")
+	auto cls_var_single = py::class_< VariableSingleDefAST, StatementAST>(m, "VariableSingleDefAST");
+	py::enum_ < VariableSingleDefAST::CaptureType>(templ_arg_cls, "CaptureType")
+		.value("CAPTURE_NONE", VariableSingleDefAST::CaptureType::CAPTURE_NONE)
+		.value("CAPTURE_REF", VariableSingleDefAST::CaptureType::CAPTURE_REF)
+		.value("CAPTURE_VAL", VariableSingleDefAST::CaptureType::CAPTURE_VAL);
+	cls_var_single
 		.def_readwrite("name", &VariableSingleDefAST::name)
 		.def_property("value", [](VariableSingleDefAST& ths) {return GetRef(ths.val); },
 			[](VariableSingleDefAST& ths, UniquePtrStatementAST& v) {ths.val = v.move_expr(); })
 		.def_readwrite("resolved_type", &VariableSingleDefAST::resolved_type)
+		.def_readwrite("capture_import_type",&VariableSingleDefAST::capture_import_type)
+		.def_readwrite("capture_import_idx", &VariableSingleDefAST::capture_import_idx)
+		.def_readwrite("capture_export_idx", &VariableSingleDefAST::capture_export_idx)
+		.def_readwrite("capture_export_type", &VariableSingleDefAST::capture_export_type)
 		.def("run", [](VariableSingleDefAST& ths, py::object& func) {if (ths.val)func(GetRef(ths.val)); });
 
 	py::class_< VariableMultiDefAST, StatementAST>(m, "VariableMultiDefAST")
@@ -309,6 +326,9 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("vardef", &LocalVarExprAST::def)
 		.def("run", [](LocalVarExprAST& ths, py::object& func) { });
 
-
+	py::class_< FunctionToClosureAST, ExprAST>(m, "FunctionToClosureAST")
+		.def_property("func", [](FunctionToClosureAST& ths) {return GetRef(ths.func); },
+			[](FunctionToClosureAST& ths, UniquePtrStatementAST& v) {ths.func = v.move_expr(); })
+		.def("run", [](FunctionToClosureAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.func)); });
 
 }

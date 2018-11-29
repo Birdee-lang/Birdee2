@@ -16,21 +16,6 @@ using json = nlohmann::basic_json<my_workaround_fifo_map>;
 using namespace Birdee;
 
 
-namespace std
-{
-	template <>
-	struct hash<Birdee::PrototypeAST*>
-	{
-		std::size_t operator()(Birdee::PrototypeAST* a) const
-		{
-			ResolvedType t;
-			t.type = tok_func;
-			t.proto_ast = a;
-			return hash<Birdee::ResolvedType>()(t);
-		}
-	};
-}
-
 //fix-me: export: remember to include imported classes that is referenced by exported var/class/func
 //fix-me: import: first check if the DEFINED class has already been imported in CompileModule::orphan_classes
 //fix-me: import: first check if the IMPORTED class has already been imported in imported_package.find(..).class[...], then no need to add to orphan
@@ -172,6 +157,7 @@ json BuildPrototypeJson(PrototypeAST* func)
 	{
 		args.push_back(BuildVariableJson(arg.get()));
 	}
+	ret["is_closure"] = func->is_closure;
 	ret["args"] = args;
 	ret["return"] = ConvertTypeToIndex(func->resolved_type);
 	return ret;
