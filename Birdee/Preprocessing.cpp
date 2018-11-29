@@ -122,7 +122,11 @@ class ScopeManager
 public:
 	typedef unordered_map<reference_wrapper<const string>, VariableSingleDefAST*> BasicBlock;
 	vector<ClassAST*> class_stack;
+	//the top-level scope
 	BasicBlock top_level_bb;
+	//the sub-scopes of top-level code, they are not global
+	vector<BasicBlock> top_level_scopes;
+
 	//the scopes for nested functions
 	//function_scopes.back() is the lowest level of nested function
 	struct FunctionScope
@@ -294,11 +298,21 @@ public:
 
 	void PushBasicBlock()
 	{
-		function_scopes.back().scope.push_back(BasicBlock());
+		if (function_scopes.empty())
+			//if we are in top-level code, push the scope in top-level's sub-scopes
+			top_level_scopes.push_back(BasicBlock());
+		else 
+			//if we are in a function, push the scope in a function's scopes
+			function_scopes.back().scope.push_back(BasicBlock());
 	}
 	void PopBasicBlock()
 	{
-		function_scopes.back().scope.pop_back();
+		if (function_scopes.empty())
+			//if we are in top-level code, pop the scope in top-level's sub-scopes
+			top_level_scopes.pop_back();
+		else
+			//if we are in a function, pop the scope in a function's scopes
+			function_scopes.back().scope.pop_back();
 	}
 	void PushClass(ClassAST* cls)
 	{
@@ -397,7 +411,7 @@ public:
 
 	unique_ptr<ResolvedIdentifierExprAST> ResolveNameNoThrow(const string& name,SourcePos pos,ImportTree*& out_import)
 	{
-		auto bb = function_scopes.empty() ? nullptr : FindLocalVar(name, function_scopes.back().scope);
+		auto bb = function_scopes.empty() ? FindLocalVar(name,top_level_scopes) : FindLocalVar(name, function_scopes.back().scope);
 		if (bb)
 		{
 			return make_unique<LocalVarExprAST>(bb,pos);
@@ -506,7 +520,13 @@ public:
 	BasicBlock& GetCurrentBasicBlock()
 	{
 		if (function_scopes.empty())
+		{
+			//if we are not in a function, first check if we are in a sub-scope of top-level
+			if (!top_level_scopes.empty())
+				return top_level_scopes.back();
+			//..., or return the top-level scope
 			return top_level_bb;
+		}
 		else
 			return function_scopes.back().scope.back();
 	}
@@ -677,8 +697,10 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	{
 		return std::move(val);
 	}
-	if (target.type == tok_func && val->resolved_type.type == tok_func)
+	if (target.type == tok_func && val->resolved_type.type == tok_func
+		&& target.proto_ast->is_closure && !val->resolved_type.proto_ast->is_closure)
 	{
+		//if both types are functions and target is closure & source value is not closure
 		if (target.proto_ast->IsSamePrototype(*val->resolved_type.proto_ast))
 		{
 			return make_unique<FunctionToClosureAST>(std::move(val));
@@ -845,6 +867,15 @@ namespace Birdee
 			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type),pos);
 			return;
 		}
+		if (type.type == tok_func)
+		{
+			auto t = static_cast<PrototypeType*>(&type);
+			t->proto->Phase1(false);
+			this->type = tok_func;
+			this->index_level = type.index_level;
+			this->proto_ast = t->proto.get();
+			return;
+		}
 
 		if (type.type == tok_identifier)
 		{
@@ -1004,7 +1035,31 @@ namespace Birdee
 		if (type == tok_null)
 			return "null_t";
 		if (type == tok_func)
-			return "func";
+		{
+			string ret;
+			if (proto_ast->is_closure)
+				ret = "closure";
+			else
+				ret = "functype";
+			ret += " (";
+			for (auto& arg : proto_ast->resolved_args)
+			{
+				ret += arg->resolved_type.GetString();
+				ret += ", ";
+			}
+			if (ret.back() != '(')
+			{
+				ret.pop_back();
+				ret.pop_back(); //delete the last ", "
+			}
+			ret += ')';
+			if (proto_ast->resolved_type.type != tok_void)
+			{
+				ret += " as ";
+				ret += proto_ast->resolved_type.GetString();
+			}
+			return ret;
+		}
 		if (type == tok_void)
 			return "void";
 
@@ -1489,7 +1544,7 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1InFunctionType(bool register_in_basic_block)
 	{
-		if (register_in_basic_block && !scope_mgr.function_scopes.empty())
+		if (register_in_basic_block)
 			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
 				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
@@ -1501,13 +1556,12 @@ namespace Birdee
 
 	void VariableSingleDefAST::Phase1()
 	{
-		if (!scope_mgr.function_scopes.empty())
-			CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
+		CompileAssert(scope_mgr.GetCurrentBasicBlock().find(name) == scope_mgr.GetCurrentBasicBlock().end(), Pos,
 				"Variable name " + name + " has already been used in " + scope_mgr.GetCurrentBasicBlock()[name]->Pos.ToString());
 		Phase0();
 		if (resolved_type.type == tok_auto)
 		{
-			CompileAssert(val.get(), Pos, "dim with no type must have an initializer");
+			CompileAssert(val.get(), Pos, "Variable definition without a type must have an initializer");
 			val->Phase1();
 			resolved_type = val->resolved_type;
 		}
@@ -1533,7 +1587,7 @@ namespace Birdee
 		cur_func = this;
 		Phase0();
 		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
-			Proto->cls = nullptr;   //"this" pointer in included in the captured lambda
+			Proto->cls = nullptr;   //"this" pointer is included in the captured lambda
 		Body.Phase1(Proto.get());
 
 		if (captured_parent_this) //if "this" is used, capture "this" in all parent functions
@@ -1624,7 +1678,7 @@ namespace Birdee
 					CompileAssert(tfunc->access == access_public, Pos, string("__init__ function of class ")
 						+ resolved_type.class_ast->GetUniqueName() + " is defined, but is not public");
 					CompileAssert(tfunc->decl->Proto.get()->resolved_args.size() == 0, Pos, string("__init__ function of class ")
-						+ resolved_type.class_ast->GetUniqueName() + " is defined, but has more than one arguments"); 
+						+ resolved_type.class_ast->GetUniqueName() + " is defined, but has more than zero arguments"); 
 					func = tfunc;
 				}
 			}

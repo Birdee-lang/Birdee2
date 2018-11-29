@@ -118,3 +118,37 @@ function () => func1(1,2)
 process_top_level()
 generate()
 clear_compile_unit()
+
+#test for closure assignment
+try:
+	top_level(
+'''
+closure cii_i(a as int,b as int) as int
+functype fii_i(a as int,b as int) as int
+
+dim a as cii_i, b as fii_i
+b=a
+'''
+)
+	process_top_level()
+	assert(False)
+except CompileException:
+	e=get_compile_error()
+	print(e.linenumber,e.pos,e.msg)
+clear_compile_unit()
+
+
+#test for PrototypeType parser
+top_level(
+'''
+function apply1(f as closure (a as int), b as int) =>  f(b)
+function apply2(f as closure (a as int) as int, b as int) as int =>  f(b)
+function apply3(f as functype (a as int), b as int) =>  f(b)
+
+apply1(function (a as int) => println(int2str(a)), 32 )
+apply2(function (a as int) as int => a+2, 32 )
+apply3(function (a as int) => println(int2str(a)), 32 )
+'''
+)
+process_top_level()
+clear_compile_unit()

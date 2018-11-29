@@ -232,9 +232,21 @@ std::unique_ptr<Type> ParseBasicType()
 	return std::move(type);
 }
 
+std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name,
+	bool is_closure = false, bool needs_newline = true, bool needs_name = true);
+
 BD_CORE_API std::unique_ptr<Type> ParseTypeName()
 {
-	std::unique_ptr<Type> type = ParseBasicType();
+	std::unique_ptr<Type> type;
+	if (tokenizer.CurTok == tok_functype || tokenizer.CurTok == tok_closure)
+	{
+		bool is_closure = tokenizer.CurTok == tok_closure;
+		tokenizer.GetNextToken();
+		type = make_unique<PrototypeType> ( ParseFunctionPrototype(/*cls*/nullptr, /*alias*/false,
+			/*out name*/nullptr, /*is_closure*/is_closure, /*newline*/false, /*needs name*/ false) );
+	}
+	else
+		type = ParseBasicType();
 	while (tokenizer.CurTok == tok_left_index)
 	{
 		type->index_level++;
@@ -972,11 +984,15 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
 }
 
-std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name , bool is_closure = false)
+std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name , bool is_closure , bool needs_newline ,bool needs_name)
 {
 	auto pos = tokenizer.GetSourcePos();
-	std::string name = tokenizer.IdentifierStr;
-	CompileExpect(tok_identifier, "Expected an identifier");
+	std::string name;
+	if (needs_name)
+	{
+		 name = tokenizer.IdentifierStr;
+		CompileExpect(tok_identifier, "Expected an identifier");
+	}
 	string& link_name=*out_link_name;
 	if (tokenizer.CurTok == tok_alias)
 	{
@@ -994,7 +1010,8 @@ std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_a
 		args = ParseDim();
 	CompileExpect(tok_right_bracket, "Expected \')\'");
 	auto rettype = ParseType();
-	CompileExpect({ tok_newline, tok_eof }, "Expected a new line after function declaration");
+	if (needs_newline)
+		CompileExpect({ tok_newline, tok_eof }, "Expected a new line after function declaration");
 	if (rettype->type == tok_auto)
 		rettype->type = tok_void;
 	return make_unique<PrototypeAST>(name, std::move(args), std::move(rettype), cls, pos,is_closure);
