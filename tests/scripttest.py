@@ -1,5 +1,54 @@
 from birdeec import *
 
+# tests for template parameters derivation
+top_level(
+'''
+	class testc
+		public function add[T](a as T) as T
+			return a+39
+		end
+		public function add2[T1, T2](a as T1, b as T2) as T1
+			if (b) then
+				return a+10
+			else 
+				return a+20
+			end
+		end
+	end
+	function add3[T](a as T) as T
+		return a + 49
+	end
+	function add4[T1, T2](a as T1, b as T2) as T1
+		if (b) then
+			return a+30
+		else 
+			return a+40
+		end
+	end
+
+	dim tc = new testc
+	tc.add[int](10)
+	tc.add(10)
+	tc.add[float](20.0)
+	tc.add(20.0)
+	tc.add2[int, boolean](20, true)
+	tc.add2[float, boolean](20.0, true)
+	tc.add2(30, true)
+	tc.add2(30.0, true)
+	add3[int](40)
+	add3(40)
+	add3[float](40.0)
+	add3(40.0)
+	add4[int, boolean](40, true)
+	add4[float, boolean](40.0, true)
+	add4(40, true)
+	add4(40.0, true)
+	''')
+process_top_level()
+generate()
+clear_compile_unit()
+
+
 top_level('''
 dim a as string
 println(a)
@@ -117,7 +166,6 @@ function () => func1(1,2)
 '''
 )
 process_top_level()
-generate()
 clear_compile_unit()
 
 #test for closure assignment
@@ -154,54 +202,3 @@ apply3(function (a as int) => println(int2str(a)), 32 )
 process_top_level()
 clear_compile_unit()
 
-# tests for template parameters derivation
-try:
-	top_level(
-	'''
-	class testc
-		public function add[T](a as T) as T
-			return a+39
-		end
-		public function add2[T1, T2](a as T1, b as T2) as T1
-			if (b) then
-				return a+10
-			else 
-				return a+20
-			end
-	end
-	function add3[T](a as T) as T
-		return a + 49
-	end
-	function add4[T1, T2](a as T1, b as T2) as T1
-		if (b) then
-			return a+30
-		else 
-			return a+40
-		end
-	end
-
-	dim tc = new testc
-	tc.add[int](10)
-	tc.add(10)
-	tc.add[float](20.0)
-	tc.add(20.0)
-	tc.add2[int, bool](20, true)
-	tc.add2[float, bool](20.0, true)
-	tc.add2(30, true)
-	tc.add2(30.0, true)
-	add3[int](40)
-	add3(40)
-	add3[float](40.0)
-	add3(40.0)
-	add4[int, bool](40, true)
-	add4[float, bool](40.0, true)
-	add4(40, true)
-	add4(40.0, true)
-	'''
-	)
-	process_top_level()
-	# assert(False)
-except CompileException:
-	e = get_compile_error()
-	print(e.linenumber, e.pos, e.msg)
-clear_compile_unit()

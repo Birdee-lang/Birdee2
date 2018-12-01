@@ -203,23 +203,26 @@ Value* GetObjOfMemberFunc(ExprAST* Callee)
 		auto pobj = dyncast_resolve_anno<MemberExprAST>(Callee);
 		if (pobj)
 			obj = pobj->llvm_obj;
-		else
+		else if (auto piden = dyncast_resolve_anno<IdentifierExprAST>(Callee))
 		{
-			auto piden = dyncast_resolve_anno<IdentifierExprAST>(Callee);
-			if (piden)
-			{
-				assert(dyncast_resolve_anno<MemberExprAST>(piden->impl.get()));
-				obj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get())->llvm_obj;
-			}
-			else
-			{
-				auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee);
-				assert(pidx);
-				pobj = dyncast_resolve_anno<MemberExprAST>(pidx->instance->expr.get());
-				assert(pobj);
-				obj = pobj->llvm_obj;
-			}
+			assert(dyncast_resolve_anno<MemberExprAST>(piden->impl.get()));
+			obj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get())->llvm_obj;
 		}
+		else if (auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee))
+		{
+			pobj = dyncast_resolve_anno<MemberExprAST>(pidx->instance->expr.get());
+			assert(pobj);
+			obj = pobj->llvm_obj;
+		}
+		else 
+		{
+			auto pfuncinst = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee);
+			assert(pfuncinst);
+			pobj = dyncast_resolve_anno<MemberExprAST>(pfuncinst->expr.get());
+			assert(pobj);
+			obj = pobj->llvm_obj;
+		}
+		
 	}
 	return obj;
 }
