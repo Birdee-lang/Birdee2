@@ -1,7 +1,5 @@
 from birdeec import *
 
-print("Hello world")
-
 top_level('''
 dim a as string
 println(a)
@@ -202,7 +200,7 @@ try:
 	'''
 	)
 	process_top_level()
-	assert(False)
+	# assert(False)
 except CompileException:
 	e = get_compile_error()
 	print(e.linenumber, e.pos, e.msg)
