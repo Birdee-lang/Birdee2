@@ -1802,10 +1802,67 @@ namespace Birdee
 	void CallExprAST::Phase1()
 	{
 		Callee->Phase1();
-		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
 		auto func = GetFunctionFromExpression(Callee.get(),Pos);
-		if (func)
-			CompileAssert(!func->isTemplate(), Pos, "Cannot call a template");
+		// if (func)
+		// 	CompileAssert(!func->isTemplate(), Pos, "Cannot call a template");
+		if (func && func->isTemplate()) {
+			// tries to derive template arguments from Args
+			auto args = func->Proto->Args.get();
+			vector<VariableSingleDefAST*> singleArgs;
+			if (isa<VariableSingleDefAST>(args)) {
+				auto singleArg = dynamic_cast<VariableSingleDefAST*>(args);
+				singleArgs.push_back(singleArg);
+			} else {
+				auto multiArg = dynamic_cast<VariableMultiDefAST*>(args);
+				for (auto & singleArg : multiArg->lst) {
+					singleArgs.push_back(singleArg.get());
+				}
+			}
+
+			if (singleArgs.size() != Args.size()) {
+				std::stringstream buf;
+				buf << "The function requires " << singleArgs.size() << " Arguments, but " << Args.size() << "are given";
+				CompileAssert(false, Pos, buf.str());
+			}
+
+			unordered_map<string, ResolvedType> name2type;
+			for (int i = 0; i < singleArgs.size(); i++) {
+				Args[i]->Phase1();
+				if (singleArgs[i]->type->type == tok_identifier) {
+					auto identifierType = dynamic_cast<IdentifierType*>(singleArgs[i]->type.get());
+					auto it = name2type.find(identifierType->name);
+					if (it == name2type.end())
+						name2type[identifierType->name] = Args[i]->resolved_type;
+					else if (it->second.type != Args[i]->resolved_type.type)
+						CompileAssert(false, Pos, "Cannot derive template parameters from given arguments");
+					else if (it->second.type == tok_class &&
+						it->second.class_ast->name != Args[i]->resolved_type.class_ast->name)
+						CompileAssert(false, Pos, "Cannot derive template parameters from given arguments");
+				}
+			}
+
+			auto & params = func->template_param->params;
+			CompileAssert(params.size() == name2type.size(), Pos, "Cannot derive template parameters from given arguments");
+			// construct FunctionTemplateInstanceAST to replace Callee
+			vector<unique_ptr<ExprAST>> template_args;
+			for (auto & param : params) {
+				auto rtype = name2type[param.name];
+				if (rtype.type == tok_identifier) {
+					template_args.emplace_back(make_unique<IdentifierExprAST>(rtype.class_ast->name));
+				}
+				else {
+					template_args.emplace_back(make_unique<BasicTypeExprAST>(rtype.type, Pos));
+				}
+			}
+			// template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
+			if (template_args.size() > 1)
+				Callee = make_unique<FunctionTemplateInstanceExprAST>(std::move(Callee), std::move(template_args), Pos);
+			else Callee = make_unique<IndexExprAST>(std::move(Callee), std::move(template_args[0]), Pos);
+			// do phase1 again
+			Callee->Phase1();
+		}
+		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
+		// TODO: do not arg->Phase1 again
 		auto proto = Callee->resolved_type.proto_ast;
 		CheckFunctionCallParameters(proto, Args, Pos);
 		resolved_type = proto->resolved_type;
