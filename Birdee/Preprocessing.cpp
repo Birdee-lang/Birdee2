@@ -5,6 +5,7 @@
 #include "CastAST.h"
 #include <sstream>
 #include "TemplateUtil.h"
+#include <algorithm>
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
@@ -1809,10 +1810,11 @@ namespace Birdee
 			auto args = func->Proto->Args.get();
 			vector<VariableSingleDefAST*> singleArgs;
 			if (isa<VariableSingleDefAST>(args)) {
-				auto singleArg = dynamic_cast<VariableSingleDefAST*>(args);
+				auto singleArg = static_cast<VariableSingleDefAST*>(args);
 				singleArgs.push_back(singleArg);
 			} else {
-				auto multiArg = dynamic_cast<VariableMultiDefAST*>(args);
+				assert(isa<VariableMultiDefAST>(args));
+				auto multiArg = static_cast<VariableMultiDefAST*>(args);
 				for (auto & singleArg : multiArg->lst) {
 					singleArgs.push_back(singleArg.get());
 				}
@@ -1828,37 +1830,40 @@ namespace Birdee
 			for (int i = 0; i < singleArgs.size(); i++) {
 				Args[i]->Phase1();
 				if (singleArgs[i]->type->type == tok_identifier) {
-					auto identifierType = dynamic_cast<IdentifierType*>(singleArgs[i]->type.get());
+					auto identifierType = static_cast<IdentifierType*>(singleArgs[i]->type.get());
 					auto it = name2type.find(identifierType->name);
+					
 					if (it == name2type.end())
 						name2type[identifierType->name] = Args[i]->resolved_type;
-					else if (it->second.type != Args[i]->resolved_type.type)
-						CompileAssert(false, Pos, "Cannot derive template parameters from given arguments");
-					else if (it->second.type == tok_class &&
-						it->second.class_ast->name != Args[i]->resolved_type.class_ast->name)
-						CompileAssert(false, Pos, "Cannot derive template parameters from given arguments");
+					else if (!(it->second == Args[i]->resolved_type))
+						CompileAssert(false, Pos, string("Cannot derive template parameter type ")+ identifierType->name 
+							+ " from given arguments: conflicting argument types - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
 				}
 			}
 
 			auto & params = func->template_param->params;
-			CompileAssert(params.size() == name2type.size(), Pos, "Cannot derive template parameters from given arguments");
 			// construct FunctionTemplateInstanceAST to replace Callee
-			vector<unique_ptr<ExprAST>> template_args;
+			vector<TemplateArgument> template_args;
 			for (auto & param : params) {
-				auto rtype = name2type[param.name];
-				if (rtype.type == tok_identifier) {
-					template_args.emplace_back(make_unique<IdentifierExprAST>(rtype.class_ast->name));
-				}
-				else {
-					template_args.emplace_back(make_unique<BasicTypeExprAST>(rtype.type, Pos));
-				}
+				CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
+				auto itr = name2type.find(param.name);
+				CompileAssert(itr != name2type.end(), Pos, "Cannot derive the template parameter: " + param.name);
+				template_args.emplace_back(TemplateArgument(itr->second));
 			}
-			// template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
-			if (template_args.size() > 1)
-				Callee = make_unique<FunctionTemplateInstanceExprAST>(std::move(Callee), std::move(template_args), Pos);
-			else Callee = make_unique<IndexExprAST>(std::move(Callee), std::move(template_args[0]), Pos);
+			func->template_param->ValidateArguments(template_args, Pos);
+			auto instance = func->template_param->GetOrCreate(&template_args, func, Pos);
+			if (auto memb = dyncast_resolve_anno<MemberExprAST>(Callee.get()))
+			{
+				memb->kind = MemberExprAST::member_imported_function;
+				memb->import_func = instance;
+				memb->resolved_type = instance->resolved_type;
+			}
+			else
+			{
+				Callee = make_unique<ResolvedFuncExprAST>(instance, Callee->Pos);
+				Callee->Phase1();
+			}
 			// do phase1 again
-			Callee->Phase1();
 		}
 		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
 		// TODO: do not arg->Phase1 again
