@@ -1,5 +1,129 @@
 from birdeec import *
 
+def assert_fail(istr):
+	try:
+		top_level(istr)
+		process_top_level()
+		assert(False)
+	except TokenizerException:
+		e=get_tokenizer_error()
+		print(e.linenumber,e.pos,e.msg)
+	except CompileException:
+		e=get_compile_error()
+		print(e.linenumber,e.pos,e.msg)		
+	clear_compile_unit()
+
+def assert_ok(istr):
+	top_level(istr)
+	process_top_level()
+	clear_compile_unit()
+
+assert_ok('''
+dim a as string
+println(a)
+{@
+print("hello world")
+@}
+''')
+
+assert_fail('''
+	println(a@#!@#@
+	{@
+	print("hello world")
+	@}
+	''')
+
+assert_fail('''
+import hash_map:hash_map
+
+dim map = new hash_map
+	''')
+
+
+
+assert_ok('''
+dim a =true
+dim b =1
+while a
+	a= b%2==0
+end while
+	''')
+
+assert_ok(
+'''
+dim a = {@set_ast(expr("32"))@}
+println(int2str(a))
+
+{@
+set_ast(stmt(\'''if a==3 then
+	a=4
+end\'''))
+@}
+
+dim c as {@set_type(resolve_type("int"))@}
+c=a
+'''
+)
+
+
+#test for constructor: private constructor
+assert_fail(
+'''
+class AAA
+	function __init__()
+	end
+
+end
+
+dim a = new AAA
+''')
+
+#test for constructor: wrong number of arguments
+assert_fail(
+'''
+class AAA
+	public function __init__(a as int)
+	end
+
+end
+
+dim a = new AAA
+''')
+
+
+#tests for one-line function
+assert_ok(
+'''
+function func1(a as int, b as int) as int => a+b
+function () => func1(1,2)
+'''
+)
+
+#test for closure assignment
+assert_fail(
+'''
+closure cii_i(a as int,b as int) as int
+functype fii_i(a as int,b as int) as int
+
+dim a as cii_i, b as fii_i
+b=a
+'''
+)
+
+
+#test for PrototypeType parser
+assert_ok(
+'''
+function apply1(f as closure (a as int), b as int) =>  f(b)
+function apply2(f as closure (a as int) as int, b as int) as int =>  f(b)
+function apply3(f as functype (a as int), b as int) =>  f(b)
+
+apply1(function (a as int) => println(int2str(a)), 32 )
+apply2(function (a as int) as int => a+2, 32 )
+apply3(function (a as int) => println(int2str(a)), 32 )
+'''
+)
+
 # tests for template parameters derivation
 top_level(
 '''
@@ -48,157 +172,27 @@ process_top_level()
 generate()
 clear_compile_unit()
 
-
-top_level('''
-dim a as string
-println(a)
-{@
-print("hello world")
-@}
-''')
-process_top_level()
-clear_compile_unit()
-
-try:
-	top_level('''
-	println(a@#!@#@
-	{@
-	print("hello world")
-	@}
-	''')
-	process_top_level()
-	assert(False)
-except TokenizerException:
-	e=get_tokenizer_error()
-	print(e.linenumber,e.pos,e.msg)
-clear_compile_unit()
-
-try:
-	top_level('''
-import hash_map:hash_map
-
-dim map = new hash_map
-	''')
-	process_top_level()
-	assert(False)
-except CompileException:
-	e=get_compile_error()
-	print(e.linenumber,e.pos,e.msg)
-clear_compile_unit()
-
-
-
-top_level('''
-dim a =true
-dim b =1
-while a
-	a= b%2==0
-end while
-	''')
-process_top_level()
-clear_compile_unit()
-
-top_level(
-'''
-dim a = {@set_ast(expr("32"))@}
-println(int2str(a))
-
-{@
-set_ast(stmt(\'''if a==3 then
-	a=4
-end\'''))
-@}
-
-dim c as {@set_type(resolve_type("int"))@}
-c=a
-'''
-)
-process_top_level()
-clear_compile_unit()
-
-
-#test for constructor: private constructor
-try:
-	top_level(
-'''
-class AAA
-	function __init__()
+# tests for failed template parameters derivation
+assert_ok('''
+	function add4[T1, T2](a as T1, b as T2, c as string) as T1
+		return a
 	end
+	add4(1,1.2,"hi")''')
 
+assert_fail('''
+function add3[T1, T2](a as T1, b as T2, c as T2) as T1
+	return a
 end
+add3(1,2,"2")''')
 
-dim a = new AAA
-'''
-	)
-	process_top_level()
-	assert(False)
-except CompileException:
-	e=get_compile_error()
-	print(e.linenumber,e.pos,e.msg)
-clear_compile_unit()
-
-#test for constructor: wrong number of arguments
-try:
-	top_level(
-'''
-class AAA
-	public function __init__(a as int)
-	end
-
+assert_fail('''
+function add2[T1, T2](a as T1, b as string) as T1
+	return a
 end
+add2(1,"2")''')
 
-dim a = new AAA
-'''
-	)
-	process_top_level()
-	assert(False)
-except CompileException:
-	e=get_compile_error()
-	print(e.linenumber,e.pos,e.msg)
-clear_compile_unit()
-
-
-#tests for one-line function
-top_level(
-'''
-function func1(a as int, b as int) as int => a+b
-function () => func1(1,2)
-'''
-)
-process_top_level()
-clear_compile_unit()
-
-#test for closure assignment
-try:
-	top_level(
-'''
-closure cii_i(a as int,b as int) as int
-functype fii_i(a as int,b as int) as int
-
-dim a as cii_i, b as fii_i
-b=a
-'''
-)
-	process_top_level()
-	assert(False)
-except CompileException:
-	e=get_compile_error()
-	print(e.linenumber,e.pos,e.msg)
-clear_compile_unit()
-
-
-#test for PrototypeType parser
-top_level(
-'''
-function apply1(f as closure (a as int), b as int) =>  f(b)
-function apply2(f as closure (a as int) as int, b as int) as int =>  f(b)
-function apply3(f as functype (a as int), b as int) =>  f(b)
-
-apply1(function (a as int) => println(int2str(a)), 32 )
-apply2(function (a as int) as int => a+2, 32 )
-apply3(function (a as int) => println(int2str(a)), 32 )
-'''
-)
-process_top_level()
-clear_compile_unit()
-
+assert_fail('''
+function add2[T1, v as int](a as T1, b as string) as T1
+	return a
+end
+add2(1,"2")''')

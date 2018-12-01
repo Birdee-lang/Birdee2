@@ -974,6 +974,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 	if (!isDeclare)
 	{
+		assert(llvm_func->getBasicBlockList().empty());
 		auto curfunc_backup = gen_context.cur_func;
 		gen_context.cur_func = this;
 		dinfo.LexicalBlocks.push_back(dbginfo);
@@ -1116,6 +1117,8 @@ llvm::Value * Birdee::IdentifierExprAST::Generate()
 
 llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
 {
+	if (def->isTemplate())
+		return nullptr;
 	if (!def->llvm_func)
 		def->Generate();
 	dinfo.emitLocation(this);
@@ -1320,14 +1323,13 @@ namespace Birdee
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
+	llvm_obj = Obj->Generate();
 	if (kind == member_field)
 	{
-		llvm_obj = Obj->Generate();
 		return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
 	}
 	else if (kind == member_function)
 	{
-		llvm_obj = Obj->Generate();
 		if (!gen_context.array_cls)
 			gen_context.array_cls = GetArrayClass();
 		if (Obj->resolved_type.index_level > 0)
