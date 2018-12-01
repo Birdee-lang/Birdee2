@@ -203,23 +203,26 @@ Value* GetObjOfMemberFunc(ExprAST* Callee)
 		auto pobj = dyncast_resolve_anno<MemberExprAST>(Callee);
 		if (pobj)
 			obj = pobj->llvm_obj;
-		else
+		else if (auto piden = dyncast_resolve_anno<IdentifierExprAST>(Callee))
 		{
-			auto piden = dyncast_resolve_anno<IdentifierExprAST>(Callee);
-			if (piden)
-			{
-				assert(dyncast_resolve_anno<MemberExprAST>(piden->impl.get()));
-				obj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get())->llvm_obj;
-			}
-			else
-			{
-				auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee);
-				assert(pidx);
-				pobj = dyncast_resolve_anno<MemberExprAST>(pidx->instance->expr.get());
-				assert(pobj);
-				obj = pobj->llvm_obj;
-			}
+			assert(dyncast_resolve_anno<MemberExprAST>(piden->impl.get()));
+			obj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get())->llvm_obj;
 		}
+		else if (auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee))
+		{
+			pobj = dyncast_resolve_anno<MemberExprAST>(pidx->instance->expr.get());
+			assert(pobj);
+			obj = pobj->llvm_obj;
+		}
+		else 
+		{
+			auto pfuncinst = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee);
+			assert(pfuncinst);
+			pobj = dyncast_resolve_anno<MemberExprAST>(pfuncinst->expr.get());
+			assert(pobj);
+			obj = pobj->llvm_obj;
+		}
+		
 	}
 	return obj;
 }
@@ -971,6 +974,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 	if (!isDeclare)
 	{
+		assert(llvm_func->getBasicBlockList().empty());
 		auto curfunc_backup = gen_context.cur_func;
 		gen_context.cur_func = this;
 		dinfo.LexicalBlocks.push_back(dbginfo);
@@ -1113,6 +1117,8 @@ llvm::Value * Birdee::IdentifierExprAST::Generate()
 
 llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
 {
+	if (def->isTemplate())
+		return nullptr;
 	if (!def->llvm_func)
 		def->Generate();
 	dinfo.emitLocation(this);
@@ -1317,14 +1323,13 @@ namespace Birdee
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
+	llvm_obj = Obj->Generate();
 	if (kind == member_field)
 	{
-		llvm_obj = Obj->Generate();
 		return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
 	}
 	else if (kind == member_function)
 	{
-		llvm_obj = Obj->Generate();
 		if (!gen_context.array_cls)
 			gen_context.array_cls = GetArrayClass();
 		if (Obj->resolved_type.index_level > 0)

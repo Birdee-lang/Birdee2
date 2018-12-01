@@ -301,6 +301,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("top_level", CompileTopLevel);
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 		m.def("generate", []() {cu.Generate(); });
+		m.def("set_print_ir", [](bool printir) {cu.is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
 	m.def("class_body", CompileClassBody);
