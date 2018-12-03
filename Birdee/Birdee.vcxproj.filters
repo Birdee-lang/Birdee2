@@ -126,11 +126,14 @@
     <None Include="..\tests\scripttest.py">
       <Filter>资源文件\tests</Filter>
     </None>
-    <None Include="..\BirdeeHome\bin\pylib\getset.py">
-      <Filter>资源文件\pylib</Filter>
-    </None>
     <None Include="..\tests\getset_test.py">
       <Filter>资源文件\tests</Filter>
+    </None>
+    <None Include="..\BirdeeHome\pylib\bbuild.py">
+      <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\pylib\getset.py">
+      <Filter>资源文件\pylib</Filter>
     </None>
   </ItemGroup>
 </Project>

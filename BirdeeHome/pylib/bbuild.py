@@ -16,8 +16,14 @@ compiled_mod=set()
 link_target=None
 link_executable=False
 runtime_lib_path=""
+max_bin_timestamp =0
 
 
+def update_max_bin_timestamp(fn):
+	global max_bin_timestamp
+	ts=os.path.getmtime(fn)
+	if ts>max_bin_timestamp:
+		max_bin_timestamp=ts
 
 def get_next(idx,args):
 	if idx+1>=len(args):
@@ -52,12 +58,10 @@ def parse_args(args):
 	if '.' not in bin_search_dirs: bin_search_dirs.append('.')
 
 def search_bin(modu):
-	global link_path
 	for path in bin_search_dirs:
 		raw_path=os.path.join(path,*modu)
 		p = raw_path +".bmm"
 		if os.path.exists(p) and os.path.isfile(p) :
-			link_path.append(raw_path)
 			return raw_path
 	raw_path=os.path.join(outpath,*modu)
 	p = raw_path +".bmm"
@@ -69,7 +73,6 @@ def search_bin(modu):
 			mtime_bin=os.path.getmtime(p)
 			if mtime_src > mtime_bin:
 				return #act as if we do not find the binary file
-		link_path.append(raw_path)
 		return raw_path	
 
 def search_src(modu):
@@ -102,6 +105,8 @@ def compile_module(modu,is_main):
 	bmm=search_bin(modu)
 	if bmm:
 		compiled_mod.add(tuple(modu))
+		update_max_bin_timestamp(bmm+".bmm")
+		link_path.append(bmm)
 		parse_bmm_dependency(bmm+".bmm")
 	else:
 		src=search_src(modu)
@@ -121,6 +126,7 @@ def compile_module(modu,is_main):
 		if ret.returncode!=0:
 			raise RuntimeError("Compile failed")
 		compiled_mod.add(tuple(modu))
+		update_max_bin_timestamp(src)
 		link_path.append(outfile)
 		parse_bmm_dependency(outfile+".bmm")
 
@@ -142,16 +148,19 @@ for modu in root_modules:
 	compile_module(modu,file_cnt==0)
 	file_cnt += 1
 if link_executable and link_target:
-	linker_path='link.exe'
-	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64 /INCREMENTAL /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
-	runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
-	pdb_path= os.path.splitext(link_target)[0]+".pdb"
-	obj_files=f'"{runtime_lib_path}"'
-	for lpath in link_path:
-		lpath += ".obj"
-		obj_files += f' "{lpath}"'
-	cmd=msvc_command.format(linker_path,link_target,pdb_path,obj_files,link_target+".manifest")
-	print("Running command " + cmd)
-	ret=subprocess.run(cmd)
-	if ret.returncode!=0:
-		raise RuntimeError("Compile failed")
+	if os.path.exists(link_target) and os.path.isfile(link_target) and  os.path.getmtime(link_target)>max_bin_timestamp:
+		print("The link target is up to date")
+	else:
+		linker_path='link.exe'
+		msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64 /INCREMENTAL /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
+		runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
+		pdb_path= os.path.splitext(link_target)[0]+".pdb"
+		obj_files=f'"{runtime_lib_path}"'
+		for lpath in link_path:
+			lpath += ".obj"
+			obj_files += f' "{lpath}"'
+		cmd=msvc_command.format(linker_path,link_target,pdb_path,obj_files,link_target+".manifest")
+		print("Running command " + cmd)
+		ret=subprocess.run(cmd)
+		if ret.returncode!=0:
+			raise RuntimeError("Compile failed")

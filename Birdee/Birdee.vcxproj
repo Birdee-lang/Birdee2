@@ -204,7 +204,8 @@
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\BirdeeHome\bin\pylib\getset.py" />
+    <None Include="..\BirdeeHome\pylib\bbuild.py" />
+    <None Include="..\BirdeeHome\pylib\getset.py" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\getset_test.py" />
     <None Include="..\tests\scripttest.py" />
