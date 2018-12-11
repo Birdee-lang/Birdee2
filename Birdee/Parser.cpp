@@ -1275,7 +1275,7 @@ ImportTree* Birdee::ImportTree::Insert(const vector<string>& package, int level)
 	}
 }
 
-string GetModuleNameByArray(const vector<string>& package)
+BD_CORE_API string GetModuleNameByArray(const vector<string>& package)
 {
 	string ret=package[0];
 	for (int i = 1; i < package.size(); i++)
@@ -1452,7 +1452,7 @@ void ImportedModule::HandleImport()
 	}
 }
 
-void ParseImports()
+void ParseImports(bool need_do_import)
 {
 	for (;;)
 	{
@@ -1467,7 +1467,8 @@ void ParseImports()
 			vector<string> package = ParsePackageName();
 			if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
 			{
-				DoImportPackage(package);
+				if(need_do_import)
+					DoImportPackage(package);
 				cu.imports.push_back(std::move(package));
 				tokenizer.GetNextToken();
 			}
@@ -1479,7 +1480,8 @@ void ParseImports()
 					string name = tokenizer.IdentifierStr;
 					tokenizer.GetNextToken();
 					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
-					DoImportName(package, name);
+					if(need_do_import)
+						DoImportName(package, name);
 					package.push_back(string(":") + name);
 					cu.imports.push_back(std::move(package));
 				}
@@ -1487,7 +1489,8 @@ void ParseImports()
 				{
 					tokenizer.GetNextToken();
 					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
-					DoImportPackageAll(package);
+					if(need_do_import)
+						DoImportPackageAll(package);
 					package.push_back("*");
 					cu.imports.push_back(std::move(package));
 				}
@@ -1529,6 +1532,15 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement()
 	return std::move(ret);
 }
 
+BD_CORE_API void ParseTopLevelImportsOnly()
+{
+	tokenizer.GetNextToken();
+	while (tokenizer.CurTok == tok_newline)
+		tokenizer.GetNextToken();
+	ParsePackage();
+	ParseImports(/*need_do_import*/false);
+}
+
 BD_CORE_API int ParseTopLevel()
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
@@ -1540,7 +1552,7 @@ BD_CORE_API int ParseTopLevel()
 	if(!cu.is_corelib)
 		AddAutoImport();
 	ParsePackage();
-	ParseImports();
+	ParseImports(/*need_do_import*/true);
 	
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
 	{
