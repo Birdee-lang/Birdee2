@@ -171,6 +171,7 @@
     <ClInclude Include="include\CompileError.h" />
     <ClInclude Include="include\LibDef.h" />
     <ClInclude Include="include\Metadata.h" />
+    <ClInclude Include="include\NameMangling.h" />
     <ClInclude Include="include\OpEnums.h" />
     <ClInclude Include="include\SourcePos.h" />
     <ClInclude Include="include\TemplateUtil.h" />

@@ -94,7 +94,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>BirdeeRuntime.lib;birdee.obj;hash_map.obj;list.obj;functype_test.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(SolutionDir)\tests\link_test.obj;BirdeeRuntime.lib;birdee.obj;hash_map.obj;list.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(BIRDEE_HOME)\blib;$(SolutionDir)x64\Debug;$(SolutionDir)tests\bin</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>

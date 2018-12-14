@@ -25,6 +25,7 @@
 #include "BdAST.h"
 #include <cassert>
 #include "CastAST.h"
+#include "NameMangling.h"
 
 using namespace llvm;
 using Birdee::CompileError;
@@ -132,6 +133,7 @@ struct GeneratorContext
 	LLVMContext context;
 	Module* module = nullptr;
 	std::unique_ptr<DIBuilder> DBuilder = nullptr;
+	string mangled_symbol_prefix;
 
 	llvm::Type* ty_int;
 	llvm::Type* ty_long;
@@ -194,6 +196,13 @@ Derived* dyncast_resolve_anno(StatementAST* p)
 	return nullptr;
 }
 
+static const string& GetMangledSymbolPrefix()
+{
+	if (gen_context.mangled_symbol_prefix.empty())
+		MangleNameAndAppend(gen_context.mangled_symbol_prefix, cu.symbol_prefix);
+	return gen_context.mangled_symbol_prefix;
+}
+
 Value* GetObjOfMemberFunc(ExprAST* Callee)
 {
 	auto proto = Callee->resolved_type.proto_ast;
@@ -244,7 +253,7 @@ llvm::Type* BuildArrayType(llvm::Type* ty, DIType* & dty,string& name,DIType* & 
 	vector<llvm::Type*> types{llvm::Type::getInt32Ty(context),ArrayType::get(ty,0)};
 	SmallVector<Metadata *, 8> dtypes{ dinfo.GetIntType(),DBuilder->createArrayType(0, 0, dty,{}) }; //fix-me: what is the last parameter for???
 
-	name +="[]";
+	name +="_2_3";
 	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
 		dinfo.cu->getDirectory());
 	outdtype = DBuilder->createStructType(dinfo.cu, name, Unit, 0, 128, 64, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
@@ -341,7 +350,8 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	case tok_class:
 		if (!type.class_ast->llvm_type)
 		{
-			string name = type.class_ast->GetUniqueName();
+			string name;
+			MangleNameAndAppend(name, type.class_ast->GetUniqueName());
 			base = StructType::create(context, name)->getPointerTo();
 			dtype = DBuilder->createPointerType(DBuilder->createUnspecifiedType(name),64);
 		}
@@ -373,7 +383,10 @@ void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& pack
 {
 	DIType* ty;
 	auto type = helper.GetType(resolved_type, ty);
-	string resolved_name = package_name + '.' + name;
+	string resolved_name;
+	MangleNameAndAppend(resolved_name, package_name);
+	resolved_name += "_0";
+	MangleNameAndAppend(resolved_name, name);
 	GlobalVariable* v = new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage,
 		nullptr, resolved_name);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
@@ -388,10 +401,11 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 {
 	DIType* ty;
 	auto type=helper.GetType(resolved_type, ty);
+	string var_name = GetMangledSymbolPrefix() + name;
 	GlobalVariable* v = new GlobalVariable(*module, type,false,GlobalValue::CommonLinkage,
-		Constant::getNullValue(type),cu.symbol_prefix+name);
+		Constant::getNullValue(type), var_name);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
-			dinfo.cu, cu.symbol_prefix + name, cu.symbol_prefix + name, dinfo.cu->getFile(), Pos.line, ty,
+			dinfo.cu, var_name, var_name, dinfo.cu->getFile(), Pos.line, ty,
 			true);
 	llvm_value = v;
 	
@@ -600,7 +614,7 @@ void Birdee::CompileUnit::Generate()
 	FunctionType *FT =
 		FunctionType::get(llvm::Type::getVoidTy(context), false);
 
-	Function *F = Function::Create(FT, Function::ExternalLinkage, cu.expose_main ? "main" : cu.symbol_prefix + "main", module);
+	Function *F = Function::Create(FT, Function::ExternalLinkage, cu.expose_main ? "main" : GetMangledSymbolPrefix() + "_1main", module);
 	BasicBlock *BB = BasicBlock::Create(context, "entry", F);
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
@@ -613,7 +627,7 @@ void Birdee::CompileUnit::Generate()
 
 	//check if I have initialized
 	GlobalVariable* check_init = new GlobalVariable(*module, builder.getInt1Ty(), false, GlobalValue::PrivateLinkage,
-		builder.getInt1(false), cu.symbol_prefix + "!init");
+		builder.getInt1(false), GetMangledSymbolPrefix() + "_1init");
 
 	BasicBlock *BT = BasicBlock::Create(context, "init", F);
 	BasicBlock *BF = BasicBlock::Create(context, "no_init", F);
@@ -627,7 +641,10 @@ void Birdee::CompileUnit::Generate()
 
 	for (auto& name : cu.imported_module_names)
 	{
-		Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, name+".main", module);
+		string func_name;
+		MangleNameAndAppend(func_name, name);
+		func_name += "_0_1main";
+		Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, func_name, module);
 		builder.SetCurrentDebugLocation(DebugLoc::get(0, 0, F->getSubprogram()));
 		builder.CreateCall(OtherMain);
 	}
@@ -807,11 +824,17 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return helper.dtypemap[resolved_type];
 	string prefix;
 	if (Proto->cls)
-		prefix = Proto->cls->GetUniqueName() + ".";
+	{
+		MangleNameAndAppend(prefix, Proto->cls->GetUniqueName());
+		prefix += "_0";
+	}
 	else if (Proto->prefix_idx == -1)
-		prefix = cu.symbol_prefix;
+		prefix = GetMangledSymbolPrefix();
 	else
-		prefix = cu.imported_module_names[Proto->prefix_idx]+'.';
+	{
+		MangleNameAndAppend(prefix, cu.imported_module_names[Proto->prefix_idx]);
+		prefix += "_0";
+	}
 	if (parent)
 	{
 		auto f = parent;
@@ -823,8 +846,9 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		}
 		for (auto itr = names.rbegin(); itr != names.rend(); itr++)
 		{
-			prefix += **itr;
-			prefix += '.';
+			//prefix += **itr;
+			MangleNameAndAppend(prefix, **itr);
+			prefix += "_0";
 		}
 
 	}
@@ -833,7 +857,8 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		linkage = Function::LinkOnceODRLinkage;
 	else
 		linkage = Function::ExternalLinkage;
-	llvm_func = Function::Create(Proto->GenerateFunctionType(), linkage, prefix + Proto->GetName(), module);
+	MangleNameAndAppend(prefix, Proto->GetName());
+	llvm_func = Function::Create(Proto->GenerateFunctionType(), linkage, prefix, module);
 	if (strHasEnding(cu.targetpath,".obj") && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
 	{
 		llvm_func->setComdat(module->getOrInsertComdat(llvm_func->getName()));
@@ -1034,10 +1059,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 					type = type->getPointerTo();
 				captype.push_back(type);
 			}
-			exported_capture_type = StructType::create(context, captype, (llvm_func->getName() + "..context").str());
+			exported_capture_type = StructType::create(context, captype, (llvm_func->getName() + "_0_1context").str());
 			if (capture_on_stack)
 			{
-				exported_capture_pointer = builder.CreateAlloca(exported_capture_type, nullptr, ".export_capture_pointer");
+				exported_capture_pointer = builder.CreateAlloca(exported_capture_type, nullptr, "_1export_capture_pointer");
 			}
 			else
 			{
@@ -1751,7 +1776,7 @@ Value * Birdee::FunctionToClosureAST::Generate()
 			{
 				//if the value is a function definition, we can better optimize by creating a
 				//warpper function specially for the function
-				outfunc = Function::Create(proto->GenerateFunctionType(), GlobalValue::InternalLinkage, target->getName() + "..wrapper", module);
+				outfunc = Function::Create(proto->GenerateFunctionType(), GlobalValue::InternalLinkage, target->getName() + "_0_1wrapper", module);
 				outfunc_value = outfunc;
 				auto dbginfo = PrepareFunctionDebugInfo(outfunc, static_cast<DISubroutineType*>(proto->GenerateDebugType()), func->Pos);
 
