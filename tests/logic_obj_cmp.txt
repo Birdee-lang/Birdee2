@@ -2,6 +2,7 @@ dim a as string, b as string
 a==b
 a===b
 a!=b
+a="hello"
 
 dim c =true
 c= c | true

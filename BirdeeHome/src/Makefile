@@ -4,12 +4,15 @@ CUR_DIR=$(shell pwd)
 PARENT_DIR=$(shell dirname $(CUR_DIR))
 BLIB_DIR=$(PARENT_DIR)/blib
 BIN=$(PARENT_DIR)/bin
+LIB=$(PARENT_DIR)/lib
 
-all: ${BLIB_DIR}/birdee.o ${BLIB_DIR}/list.o ${BLIB_DIR}/hash_map.o
+all: ${BLIB_DIR}/birdee.o ${BLIB_DIR}/list.o ${BLIB_DIR}/hash_map.o ${LIB}
 
 print-%  : ; @echo $* = $($*)
 
-
+${LIB}:
+	rm -f $(PARENT_DIR)/lib
+	ln -s $(PARENT_DIR)/../lib ${LIB}
 
 ${BIN}:
 	rm -f $(PARENT_DIR)/bin

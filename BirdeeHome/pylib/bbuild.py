@@ -23,6 +23,12 @@ runtime_lib_path=""
 max_bin_timestamp =0
 num_worker_threads = 1
 thread_worker=None
+link_cmd = ""
+exe_postfix = ""
+obj_postfix = '.o'
+if os.name == 'nt':
+	exe_postfix = ".exe"
+	obj_postfix = '.obj'
 
 class compile_worker:
 	RUNNING=0
@@ -45,6 +51,8 @@ class compile_worker:
 				except Exception as e:
 					#print(traceback.format_exc())
 					print("\n"+str(e))
+					if num_worker_threads == 1:
+						print(traceback.format_exc())
 					self.state=compile_worker.ABORT
 				finally:
 					self.q.task_done()
@@ -120,7 +128,7 @@ def get_next(idx,args):
 	return (idx+1,args[idx+1])
 def parse_args(args):
 	i=1
-	global source_dirs,bin_search_dirs,root_modules,outpath,link_target,link_executable,num_worker_threads
+	global source_dirs,bin_search_dirs,root_modules,outpath,link_target,link_executable,num_worker_threads,link_cmd
 	while i<len(args):
 		if args[i]=='-i' or args[i]=='--in-source':
 			i,v = get_next(i,args)
@@ -133,6 +141,8 @@ def parse_args(args):
 		elif args[i]=='-le' or args[i]=='--link-executable':
 			i,link_target = get_next(i,args)
 			link_executable=True
+		elif args[i]=='-lc' or args[i]=='--link-cmd':
+			i,link_cmd = get_next(i,args)
 		elif args[i]=='-j':
 			i,v = get_next(i,args)
 			num_worker_threads = int(v)
@@ -239,7 +249,7 @@ def prepare_module(modu,is_main):
 
 def compile_module(modu,src,is_main):
 	outfile=os.path.join(outpath,*modu) 
-	cmdarr=[compiler_path,'-i',src, "-o", outfile+'.obj']
+	cmdarr=[compiler_path,'-i',src, "-o", outfile+ obj_postfix]
 	for bpath in bin_search_dirs:
 		cmdarr.append("-l")
 		cmdarr.append(bpath)
@@ -247,9 +257,8 @@ def compile_module(modu,src,is_main):
 	cmdarr.append(outpath)
 	if is_main:
 		cmdarr.append("-e")
-	cmd=" ".join(cmdarr)
-	print("Running command " + cmd)
-	ret=subprocess.run(cmd)
+	print("Running command " + " ".join(cmdarr))
+	ret=subprocess.run(cmdarr)
 	if ret.returncode!=0:
 		raise RuntimeError("Compile failed")
 	link_path.append(outfile)
@@ -259,9 +268,42 @@ def init_path():
 	bd_home=os.environ.get('BIRDEE_HOME')
 	if not bd_home:
 		raise RuntimeError("The environment variable BIRDEE_HOME is not set")
-	compiler_path=os.path.join(bd_home,"bin","birdeec.exe") # fix-me: exe???
+	compiler_path=os.path.join(bd_home,"bin","birdeec"+exe_postfix)
 	if not os.path.exists(compiler_path) or not os.path.isfile(compiler_path):
 		raise RuntimeError("Cannot find birdee compiler")
+
+def link_msvc():
+	linker_path='link.exe'
+	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" {} /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64 /INCREMENTAL /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
+	runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
+	pdb_path= os.path.splitext(link_target)[0]+".pdb"
+	obj_files=f'"{runtime_lib_path}"'
+	for lpath in link_path:
+		lpath += obj_postfix
+		obj_files += f' "{lpath}"'
+	cmd=msvc_command.format(linker_path,link_target,pdb_path,link_cmd,obj_files,link_target+".manifest")
+	print("Running command " + cmd)
+	ret=subprocess.run(cmd)
+	if ret.returncode!=0:
+		raise RuntimeError("Compile failed")
+
+
+def link_gcc():
+	linker_path='gcc'
+	cmdarr = [linker_path,'-o',link_target, "-Wl,--start-group"]
+	runtime_lib_path = os.path.join(bd_home,"lib","libBirdeeRuntime.a")
+	cmdarr.append(runtime_lib_path)
+	for lpath in link_path:
+		lpath += obj_postfix
+		cmdarr.append(lpath)
+	cmdarr.append("-lgc")
+	cmdarr.append("-Wl,--end-group")
+	if len(link_cmd):
+		cmdarr.append(link_cmd)
+	print("Running command " + ' '.join(cmdarr))
+	ret=subprocess.run(cmdarr)
+	if ret.returncode!=0:
+		raise RuntimeError("Compile failed")
 
 
 init_path()
@@ -299,16 +341,9 @@ if link_executable and link_target:
 	if os.path.exists(link_target) and os.path.isfile(link_target) and  os.path.getmtime(link_target)>max_bin_timestamp:
 		print("The link target is up to date")
 	else:
-		linker_path='link.exe'
-		msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64 /INCREMENTAL /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
-		runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
-		pdb_path= os.path.splitext(link_target)[0]+".pdb"
-		obj_files=f'"{runtime_lib_path}"'
-		for lpath in link_path:
-			lpath += ".obj"
-			obj_files += f' "{lpath}"'
-		cmd=msvc_command.format(linker_path,link_target,pdb_path,obj_files,link_target+".manifest")
-		print("Running command " + cmd)
-		ret=subprocess.run(cmd)
-		if ret.returncode!=0:
-			raise RuntimeError("Compile failed")
+		if os.name=='nt':
+			link_msvc()
+		else:
+			link_gcc()
+
+

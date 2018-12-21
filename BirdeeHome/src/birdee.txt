@@ -50,6 +50,12 @@ class string
 	end
 
 	public function __eq__(other as string) as boolean
+		if other===this then
+			return true
+		end
+		if other===null then
+			return false
+		end
 		return strcmp(addressof(buf[0]),addressof(other.buf[0]))==0
 	end
 
