@@ -35,6 +35,11 @@ namespace Birdee
 				out += '_';
 				out += '3';
 			}
+			else if (name[i] == ',')
+			{
+				out += '_';
+				out += '4';
+			}
 			else
 			{
 				out += name[i];
