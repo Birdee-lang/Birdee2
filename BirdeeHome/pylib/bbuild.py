@@ -277,10 +277,10 @@ def link_msvc():
 	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" {} /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64 /INCREMENTAL /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
 	runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
 	pdb_path= os.path.splitext(link_target)[0]+".pdb"
-	obj_files=f'"{runtime_lib_path}"'
+	obj_files='"{runtime_lib_path}"'.format(runtime_lib_path=runtime_lib_path)
 	for lpath in link_path:
 		lpath += obj_postfix
-		obj_files += f' "{lpath}"'
+		obj_files += ' "{lpath}"'.format(lpath=lpath)
 	cmd=msvc_command.format(linker_path,link_target,pdb_path,link_cmd,obj_files,link_target+".manifest")
 	print("Running command " + cmd)
 	ret=subprocess.run(cmd)
