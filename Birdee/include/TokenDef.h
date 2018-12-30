@@ -68,6 +68,9 @@ namespace Birdee
 		tok_boolean,
 		tok_pointer,
 		tok_byte,
+
+		tok_dotdot,
+		tok_ellipsis,
 	
 		tok_add,
 		tok_minus,

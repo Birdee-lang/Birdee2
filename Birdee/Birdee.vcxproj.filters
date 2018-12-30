@@ -121,6 +121,9 @@
     <Text Include="..\tests\logic_obj_cmp.txt">
       <Filter>资源文件\tests</Filter>
     </Text>
+    <Text Include="..\tests\template_vararg.txt">
+      <Filter>资源文件</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">

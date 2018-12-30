@@ -23,6 +23,7 @@ namespace Birdee
 		{ '|',tok_or },
 		{ '!',tok_not },
 		{ '^',tok_xor },
+		{'.',tok_dot},
 	};
 	BD_CORE_API std::map<int, Token> Tokenizer::single_token_map = {
 	{'(',tok_left_bracket },
@@ -31,7 +32,6 @@ namespace Birdee
 	{ ']',tok_right_index },
 	{'\n',tok_newline},
 	{ ',',tok_comma },
-	{'.',tok_dot},
 	{':',tok_colon },
 	};
 
@@ -85,6 +85,7 @@ namespace Birdee
 	{"=>",tok_into},
 	{"functype",tok_functype},
 	{"closure",tok_closure},
+	{"...",tok_ellipsis},
 	};
 }
 

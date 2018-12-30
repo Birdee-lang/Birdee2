@@ -48,7 +48,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 	return impl;
 }
 
-#define Birdee_AnnotationStatementAST_Phase1_NAME "?Birdee_AnnotationStatementAST_Phase1@@YAXPEAVAnnotationStatementAST@Birdee@@@Z"
+#define Birdee_RunAnnotationsOn_NAME "?Birdee_RunAnnotationsOn@@YAXAEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAVStatementAST@Birdee@@USourcePos@4@@Z"
 #define Birdee_ScriptAST_Phase1_NAME "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@@Z"
 #define Birdee_ScriptType_Resolve_NAME "?Birdee_ScriptType_Resolve@@YAXPEAVResolvedType@Birdee@@PEAVScriptType@2@USourcePos@2@@Z"
 
@@ -74,21 +74,21 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 	return impl;
 }
 
-#define Birdee_AnnotationStatementAST_Phase1_NAME "_Z36Birdee_AnnotationStatementAST_Phase1PN6Birdee22AnnotationStatementASTE"
+#define Birdee_RunAnnotationsOn_NAME "_Z23Birdee_RunAnnotationsOnRSt6vectorINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESaIS5_EEPN6Birdee12StatementASTENS9_9SourcePosE"
 #define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE"
 #define Birdee_ScriptType_Resolve_NAME "_Z25Birdee_ScriptType_ResolvePN6Birdee12ResolvedTypeEPNS_10ScriptTypeENS_9SourcePosE"
 #endif
 
-static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
+static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos)
 {
 
-	typedef void(*PtrImpl)(AnnotationStatementAST* ths);
+	typedef void(*PtrImpl)(std::vector<std::string>& anno, StatementAST* impl, SourcePos pos);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
-		impl = (PtrImpl)LoadBindingFunction(Birdee_AnnotationStatementAST_Phase1_NAME);
+		impl = (PtrImpl)LoadBindingFunction(Birdee_RunAnnotationsOn_NAME);
 	}
-	impl(ths);
+	impl(anno, ths, pos);
 }
 static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
 {
@@ -258,7 +258,7 @@ public:
 		const vector<TemplateParameter>& parameters, bool isClass, ImportedModule* mod,SourcePos pos)
 	{
 		TemplateEnv env(pos, isClass,mod);
-		for (int i = 0; i<template_args.size(); i++)
+		for (int i = 0; i< parameters.size(); i++)
 		{
 			if (template_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
 				env.typemap[parameters[i].name] = template_args[i].type;
@@ -1177,7 +1177,36 @@ namespace Birdee
 
 	void Birdee::AnnotationStatementAST::Phase1()
 	{
-		Birdee_AnnotationStatementAST_Phase1(this);
+		if (isa<ClassAST>(impl.get()))
+		{
+			ClassAST* cls = static_cast<ClassAST*>(impl.get());
+			if (cls->isTemplate())
+			{
+				for (auto& inst : cls->template_param->instances)
+				{
+					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos);
+				}
+				cls->template_param->annotation = this;
+				return;
+			}
+			//if is not a template, fall through to the following code
+		}
+		else if(isa<FunctionAST>(impl.get()))
+		{
+			FunctionAST* func = static_cast<FunctionAST*>(impl.get());
+			if (func->isTemplate())
+			{
+				for (auto& inst : func->template_param->instances)
+				{
+					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos);
+				}
+				func->template_param->annotation = this;
+				return;
+			}
+			//if is not a template, fall through to the following code
+		}
+		impl->Phase1();
+		Birdee_RunAnnotationsOn(anno,this,impl->Pos);
 		if (is_expr)
 		{
 			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
@@ -1244,12 +1273,20 @@ namespace Birdee
 		return stream.str();   
 	}
 
-	void DoTemplateValidateArguments(const vector<TemplateParameter>& params, const vector<TemplateArgument>& args, SourcePos Pos)
+	static void DoTemplateValidateArguments(bool is_vararg, const vector<TemplateParameter>& params, const vector<TemplateArgument>& args, SourcePos Pos)
 	{
-		CompileAssert(params.size() == args.size(), Pos, 
-			string("The template requires ") + int2str(params.size()) + " Arguments, but " + int2str(args.size()) + "are given");
+		if (!is_vararg)
+		{
+			CompileAssert(params.size() == args.size(), Pos,
+				string("The template requires ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given");
+		}
+		else
+		{
+			CompileAssert(params.size() <= args.size(), Pos,
+				string("The template requires at least ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given");
+		}
 		
-		for (int i = 0; i < args.size(); i++)
+		for (int i = 0; i < params.size(); i++)
 		{
 			if (params[i].isTypeParameter())
 			{
@@ -1432,13 +1469,17 @@ namespace Birdee
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
 		Phase1ForTemplateInstance(ret, source_template, *v, params, mod, pos);
+		if (annotation)
+		{
+			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos);
+		}
 		return ret;
 	}
 
 	template<typename T>
 	void Birdee::TemplateParameters<T>::ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos)
 	{
-		DoTemplateValidateArguments(params,args, Pos);
+		DoTemplateValidateArguments(is_vararg, params, args, Pos);
 	}
 	void AddressOfExprAST::Phase1()
 	{

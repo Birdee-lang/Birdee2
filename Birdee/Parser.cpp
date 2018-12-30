@@ -858,28 +858,37 @@ std::unique_ptr<IfBlockAST> ParseIf()
 	return make_unique<IfBlockAST>(std::move(cond), std::move(true_block), std::move(false_block), pos);
 }
 
-vector<TemplateParameter> ParseTemplateParameters()
+vector<TemplateParameter> ParseTemplateParameters(bool& is_vararg)
 {
 	vector<TemplateParameter> ret;
 	if (tokenizer.CurTok == tok_right_index)
 		throw CompileError("The template parameters cannot be empty");
 	for (;;)
 	{
-		CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier");
-		string identifier = tokenizer.IdentifierStr;
-		tokenizer.GetNextToken();
-		if (tokenizer.CurTok == tok_as)
+		if (tokenizer.CurTok == tok_ellipsis)
 		{
-			unique_ptr<Type> ty = ParseType();
-			if (ty->index_level > 0)
-				throw CompileError("Arrays are not supported in template parameters");
-			ret.push_back(TemplateParameter(std::move(ty), identifier));
+			tokenizer.GetNextToken();
+			is_vararg = true;
+			CompileExpect(tok_right_index, "Expecting \"]\" after ..., as it should be the last parameter");
+			break;
 		}
 		else
 		{
-			ret.push_back(TemplateParameter(nullptr, identifier));
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier");
+			string identifier = tokenizer.IdentifierStr;
+			tokenizer.GetNextToken();
+			if (tokenizer.CurTok == tok_as)
+			{
+				unique_ptr<Type> ty = ParseType();
+				if (ty->index_level > 0)
+					throw CompileError("Arrays are not supported in template parameters");
+				ret.push_back(TemplateParameter(std::move(ty), identifier));
+			}
+			else
+			{
+				ret.push_back(TemplateParameter(nullptr, identifier));
+			}
 		}
-
 		if (tokenizer.CurTok == tok_right_index)
 		{
 			tokenizer.GetNextToken();
@@ -930,7 +939,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		}
 		tokenizer.GetNextToken();
 		template_param = make_unique<TemplateParameters<FunctionAST>>();
-		template_param->params=std::move(ParseTemplateParameters());
+		template_param->params=std::move(ParseTemplateParameters(template_param->is_vararg));
 	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
 	std::unique_ptr<VariableDefAST> args;
@@ -1126,7 +1135,7 @@ void ParseClassInPlace(ClassAST* ret)
 		}
 		tokenizer.GetNextToken();
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
-		ret->template_param->params = std::move(ParseTemplateParameters());
+		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg));
 	}
 	CompileExpect(tok_newline, "Expected an newline after class name");
 	

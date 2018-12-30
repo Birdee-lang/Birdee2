@@ -962,10 +962,12 @@ namespace Birdee {
 	struct TemplateParameters
 	{
 
+		bool is_vararg = false;
 		vector<TemplateParameter> params;
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
 		SourceStringHolder source; //no need to copy this field
 		ImportedModule* mod = nullptr;
+		AnnotationStatementAST* annotation = nullptr;
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
@@ -982,7 +984,7 @@ namespace Birdee {
 			assert(instances.find(v) == instances.end());
 			instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(v), std::move(impl)));
 		}
-		TemplateParameters(vector<TemplateParameter>&& params) : params(std::move(params)){};
+		TemplateParameters(vector<TemplateParameter>&& params, bool is_vararg) : params(std::move(params)),is_vararg(is_vararg){};
 		//TemplateParameters(vector<TemplateParameter>&& params, string&& src) : params(std::move(params)), source(std::move(src)){};
 		TemplateParameters() {}
 		BD_CORE_API unique_ptr<TemplateParameters<T>> Copy();
@@ -1169,7 +1171,7 @@ namespace Birdee {
 			Pos = pos;
 		}
 		bool isTemplateInstance() { return template_instance_args != nullptr; }
-		bool isTemplate() { return template_param != nullptr && template_param->params.size() != 0; }
+		bool isTemplate() { return template_param != nullptr && (template_param->params.size() != 0 || template_param->is_vararg); }
 		string GetUniqueName();
 		void PreGenerate();
 		void PreGenerateFuncs();

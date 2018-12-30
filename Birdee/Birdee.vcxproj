@@ -202,6 +202,7 @@
     <Text Include="..\BirdeeHome\src\template_test.txt" />
     <Text Include="..\tests\hash_map_test.txt" />
     <Text Include="..\tests\logic_obj_cmp.txt" />
+    <Text Include="..\tests\template_vararg.txt" />
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>

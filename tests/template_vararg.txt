@@ -1,0 +1,36 @@
+function add[T,...](a as T) as T
+	return a
+end
+
+class cls[T,T2,...]
+	public a as T
+end
+
+dim tuple1 as tuple[int,int]
+
+{@
+def tuple_add_fields(cls):
+	assert(isinstance(cls,ClassAST))
+	idx=1
+	for arg in cls.template_instance_args:
+		if arg.kind!=TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE:
+			raise RuntimeError("The {}-th template argument should be a type".format(idx))
+		ty = arg.resolved_type
+		class_body(cls, f"public v{idx} as {ty}\n")
+		idx+=1
+@}
+
+@tuple_add_fields
+class tuple[...]
+
+end
+
+
+#add[int](1)
+#add[int,uint](2)
+#dim p as cls[int,float]
+#dim p2 as cls[int]
+
+dim t as tuple[int,float]
+dim v1 = t.v1
+dim v2 = t.v2

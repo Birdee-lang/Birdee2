@@ -237,7 +237,7 @@ namespace Birdee
 		{
 			newparams.push_back(std::move(TemplateParameter(param.type == nullptr ? nullptr : param.type->Copy(), param.name)));
 		}
-		auto ret = make_unique<TemplateParameters<T>>(std::move(newparams));
+		auto ret = make_unique<TemplateParameters<T>>(std::move(newparams),is_vararg);
 		ret->mod = mod;
 		assert(source.type == SourceStringHolder::HOLDER_STRING_VIEW);
 		ret->source.set(source.heldstr,source.view.start, source.view.len);
