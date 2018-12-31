@@ -546,9 +546,9 @@ struct PreprocessingState
 #define cur_func (preprocessing_state._cur_func)
 
 static PreprocessingState preprocessing_state;
-BD_CORE_API FunctionAST* GetCurrentPreprocessedFunction()
+BD_CORE_API std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction()
 {
-	return cur_func;
+	return std::reference_wrapper<FunctionAST>(*cur_func);
 }
 
 BD_CORE_API void PushClass(ClassAST* cls)
@@ -994,11 +994,11 @@ namespace Birdee
 			if (ty->template_args)
 			{
 				CompileAssert(class_ast->isTemplate(),pos, "The class must be a template class");
-				vector<TemplateArgument>& arg= *(new vector<TemplateArgument>());
+				auto arg= make_unique<vector<TemplateArgument>>();
 				auto& args = *ty->template_args.get();
-				ParseRawTemplateArgs(args, arg);
-				class_ast->template_param->ValidateArguments(arg, pos);
-				class_ast = class_ast->template_param->GetOrCreate(&arg, class_ast, pos); //will take the ownership of the pointer arg
+				ParseRawTemplateArgs(args, *arg);
+				class_ast->template_param->ValidateArguments(*arg, pos);
+				class_ast = class_ast->template_param->GetOrCreate(std::move(arg), class_ast, pos); //will take the ownership of the pointer arg
 			}
 		}
 		if(this->type==tok_class)
@@ -1331,8 +1331,10 @@ namespace Birdee
 		return ret;
 	}
 
-	void FunctionAST::Phase0(FunctionAST* template_func,const vector<TemplateArgument>* templ_args)
+	void FunctionAST::Phase0()
 	{
+		FunctionAST* template_func = template_source_func;
+		const vector<TemplateArgument>* templ_args = template_instance_args.get();
 		auto& Proto = this->Proto;
 		auto& Pos = this->Pos;
 		auto& is_vararg = this->is_vararg;
@@ -1398,10 +1400,11 @@ If usage vararg name is "", match the closest vararg
 		func = GetFunctionFromExpression(expr.get(),Pos);
 		CompileAssert(func, Pos, "Expected a function name or a member function for template");
 		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
-		ParseRawTemplateArgs(raw_template_args, template_args);
+		auto template_args = make_unique<vector<TemplateArgument>>();
+		ParseRawTemplateArgs(raw_template_args, *template_args);
 		raw_template_args.clear();
-		func->template_param->ValidateArguments(template_args, Pos);
-		instance = func->template_param->GetOrCreate(&template_args, func, Pos);
+		func->template_param->ValidateArguments(*template_args, Pos);
+		instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 		resolved_type = instance->resolved_type;
 	}
 	static string GetTemplateArgumentString(const vector<TemplateArgument>& v)
@@ -1445,13 +1448,10 @@ If usage vararg name is "", match the closest vararg
 			return cu.imported_module_names[package_name_idx] + '.' + name;
 	}
 
-	/*
-	Will not Take the ownership of the pointer v
-	*/
-	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, const vector<TemplateArgument>& v,
+	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
-		func->Proto->Name += GetTemplateArgumentString(v);
+		func->Proto->Name += GetTemplateArgumentString(*v);
 		ClassAST* cls_template=nullptr;
 		if (func->Proto->cls) 
 		{
@@ -1469,12 +1469,14 @@ If usage vararg name is "", match the closest vararg
 		{
 			scope_mgr.SetEmptyClassTemplateEnv();
 		}
-		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
+		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
-		func->Phase0(src_func, &v);
+		func->template_instance_args = std::move(v);
+		func->template_source_func = src_func;
+		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
@@ -1489,13 +1491,14 @@ If usage vararg name is "", match the closest vararg
 	/*
 	Takes the ownership of the pointer v
 	*/
-	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, vector<TemplateArgument>& v,
+	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
-		cls->template_instance_args = unique_ptr<vector<TemplateArgument>>(&v);
+		auto& args = *v;
+		cls->template_instance_args = std::move(v);
 		cls->template_source_class = src_cls;
-		cls->name += GetTemplateArgumentString(v);
-		scope_mgr.SetClassTemplateEnv(v, parameters, mod, pos);
+		cls->name += GetTemplateArgumentString(args);
+		scope_mgr.SetClassTemplateEnv(args, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
 		for (auto& funcdef : cls->funcs)
 		{
@@ -1507,27 +1510,18 @@ If usage vararg name is "", match the closest vararg
 		scope_mgr.RestoreClassTemplateEnv();
 	}
 
-	static void NoOpForTemplateInstance(ClassAST* dummy, vector<TemplateArgument>* v)
-	{
-		delete v;
-	}
-
-	static void NoOpForTemplateInstance(FunctionAST* dummy, vector<TemplateArgument>* v)
-	{}
-
 	template<typename T>
-	T * Birdee::TemplateParameters<T>::GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos)
+	T * Birdee::TemplateParameters<T>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(*v);
 		if (ins != instances.end())
 		{
-			NoOpForTemplateInstance(source_template, v);
 			return ins->second.get();
 		}
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
-		Phase1ForTemplateInstance(ret, source_template, *v, params, mod, pos);
+		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
 		if (annotation)
 		{
 			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos);
@@ -1920,10 +1914,21 @@ If usage vararg name is "", match the closest vararg
 				}
 			}
 
-			if (singleArgs.size() != Args.size()) {
-				std::stringstream buf;
-				buf << "The function requires " << singleArgs.size() << " Arguments, but " << Args.size() << "are given";
-				CompileAssert(false, Pos, buf.str());
+			if (func->is_vararg)
+			{
+				if (singleArgs.size() > Args.size()) {
+					std::stringstream buf;
+					buf << "The function requires at least" << singleArgs.size() << " arguments, but " << Args.size() << " are given";
+					CompileAssert(false, Pos, buf.str());
+				}
+			}
+			else
+			{
+				if (singleArgs.size() != Args.size()) {
+					std::stringstream buf;
+					buf << "The function requires " << singleArgs.size() << " arguments, but " << Args.size() << " are given";
+					CompileAssert(false, Pos, buf.str());
+				}
 			}
 
 			unordered_map<string, ResolvedType> name2type;
@@ -1940,18 +1945,26 @@ If usage vararg name is "", match the closest vararg
 							+ " from given arguments: conflicting argument types - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
 				}
 			}
-
 			auto & params = func->template_param->params;
 			// construct FunctionTemplateInstanceAST to replace Callee
-			vector<TemplateArgument> template_args;
+			auto template_args=make_unique<vector<TemplateArgument>>();
 			for (auto & param : params) {
 				CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
 				auto itr = name2type.find(param.name);
 				CompileAssert(itr != name2type.end(), Pos, "Cannot derive the template parameter: " + param.name);
-				template_args.emplace_back(TemplateArgument(itr->second));
+				template_args->emplace_back(TemplateArgument(itr->second));
 			}
-			func->template_param->ValidateArguments(template_args, Pos);
-			auto instance = func->template_param->GetOrCreate(&template_args, func, Pos);
+			if (func->is_vararg)
+			{
+				//push the extra vararg types to the template args
+				for (int i = singleArgs.size(); i < Args.size(); i++)
+				{
+					Args[i]->Phase1();
+					template_args->emplace_back(TemplateArgument(Args[i]->resolved_type));
+				}
+			}
+			func->template_param->ValidateArguments(*template_args, Pos);
+			auto instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 			if (auto memb = dyncast_resolve_anno<MemberExprAST>(Callee.get()))
 			{
 				memb->kind = MemberExprAST::member_imported_function;

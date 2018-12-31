@@ -682,7 +682,6 @@ namespace Birdee {
 	public:
 		FunctionAST* instance = nullptr;
 		vector<unique_ptr<ExprAST>> raw_template_args;
-		vector<TemplateArgument> template_args;
 		std::unique_ptr<ExprAST> expr;
 		void Phase1();
 		std::unique_ptr<StatementAST> Copy();
@@ -972,7 +971,7 @@ namespace Birdee {
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
-		BD_CORE_API T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
+		BD_CORE_API T* GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos);
 		T* Get(vector<TemplateArgument>& v)
 		{
 			auto f = instances.find(v);
@@ -1004,6 +1003,9 @@ namespace Birdee {
 		string vararg_name;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
+		//the source template and the template args for the template function instance
+		unique_ptr<vector<TemplateArgument>> template_instance_args;
+		FunctionAST* template_source_func = nullptr;
 		
 		vector<VariableSingleDefAST*> captured_var;
 		bool capture_this = false;
@@ -1056,8 +1058,7 @@ namespace Birdee {
 
 		//resolve the types of the argument and the returned value
 		//we add a phase0 because we may reference a function before we parse the function in phase1
-		//the two optional arguments are for additional vararg parameter. Only set the arguments when doing phase1 in function template instances
-		void Phase0(FunctionAST* template_func=nullptr,const vector<TemplateArgument>* templ_args=nullptr);
+		void Phase0();
 		void Phase1();
 
 		bool isTemplate() { return template_param!=nullptr && (template_param->is_vararg || template_param->params.size() != 0); }

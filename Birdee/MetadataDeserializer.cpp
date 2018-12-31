@@ -205,9 +205,9 @@ void BuildTemplateClassFromJson(const json& itr, ClassAST* cls, int module_idx, 
 
 }
 
-vector<TemplateArgument>* BuildTemplateArgsFromJson(const json& args)
+unique_ptr<vector<TemplateArgument>> BuildTemplateArgsFromJson(const json& args)
 {
-	vector<TemplateArgument>* targs = new vector<TemplateArgument>(); //GetOrCreate will take its ownership
+	auto targs = make_unique< vector<TemplateArgument>>(); //GetOrCreate will take its ownership
 	for (auto& arg : args)
 	{
 		if (arg["kind"].get<string>() == "type")
@@ -238,7 +238,7 @@ vector<TemplateArgument>* BuildTemplateArgsFromJson(const json& args)
 			BirdeeAssert(false, "Bad template argument kind");
 		}
 	}
-	return targs;
+	return std::move(targs);
 }
 
 void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_idx, ImportedModule& mod)
@@ -388,15 +388,12 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 					//add to the existing template's instances
 					auto pargs = BuildTemplateArgsFromJson(json_cls["template_arguments"]);
 					classdef = src->template_param->Get(*pargs); //find if we have an instance?
-					if (classdef)
+					if (!classdef)
 					{ //if have an instance, do nothing
-						delete pargs;
-					}
-					else
-					{ //if no instance, add a placeholder to the instance set
+					  //if no instance, add a placeholder to the instance set
 						auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //placeholder
 						classdef = newclass.get();
-						classdef->template_instance_args = unique_ptr<vector<TemplateArgument>>(pargs);
+						classdef->template_instance_args = std::move(pargs);
 						src->template_param->AddImpl(*pargs, std::move(newclass));
 					}
 				}
@@ -512,7 +509,7 @@ void BuildClassFromJson(const json& cls, ImportedModule& mod)
 			ClassAST* src = idx_to_class[src_idx];
 			BirdeeAssert(src->isTemplate(), "The source must be a class template");
 			auto targs = BuildTemplateArgsFromJson(json_cls["arguments"]);
-			*itr = src->template_param->GetOrCreate(targs, src, SourcePos(source_paths.size() - 1, 0, 0));
+			*itr = src->template_param->GetOrCreate(std::move(targs), src, SourcePos(source_paths.size() - 1, 0, 0));
 		}
 		itr++;
 	}

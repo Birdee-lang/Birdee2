@@ -13,7 +13,7 @@ using namespace Birdee;
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel();
-extern FunctionAST* GetCurrentPreprocessedFunction();
+extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 extern std::unique_ptr<Type> ParseTypeName();
 extern unique_ptr<StatementAST> ParseStatement();
 
