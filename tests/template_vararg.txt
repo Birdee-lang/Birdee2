@@ -2,7 +2,7 @@ function add[T,...](a as T) as T
 	return a
 end
 
-class cls[T,T2,...]
+class cls[T,T2,...VArg]
 	public a as T
 end
 

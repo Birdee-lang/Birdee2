@@ -858,7 +858,7 @@ std::unique_ptr<IfBlockAST> ParseIf()
 	return make_unique<IfBlockAST>(std::move(cond), std::move(true_block), std::move(false_block), pos);
 }
 
-vector<TemplateParameter> ParseTemplateParameters(bool& is_vararg)
+vector<TemplateParameter> ParseTemplateParameters(bool& is_vararg,string& vararg_name)
 {
 	vector<TemplateParameter> ret;
 	if (tokenizer.CurTok == tok_right_index)
@@ -869,6 +869,11 @@ vector<TemplateParameter> ParseTemplateParameters(bool& is_vararg)
 		{
 			tokenizer.GetNextToken();
 			is_vararg = true;
+			if (tokenizer.CurTok == tok_identifier) //if it is a named vararg
+			{
+				vararg_name = std::move(tokenizer.IdentifierStr);
+				tokenizer.GetNextToken();
+			}
 			CompileExpect(tok_right_index, "Expecting \"]\" after ..., as it should be the last parameter");
 			break;
 		}
@@ -939,7 +944,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		}
 		tokenizer.GetNextToken();
 		template_param = make_unique<TemplateParameters<FunctionAST>>();
-		template_param->params=std::move(ParseTemplateParameters(template_param->is_vararg));
+		template_param->params=std::move(ParseTemplateParameters(template_param->is_vararg,template_param->vararg_name));
 	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
 	std::unique_ptr<VariableDefAST> args;
@@ -1135,7 +1140,7 @@ void ParseClassInPlace(ClassAST* ret)
 		}
 		tokenizer.GetNextToken();
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
-		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg));
+		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg, ret->template_param->vararg_name));
 	}
 	CompileExpect(tok_newline, "Expected an newline after class name");
 	

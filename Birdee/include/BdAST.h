@@ -963,6 +963,7 @@ namespace Birdee {
 	{
 
 		bool is_vararg = false;
+		string vararg_name; //if is_vararg and if this field is not empty, it means the name of vararg
 		vector<TemplateParameter> params;
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
 		SourceStringHolder source; //no need to copy this field
