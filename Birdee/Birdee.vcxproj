@@ -193,6 +193,7 @@
   <ItemGroup>
     <Text Include="..\BirdeeHome\src\birdee.txt" />
     <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt" />
+    <Text Include="..\BirdeeHome\src\fmt.txt" />
     <Text Include="..\BirdeeHome\src\hash_map.txt" />
     <Text Include="..\BirdeeHome\src\list.txt" />
     <Text Include="..\BirdeeHome\src\templates.txt" />

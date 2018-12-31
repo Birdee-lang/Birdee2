@@ -202,12 +202,12 @@ int main(int argc,char** argv)
 			cu.Generate();
 		}
 	}
-	catch (CompileError e)
+	catch (CompileError& e)
 	{
 		e.print();
 		return 1;
 	}
-	catch (TokenizerError e)
+	catch (TokenizerError& e)
 	{
 		e.print();
 		return 1;

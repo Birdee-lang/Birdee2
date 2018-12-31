@@ -640,6 +640,8 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Expr, Index;
 		unique_ptr<FunctionTemplateInstanceExprAST> instance;
 		void Phase1();
+		//is_in_call: if this IndexExprAST is in a "CallExpr". If true, will throw if is_vararg & even if all template arguments are given
+		void Phase1(bool is_in_call);
 		std::unique_ptr<StatementAST> Copy();
 		bool isTemplateInstance();
 		llvm::Value* Generate();
@@ -671,11 +673,13 @@ namespace Birdee {
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
 		ResolvedType type;
 		TemplateArgument Copy() const;
+		TemplateArgument():kind(TEMPLATE_ARG_EXPR){}
 		TemplateArgument(ResolvedType type) :kind(TEMPLATE_ARG_TYPE),type(type), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
 		TemplateArgument(TemplateArgument&& other) :kind(other.kind), expr(std::move(other.expr)), type(other.type) {}
 		TemplateArgument& operator = (TemplateArgument&&) = default;
 		bool operator < (const TemplateArgument&) const;
+		string GetString() const;
 	};
 
 	class BD_CORE_API FunctionTemplateInstanceExprAST : public ExprAST {
@@ -684,6 +688,8 @@ namespace Birdee {
 		vector<unique_ptr<ExprAST>> raw_template_args;
 		std::unique_ptr<ExprAST> expr;
 		void Phase1();
+		//is_in_call: if this FunctionTemplateInstanceExprAST is in a "CallExpr". If true, will throw if is_vararg & even if all template arguments are given
+		void Phase1(bool is_in_call);
 		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override { return nullptr; };
@@ -988,7 +994,7 @@ namespace Birdee {
 		//TemplateParameters(vector<TemplateParameter>&& params, string&& src) : params(std::move(params)), source(std::move(src)){};
 		TemplateParameters() {}
 		BD_CORE_API unique_ptr<TemplateParameters<T>> Copy();
-		BD_CORE_API void ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos);
+		BD_CORE_API unique_ptr<vector<TemplateArgument>> ValidateArguments(T* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg);
 	};
 
 	/// FunctionAST - This class represents a function definition itself.

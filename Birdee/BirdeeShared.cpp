@@ -421,6 +421,7 @@ Token Birdee::Tokenizer::gettok() {
 			}
 			if (LastChar == EOF)
 				throw TokenizerError(line, pos, "Unexpected end of file: expected ##");
+			LastChar = GetChar();
 		}
 		else
 		{
@@ -432,6 +433,37 @@ Token Birdee::Tokenizer::gettok() {
 
 		if (LastChar != EOF)
 			return gettok();
+	}
+	if (LastChar == '\'')
+	{
+		LastChar = GetChar();
+		if (LastChar != '\'')
+			throw TokenizerError(line, pos, "Expecting \' for raw string");
+		LastChar = GetChar();
+		if (LastChar != '\'')
+			throw TokenizerError(line, pos, "Expecting \' for raw string");
+		int cnt_dot = 0;
+		IdentifierStr = "";
+		while (LastChar != EOF)
+		{
+			LastChar = GetChar();
+			IdentifierStr += LastChar;
+			if (LastChar == '\'')
+			{
+				cnt_dot++;
+				if (cnt_dot == 3)
+				{
+					IdentifierStr.pop_back(); IdentifierStr.pop_back(); IdentifierStr.pop_back();
+					break;
+				}
+			}
+			else
+				cnt_dot = 0;
+		}
+		if (LastChar == EOF)
+			throw TokenizerError(line, pos, "Unexpected end of file: expecting \'\'\'");
+		LastChar = GetChar();
+		return tok_string_literal;
 	}
 	if (LastChar == '@')
 	{

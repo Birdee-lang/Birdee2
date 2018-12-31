@@ -18,6 +18,24 @@ def assert_ok(istr):
 	process_top_level()
 	clear_compile_unit()
 
+
+assert_ok('''
+function add[T1,T2](a as T2, b as T2) as T1
+	return a+b
+end
+
+add[float](1,2)
+''')
+
+
+assert_fail('''
+function add[T1,T2,T3](a as T2, b as T2) as T1
+	return a+b
+end
+
+add[float](1,2)
+''')
+
 assert_ok('''
 class cls[T,T2,...VArg]
 	public a as T

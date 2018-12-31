@@ -35,6 +35,20 @@ T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
 	return (itr->second.get());
 }
 
+namespace Birdee
+{
+	class TemplateArgumentNumberError : public CompileError
+	{
+	public:
+		FunctionAST* src_template;
+		std::shared_ptr<vector<TemplateArgument>> args;
+
+		TemplateArgumentNumberError(SourcePos pos, const std::string& _msg,
+			FunctionAST* src_template, unique_ptr<vector<TemplateArgument>>&& args) :
+			src_template(src_template), args(std::move(args)), CompileError(pos.line,pos.pos,_msg)
+		{}
+	};
+}
 
 #ifdef BIRDEE_USE_DYN_LIB
 #ifdef _WIN32
@@ -997,7 +1011,7 @@ namespace Birdee
 				auto arg= make_unique<vector<TemplateArgument>>();
 				auto& args = *ty->template_args.get();
 				ParseRawTemplateArgs(args, *arg);
-				class_ast->template_param->ValidateArguments(*arg, pos);
+				arg = class_ast->template_param->ValidateArguments(class_ast, std::move(arg), pos, false);
 				class_ast = class_ast->template_param->GetOrCreate(std::move(arg), class_ast, pos); //will take the ownership of the pointer arg
 			}
 		}
@@ -1272,36 +1286,50 @@ namespace Birdee
 		stream << v;
 		return stream.str();   
 	}
-
-	static void DoTemplateValidateArguments(bool is_vararg, const vector<TemplateParameter>& params, const vector<TemplateArgument>& args, SourcePos Pos)
+	static void ValidateOneTemplateArg(const vector<TemplateArgument>& args, const vector<TemplateParameter>& params,SourcePos& Pos, int i)
 	{
-		if (!is_vararg)
+		if (params[i].isTypeParameter())
 		{
-			CompileAssert(params.size() == args.size(), Pos,
-				string("The template requires ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given");
+			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
 		}
 		else
 		{
-			CompileAssert(params.size() <= args.size(), Pos,
-				string("The template requires at least ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given");
+			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
+			CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
+				string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
+			args[i].expr->Phase1();
+			CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
+				string("The expression type does not match at the template parameter number ") + int2str(i + 1));
+		}
+	}
+	static unique_ptr<vector<TemplateArgument>> DoTemplateValidateArguments(FunctionAST* src_template,bool is_vararg, const vector<TemplateParameter>& params, 
+		unique_ptr<vector<TemplateArgument>>&& pargs, SourcePos Pos, bool throw_if_vararg)
+	{
+		vector<TemplateArgument>& args = *pargs;
+		if (!is_vararg)
+		{
+			if (params.size() != args.size())
+			{
+				throw TemplateArgumentNumberError(Pos,
+					string("The template requires ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
+					src_template,std::move(pargs));
+			}
+		}
+		else
+		{
+			if (params.size() > args.size() || (throw_if_vararg && params.size() == args.size()))
+			{
+				throw TemplateArgumentNumberError(Pos,
+					string("The template requires at least ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
+					src_template, std::move(pargs));
+			}
 		}
 		
 		for (int i = 0; i < params.size(); i++)
 		{
-			if (params[i].isTypeParameter())
-			{
-				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
-			}
-			else
-			{
-				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
-				CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
-					string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
-				args[i].expr->Phase1();
-				CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
-					string("The expression type does not match at the template parameter number ") + int2str(i + 1));
-			}
+			ValidateOneTemplateArg(args, params, Pos, i);
 		}
+		return std::move(pargs);
 		
 	}
 
@@ -1392,8 +1420,11 @@ If usage vararg name is "", match the closest vararg
 		}
 		CompileAssert(!is_vararg, Pos, string("Cannot resolve vararg parameter: \"") + vararg_name + "\"");
 	}
-
 	void FunctionTemplateInstanceExprAST::Phase1()
+	{
+		Phase1(false);
+	}
+	void FunctionTemplateInstanceExprAST::Phase1(bool is_in_call)
 	{
 		FunctionAST* func = nullptr;
 		expr->Phase1();
@@ -1403,7 +1434,7 @@ If usage vararg name is "", match the closest vararg
 		auto template_args = make_unique<vector<TemplateArgument>>();
 		ParseRawTemplateArgs(raw_template_args, *template_args);
 		raw_template_args.clear();
-		func->template_param->ValidateArguments(*template_args, Pos);
+		template_args = func->template_param->ValidateArguments(func, std::move(template_args), Pos, is_in_call);
 		instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 		resolved_type = instance->resolved_type;
 	}
@@ -1529,11 +1560,18 @@ If usage vararg name is "", match the closest vararg
 		return ret;
 	}
 
-	template<typename T>
-	void Birdee::TemplateParameters<T>::ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos)
+	template<>
+	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<FunctionAST>::ValidateArguments(FunctionAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
 	{
-		DoTemplateValidateArguments(is_vararg, params, args, Pos);
+		return DoTemplateValidateArguments(ths, is_vararg, params, std::move(args), Pos, throw_if_vararg);
 	}
+
+	template<>
+	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<ClassAST>::ValidateArguments(ClassAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
+	{
+		return DoTemplateValidateArguments(nullptr, is_vararg, params, std::move(args), Pos, throw_if_vararg);
+	}
+
 	void AddressOfExprAST::Phase1()
 	{
 		
@@ -1556,8 +1594,11 @@ If usage vararg name is "", match the closest vararg
 		}
 		return false;
 	}
-
 	void IndexExprAST::Phase1()
+	{
+		Phase1(false);
+	}
+	void IndexExprAST::Phase1(bool is_in_call)
 	{
 		Expr->Phase1();
 		if(isTemplateInstance())
@@ -1566,7 +1607,7 @@ If usage vararg name is "", match the closest vararg
 			arg.push_back(std::move(Index));
 			instance = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
 			Expr = nullptr;
-			instance->Phase1();
+			instance->Phase1(is_in_call);
 			resolved_type = instance->resolved_type;
 			return;
 		}
@@ -1892,11 +1933,44 @@ If usage vararg name is "", match the closest vararg
 		}
 		throw CompileError(Pos.line, Pos.pos, "Cannot find member "+member);
 	}
-
+	string TemplateArgument::GetString() const
+	{
+		if (kind == TEMPLATE_ARG_EXPR)
+		{
+			return "expression()";
+		}
+		return string("type(")+type.GetString()+")";
+	}
 	void CallExprAST::Phase1()
 	{
-		Callee->Phase1();
-		auto func = GetFunctionFromExpression(Callee.get(),Pos);
+		FunctionAST* func = nullptr;
+		unordered_map<string, TemplateArgument> name2type;
+		try
+		{
+			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
+			{
+				indexexpr->Phase1(true);
+			}
+			else if(auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
+			{
+				templexpr->Phase1(true);
+			}
+			else
+			{
+				Callee->Phase1();
+				func = GetFunctionFromExpression(Callee.get(), Pos);
+			}
+		}
+		catch (TemplateArgumentNumberError& e)
+		{
+			func = e.src_template;
+			assert(func->isTemplate());
+			for (int i = 0; i < e.args->size(); i++)
+			{
+				ValidateOneTemplateArg(*e.args, func->template_param->params, Pos, i);
+				name2type[func->template_param->params[i].name] = std::move(e.args->at(i));
+			}
+		}
 		// if (func)
 		// 	CompileAssert(!func->isTemplate(), Pos, "Cannot call a template");
 		if (func && func->isTemplate()) {
@@ -1931,7 +2005,6 @@ If usage vararg name is "", match the closest vararg
 				}
 			}
 
-			unordered_map<string, ResolvedType> name2type;
 			for (int i = 0; i < singleArgs.size(); i++) {
 				Args[i]->Phase1();
 				if (singleArgs[i]->type->type == tok_identifier) {
@@ -1940,19 +2013,19 @@ If usage vararg name is "", match the closest vararg
 					
 					if (it == name2type.end())
 						name2type[identifierType->name] = Args[i]->resolved_type;
-					else if (!(it->second == Args[i]->resolved_type))
+					else if ( it->second.kind!=TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == Args[i]->resolved_type))
 						CompileAssert(false, Pos, string("Cannot derive template parameter type ")+ identifierType->name 
-							+ " from given arguments: conflicting argument types - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
+							+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
 				}
 			}
 			auto & params = func->template_param->params;
 			// construct FunctionTemplateInstanceAST to replace Callee
 			auto template_args=make_unique<vector<TemplateArgument>>();
 			for (auto & param : params) {
-				CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
+				//CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
 				auto itr = name2type.find(param.name);
 				CompileAssert(itr != name2type.end(), Pos, "Cannot derive the template parameter: " + param.name);
-				template_args->emplace_back(TemplateArgument(itr->second));
+				template_args->emplace_back(std::move(itr->second));
 			}
 			if (func->is_vararg)
 			{
@@ -1963,7 +2036,7 @@ If usage vararg name is "", match the closest vararg
 					template_args->emplace_back(TemplateArgument(Args[i]->resolved_type));
 				}
 			}
-			func->template_param->ValidateArguments(*template_args, Pos);
+			template_args = func->template_param->ValidateArguments(func,std::move(template_args), Pos, false);
 			auto instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 			if (auto memb = dyncast_resolve_anno<MemberExprAST>(Callee.get()))
 			{
