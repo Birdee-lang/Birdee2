@@ -1000,6 +1000,8 @@ namespace Birdee {
 		bool isDeclare;
 		bool isTemplateInstance = false;
 		bool isImported=false;
+		bool is_vararg = false;
+		string vararg_name;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
 		
@@ -1036,8 +1038,10 @@ namespace Birdee {
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			ASTBasicBlock&& Body, unique_ptr<TemplateParameters<FunctionAST>>&& template_param, SourcePos pos)
-			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)), isDeclare(false) {
+			ASTBasicBlock&& Body, unique_ptr<TemplateParameters<FunctionAST>>&& template_param,
+			bool is_vararg, string&& vararg_name,SourcePos pos)
+			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)),
+			isDeclare(false), is_vararg(is_vararg),vararg_name(std::move(vararg_name)){
 			Pos = pos;
 		}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,const string& link_name , SourcePos pos)
@@ -1051,21 +1055,12 @@ namespace Birdee {
 		}
 
 		//resolve the types of the argument and the returned value
-		//put a phase0 because we may reference a function before we parse the function in phase1
-		void Phase0()
-		{
-			if (isTemplate())
-				return;
-			if (resolved_type.isResolved())
-				return;
-			resolved_type.type = tok_func;
-			resolved_type.index_level = 0;
-			resolved_type.proto_ast = Proto.get();
-			Proto->Phase0();
-		}
+		//we add a phase0 because we may reference a function before we parse the function in phase1
+		//the two optional arguments are for additional vararg parameter. Only set the arguments when doing phase1 in function template instances
+		void Phase0(FunctionAST* template_func=nullptr,const vector<TemplateArgument>* templ_args=nullptr);
 		void Phase1();
 
-		bool isTemplate() { return template_param!=nullptr && template_param->params.size() != 0; }
+		bool isTemplate() { return template_param!=nullptr && (template_param->is_vararg || template_param->params.size() != 0); }
 
 		const string& GetName()
 		{

@@ -4,6 +4,10 @@ end
 
 class cls[T,T2,...VArg]
 	public a as T
+	public function f[...FArg](...)
+	end
+	public function f2[...FArg](...VArg)
+	end
 end
 
 dim tuple1 as tuple[int,int]
@@ -22,7 +26,9 @@ def tuple_add_fields(cls):
 
 @tuple_add_fields
 class tuple[...]
+	public function __init__(...)
 
+	end
 end
 
 
@@ -31,6 +37,25 @@ end
 #dim p as cls[int,float]
 #dim p2 as cls[int]
 
-dim t as tuple[int,float]
+new cls[int,int,boolean].f[string]("123")
+new cls[int,int,boolean].f2[string](true)
+
+dim t as tuple[int,float]=new tuple[int,float](2,3.4)
 dim v1 = t.v1
 dim v2 = t.v2
+
+
+##function add2(a as int, ...) as int
+	return a
+end##
+
+function add3[...](...Hello) as int
+	return 0
+end
+
+#add3[int]()
+#add4[3]
+
+function add4[...](a as int,...) as int
+	return 0
+end

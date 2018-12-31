@@ -255,7 +255,8 @@ namespace Birdee
 	{
 		if (isDeclare)
 			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declared function");
-		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, Pos);
+		string vararg_n =  vararg_name;
+		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, is_vararg,std::move(vararg_n), Pos);
 		ret->isTemplateInstance = isTemplateInstance;
 		return std::move(ret);
 	}

@@ -1331,6 +1331,65 @@ namespace Birdee
 		return ret;
 	}
 
+	void FunctionAST::Phase0(FunctionAST* template_func,const vector<TemplateArgument>* templ_args)
+	{
+		auto& Proto = this->Proto;
+		auto& Pos = this->Pos;
+		auto& is_vararg = this->is_vararg;
+		if (isTemplate())
+			return;
+		if (resolved_type.isResolved())
+			return;
+		resolved_type.type = tok_func;
+		resolved_type.index_level = 0;
+		resolved_type.proto_ast = Proto.get();
+		auto add_var_arg = [&Proto,&Pos,&is_vararg](const vector<TemplateArgument>& args, int start_idx)
+		{
+			is_vararg = false;
+			for (int i = start_idx; i < args.size(); i++)
+			{
+				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("The ") + int2str(i+1) +"-th vararg should be a type");
+				auto arg_variable = make_unique< VariableSingleDefAST>(string("___vararg") + int2str(i - start_idx), args[i].type);
+				arg_variable->Pos = Pos;
+				Proto->resolved_args.push_back(std::move(arg_variable));
+			}
+			
+		};
+
+		Proto->Phase0();
+/*
+vararg matching:
+first match function template's vararg
+then the classes'.
+If using named vararg, the vararg declaration name must be the same as the vararg usage name
+If usage vararg name is "", match the closest vararg
+*/
+		if (is_vararg && isTemplateInstance)
+		{
+			assert(templ_args && template_func);
+			if (template_func->template_param->is_vararg)
+			{
+				if (vararg_name.empty() || vararg_name == template_func->template_param->vararg_name)
+				{
+					add_var_arg(*templ_args, template_func->template_param->params.size());
+					//will set is_vararg=false
+				}
+			}
+		}
+		if (is_vararg && Proto->cls && Proto->cls->isTemplateInstance())
+		{
+			auto& src_templ_arg = Proto->cls->template_source_class->template_param;
+			if (src_templ_arg->is_vararg)
+			{
+				if (vararg_name.empty() || vararg_name == src_templ_arg->vararg_name)
+				{
+					add_var_arg(*Proto->cls->template_instance_args, src_templ_arg->params.size());
+					//will set is_vararg=false
+				}
+			}
+		}
+		CompileAssert(!is_vararg, Pos, string("Cannot resolve vararg parameter: \"") + vararg_name + "\"");
+	}
 
 	void FunctionTemplateInstanceExprAST::Phase1()
 	{
@@ -1415,7 +1474,7 @@ namespace Birdee
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
-		func->Phase0();
+		func->Phase0(src_func, &v);
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
