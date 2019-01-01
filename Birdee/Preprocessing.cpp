@@ -875,6 +875,72 @@ namespace Birdee
 		}
 	}
 
+	string int2str(const int v)
+	{
+		std::stringstream stream;
+		stream << v;
+		return stream.str();
+	}
+	static void ValidateOneTemplateArg(const vector<TemplateArgument>& args, const vector<TemplateParameter>& params, SourcePos& Pos, int i)
+	{
+		if (params[i].isTypeParameter())
+		{
+			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
+		}
+		else
+		{
+			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
+			CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
+				string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
+			args[i].expr->Phase1();
+			CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
+				string("The expression type does not match at the template parameter number ") + int2str(i + 1));
+		}
+	}
+	static unique_ptr<vector<TemplateArgument>> DoTemplateValidateArguments(FunctionAST* src_template, bool is_vararg, const vector<TemplateParameter>& params,
+		unique_ptr<vector<TemplateArgument>>&& pargs, SourcePos Pos, bool throw_if_vararg)
+	{
+		vector<TemplateArgument>& args = *pargs;
+		if (!is_vararg)
+		{
+			if (params.size() != args.size())
+			{
+				throw TemplateArgumentNumberError(Pos,
+					string("The template requires ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
+					src_template, std::move(pargs));
+			}
+		}
+		else
+		{
+			if (params.size() > args.size() || (throw_if_vararg && params.size() == args.size()))
+			{
+				throw TemplateArgumentNumberError(Pos,
+					string("The template requires at least ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
+					src_template, std::move(pargs));
+			}
+		}
+
+		for (int i = 0; i < params.size(); i++)
+		{
+			ValidateOneTemplateArg(args, params, Pos, i);
+		}
+		return std::move(pargs);
+
+	}
+
+
+	template<>
+	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<FunctionAST>::ValidateArguments(FunctionAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
+	{
+		return DoTemplateValidateArguments(ths, is_vararg, params, std::move(args), Pos, throw_if_vararg);
+	}
+
+	template<>
+	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<ClassAST>::ValidateArguments(ClassAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
+	{
+		return DoTemplateValidateArguments(nullptr, is_vararg, params, std::move(args), Pos, throw_if_vararg);
+	}
+
 	void ResolvedType::ResolveType(Type& type, SourcePos pos)
 	{
 		if (type.type == tok_script)
@@ -1280,58 +1346,7 @@ namespace Birdee
 		return false;
 	}
 
-	string int2str(const int v)
-	{
-		std::stringstream stream;
-		stream << v;
-		return stream.str();   
-	}
-	static void ValidateOneTemplateArg(const vector<TemplateArgument>& args, const vector<TemplateParameter>& params,SourcePos& Pos, int i)
-	{
-		if (params[i].isTypeParameter())
-		{
-			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
-		}
-		else
-		{
-			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
-			CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
-				string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
-			args[i].expr->Phase1();
-			CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
-				string("The expression type does not match at the template parameter number ") + int2str(i + 1));
-		}
-	}
-	static unique_ptr<vector<TemplateArgument>> DoTemplateValidateArguments(FunctionAST* src_template,bool is_vararg, const vector<TemplateParameter>& params, 
-		unique_ptr<vector<TemplateArgument>>&& pargs, SourcePos Pos, bool throw_if_vararg)
-	{
-		vector<TemplateArgument>& args = *pargs;
-		if (!is_vararg)
-		{
-			if (params.size() != args.size())
-			{
-				throw TemplateArgumentNumberError(Pos,
-					string("The template requires ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
-					src_template,std::move(pargs));
-			}
-		}
-		else
-		{
-			if (params.size() > args.size() || (throw_if_vararg && params.size() == args.size()))
-			{
-				throw TemplateArgumentNumberError(Pos,
-					string("The template requires at least ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
-					src_template, std::move(pargs));
-			}
-		}
-		
-		for (int i = 0; i < params.size(); i++)
-		{
-			ValidateOneTemplateArg(args, params, Pos, i);
-		}
-		return std::move(pargs);
-		
-	}
+
 
 	vector<string> Birdee::MemberExprAST::ToStringArray()
 	{
@@ -1363,8 +1378,6 @@ namespace Birdee
 	{
 		FunctionAST* template_func = template_source_func;
 		const vector<TemplateArgument>* templ_args = template_instance_args.get();
-		auto prv_func = cur_func;
-		cur_func = this;
 		auto& Proto = this->Proto;
 		auto& Pos = this->Pos;
 		auto& is_vararg = this->is_vararg;
@@ -1387,7 +1400,8 @@ namespace Birdee
 			}
 			
 		};
-
+		auto prv_func = cur_func;
+		cur_func = this;
 		Proto->Phase0();
 		cur_func = prv_func;
 /*
@@ -1563,17 +1577,7 @@ If usage vararg name is "", match the closest vararg
 		return ret;
 	}
 
-	template<>
-	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<FunctionAST>::ValidateArguments(FunctionAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
-	{
-		return DoTemplateValidateArguments(ths, is_vararg, params, std::move(args), Pos, throw_if_vararg);
-	}
 
-	template<>
-	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<ClassAST>::ValidateArguments(ClassAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
-	{
-		return DoTemplateValidateArguments(nullptr, is_vararg, params, std::move(args), Pos, throw_if_vararg);
-	}
 
 	void AddressOfExprAST::Phase1()
 	{
