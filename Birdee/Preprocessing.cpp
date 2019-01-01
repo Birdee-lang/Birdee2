@@ -1352,7 +1352,7 @@ namespace Birdee
 			cur = node->Obj.get();
 		}
 		vector<string> ret;
-		for (int i = reverse.size() - 1; i >= 0; i++)
+		for (int i = reverse.size() - 1; i >= 0; i--)
 		{
 			ret.push_back(*reverse[i]);
 		}
@@ -1363,6 +1363,8 @@ namespace Birdee
 	{
 		FunctionAST* template_func = template_source_func;
 		const vector<TemplateArgument>* templ_args = template_instance_args.get();
+		auto prv_func = cur_func;
+		cur_func = this;
 		auto& Proto = this->Proto;
 		auto& Pos = this->Pos;
 		auto& is_vararg = this->is_vararg;
@@ -1387,6 +1389,7 @@ namespace Birdee
 		};
 
 		Proto->Phase0();
+		cur_func = prv_func;
 /*
 vararg matching:
 first match function template's vararg
