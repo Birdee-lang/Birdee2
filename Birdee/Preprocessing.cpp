@@ -2139,7 +2139,8 @@ If usage vararg name is "", match the closest vararg
 		auto& func = this->func;
 
 		LHS->Phase1();
-		RHS->Phase1();
+		//important! call RHS->Phase1()!
+		//it is not called here because we may put RHS as a parameter in a function
 		if (Op == tok_assign)
 		{
 			if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
@@ -2150,6 +2151,7 @@ If usage vararg name is "", match the closest vararg
 			{}
 			else
 				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
+			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;
 			return;
@@ -2158,24 +2160,32 @@ If usage vararg name is "", match the closest vararg
 			auto itr = LHS->resolved_type.class_ast->funcmap.find(name);
 			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
 				string("Cannot find function ") + name + " in class " + LHS->resolved_type.class_ast->GetUniqueName());
+			auto member_def = &LHS->resolved_type.class_ast->funcs[itr->second];
 			func = LHS->resolved_type.class_ast->funcs[itr->second].decl.get();
-			auto proto = func->resolved_type.proto_ast;
-			vector<unique_ptr<ExprAST>> args; args.push_back(std::move(RHS));
-			CheckFunctionCallParameters(proto, args, Pos);
-			RHS = std::move(args[0]);
-			resolved_type = proto->resolved_type;
+			auto memberexpr = make_unique<MemberExprAST>(std::move(LHS), member_def, Pos);
+			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(RHS));
+			LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+			LHS->Pos = Pos;
+			//RHS->Phase1 will be called in CallExprAST
+			LHS->Phase1();
+			resolved_type = LHS->resolved_type;
 		};
 		if (Op == tok_equal || Op == tok_ne)
 		{
 			if (LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0) //if is class object, check for operator overload
 				gen_call_to_operator_func(Op == tok_equal ? "__eq__": "__ne__");
-			else if (LHS->resolved_type == RHS->resolved_type)
-				resolved_type.type = tok_boolean;
 			else
-				resolved_type.type=PromoteNumberExpression(LHS, RHS, true, Pos);
+			{
+				RHS->Phase1();
+				if (LHS->resolved_type == RHS->resolved_type)
+					resolved_type.type = tok_boolean;
+				else
+					resolved_type.type = PromoteNumberExpression(LHS, RHS, true, Pos);
+			}
 		}
 		else if (Op == tok_cmp_equal || Op == tok_cmp_ne)
 		{
+			RHS->Phase1();
 			if (LHS->resolved_type == RHS->resolved_type)
 				resolved_type.type = tok_boolean;
 			else if (LHS->resolved_type.isNull() && RHS->resolved_type.isReference())
@@ -2216,6 +2226,7 @@ If usage vararg name is "", match the closest vararg
 				gen_call_to_operator_func(name);
 				return;
 			}
+			RHS->Phase1();
 			if (LHS->resolved_type.index_level == 0 && LHS->resolved_type.type == tok_boolean
 				&& RHS->resolved_type.index_level == 0 && RHS->resolved_type.type == tok_boolean) //boolean
 			{

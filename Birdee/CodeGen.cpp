@@ -1688,6 +1688,11 @@ llvm::Value * BinaryGenerateBool(Token op, ExprAST* lvexpr, ExprAST* rvexpr)
 llvm::Value * Birdee::BinaryExprAST::Generate()
 {
 	dinfo.emitLocation(this);
+	if (func)
+	{
+		//if it is an overloaded operator, the call expr is in LHS
+		return LHS->Generate();
+	}
 	if (Op == tok_assign)
 	{
 		Value* lv = LHS->GetLValue(false);
@@ -1708,13 +1713,6 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		{
 			return builder.CreateICmpNE(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
 				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
-		}
-		if(LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0)
-		{
-			assert(func);
-			auto proto = func->resolved_type.proto_ast;
-			vector<unique_ptr<ExprAST>> vec; vec.push_back(std::move(RHS));
-			return GenerateCall(func->llvm_func, proto, LHS->Generate(), vec,this->Pos);
 		}
 	}
 	if (isLogicToken(Op)) //boolean

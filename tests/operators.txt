@@ -1,0 +1,18 @@
+class complex
+	public real as double
+	public img as double
+	public function __init__(real as double, img as double)
+		this.real=real
+		this.img=img
+	end
+	public function __add__ (other as complex) as complex
+		return new complex(real+other.real,img+other.img)
+	end
+
+	public function __eq__(other as complex) as boolean
+		return real==other.real && img==other.img
+	end
+end
+
+dim a = new complex(1,2), b = new complex(3,4)
+dim c = (a == a+b)
