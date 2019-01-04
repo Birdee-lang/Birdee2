@@ -1612,11 +1612,30 @@ If usage vararg name is "", match the closest vararg
 		{
 			vector<unique_ptr<ExprAST>> arg;
 			arg.push_back(std::move(Index));
-			instance = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
+			auto inst = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
 			Expr = nullptr;
-			instance->Phase1(is_in_call);
+			inst->Phase1(is_in_call);
+			instance = std::move(inst);
 			resolved_type = instance->resolved_type;
 			return;
+		}
+		if (Expr->resolved_type.type == tok_class)
+		{
+			string str = "__getitem__";
+			auto itr = Expr->resolved_type.class_ast->funcmap.find(str);
+			CompileAssert(itr != Expr->resolved_type.class_ast->funcmap.end(), 
+				Pos, string("The method __getitem__ should be declared in class ")+ Expr->resolved_type.class_ast->GetUniqueName());
+			auto& func = Expr->resolved_type.class_ast->funcs[itr->second];
+			CompileAssert(func.access == AccessModifier::access_public, Pos, "The method __getitem__ should be public");
+			auto memberexpr = make_unique<MemberExprAST>(std::move(Expr), &func, Pos);
+			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(Index));
+			instance = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+			instance->Pos = Pos;
+			//Index->Phase1 will be called in CallExprAST
+			instance->Phase1();
+			resolved_type = instance->resolved_type;
+			return;
+
 		}
 		CompileAssert(Expr->resolved_type.index_level > 0, Pos, "The indexed expression should be indexable");
 		Index->Phase1();

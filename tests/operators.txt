@@ -1,4 +1,4 @@
-class complex
+##class complex
 	public real as double
 	public img as double
 	public function __init__(real as double, img as double)
@@ -15,4 +15,16 @@ class complex
 end
 
 dim a = new complex(1,2), b = new complex(3,4)
-dim c = (a == a+b)
+dim c = (a == a+b)##
+
+
+class vector
+	private buf as int[]
+	public func __getitem__ (idx as int) as int => buf[idx]
+	public func __init__(sz as int) 
+		buf=new int * sz
+	end
+end
+
+dim vec = new vector(10)
+dim itm as int = vec[2]

@@ -219,7 +219,9 @@ Value* GetObjOfMemberFunc(ExprAST* Callee)
 		}
 		else if (auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee))
 		{
-			pobj = dyncast_resolve_anno<MemberExprAST>(pidx->instance->expr.get());
+			assert(isa<FunctionTemplateInstanceExprAST>(pidx->instance.get()));
+			auto ptr = static_cast<FunctionTemplateInstanceExprAST*> (pidx->instance.get());
+			pobj = dyncast_resolve_anno<MemberExprAST>(ptr->expr.get());
 			assert(pobj);
 			obj = pobj->llvm_obj;
 		}

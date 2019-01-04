@@ -638,7 +638,7 @@ namespace Birdee {
 	class BD_CORE_API IndexExprAST : public ExprAST {
 	public:
 		std::unique_ptr<ExprAST> Expr, Index;
-		unique_ptr<FunctionTemplateInstanceExprAST> instance;
+		unique_ptr<ExprAST> instance;
 		void Phase1();
 		//is_in_call: if this IndexExprAST is in a "CallExpr". If true, will throw if is_vararg & even if all template arguments are given
 		void Phase1(bool is_in_call);
