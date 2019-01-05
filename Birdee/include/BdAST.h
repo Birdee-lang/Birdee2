@@ -294,6 +294,7 @@ namespace Birdee {
 	class BD_CORE_API ExprAST : public StatementAST {
 	public:
 		ResolvedType resolved_type;
+		//always call GetLValue after phase1
 		virtual llvm::Value* GetLValue(bool checkHas) { return nullptr; };
 		virtual ~ExprAST() = default;
 		void print(int level) {
@@ -642,6 +643,8 @@ namespace Birdee {
 		void Phase1();
 		//is_in_call: if this IndexExprAST is in a "CallExpr". If true, will throw if is_vararg & even if all template arguments are given
 		void Phase1(bool is_in_call);
+		//resolve expr, and check if expr is a class object
+		bool isOverloaded();
 		std::unique_ptr<StatementAST> Copy();
 		bool isTemplateInstance();
 		llvm::Value* Generate();

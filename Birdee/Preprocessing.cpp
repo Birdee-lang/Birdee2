@@ -6,6 +6,7 @@
 #include <sstream>
 #include "TemplateUtil.h"
 #include <algorithm>
+#include <unordered_set>
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
@@ -966,6 +967,7 @@ namespace Birdee
 			if (rtype.type != tok_error)
 			{
 				*this = rtype;
+				this->index_level = type.index_level;
 				return;
 			}
 			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
@@ -1590,10 +1592,17 @@ If usage vararg name is "", match the closest vararg
 		resolved_type.type = tok_pointer;
 	}
 
-	bool Birdee::IndexExprAST::isTemplateInstance()
+	bool IndexExprAST::isOverloaded()
 	{
-		if (!Expr)
-			return true;
+		if (!Expr->resolved_type.isResolved())
+			Expr->Phase1();
+		return 	Expr->resolved_type.type == tok_class;
+	}
+
+	bool IndexExprAST::isTemplateInstance()
+	{
+		if (!Expr)//if the expr is moved, check if "instance"  is callexpr. If so, it is an overloaded call to __getitem__
+			return !(isa<CallExprAST>(instance.get()));
 		auto func = GetFunctionFromExpression(Expr.get(), Pos);
 		if (func && func->isTemplate())
 		{
@@ -1607,7 +1616,8 @@ If usage vararg name is "", match the closest vararg
 	}
 	void IndexExprAST::Phase1(bool is_in_call)
 	{
-		Expr->Phase1();
+		if(!Expr->resolved_type.isResolved())
+			Expr->Phase1();
 		if(isTemplateInstance())
 		{
 			vector<unique_ptr<ExprAST>> arg;
@@ -1802,7 +1812,8 @@ If usage vararg name is "", match the closest vararg
 		int i = 0;
 		for (auto& arg : Args)
 		{
-			arg->Phase1();
+			if(!arg->resolved_type.isResolved())
+				arg->Phase1();
 			SourcePos pos = arg->Pos;
 			arg = FixTypeForAssignment(proto->resolved_args[i]->resolved_type, std::move(arg), pos);
 			i++;
@@ -2157,24 +2168,57 @@ If usage vararg name is "", match the closest vararg
 		auto& Pos = this->Pos;
 		auto& func = this->func;
 
-		LHS->Phase1();
-		//important! call RHS->Phase1()!
-		//it is not called here because we may put RHS as a parameter in a function
+		//if Op is tok_assign, then it is a special case
+		//we do not first do phase1 on LHS here, because it may be a overloaded indexexpr
+		//if we do phase1 on overloaded indexexpr, it will create a callexprast to "__getitem__" which is not necessary 
 		if (Op == tok_assign)
 		{
-			if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
-				CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
-				CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (dyncast_resolve_anno<IndexExprAST>(LHS.get()))
-			{}
-			else
-				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
+			auto indexexpr = dyncast_resolve_anno<IndexExprAST>(LHS.get());
+			if (indexexpr)
+			{
+				if (indexexpr->isOverloaded()) //if indexexpr's Expr is a class object, generate "__setitem__"
+				{
+					string str = "__setitem__";
+					auto classast = indexexpr->Expr->resolved_type.class_ast;
+					auto itr = classast->funcmap.find(str);
+					CompileAssert(itr != classast->funcmap.end(),
+						Pos, string("The method __setitem__ should be declared in class ") + classast->GetUniqueName());
+					auto& funcdef = classast->funcs[itr->second];
+					func = funcdef.decl.get();
+					CompileAssert(funcdef.access == AccessModifier::access_public, Pos, "The method __setitem__ should be public");
+					auto memberexpr = make_unique<MemberExprAST>(std::move(indexexpr->Expr), &funcdef, Pos);
+					vector<unique_ptr<ExprAST>> args; 
+					args.emplace_back(std::move(indexexpr->Index));
+					args.emplace_back(std::move(RHS));
+					LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+					LHS->Pos = Pos;
+					//Index->Phase1 and RHS->Phase1 will be called in CallExprAST
+					LHS->Phase1();
+					resolved_type = LHS->resolved_type;
+					return;
+				}
+				//else, goto the following control flow
+			}
+			LHS->Phase1();
+			if (!indexexpr) //if LHS is not IndexExprAST
+			{
+				if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
+					CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
+				else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
+					CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
+				else
+					throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
+			}
 			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;
 			return;
 		}
+
+		LHS->Phase1();
+		//important! call RHS->Phase1()!
+		//it is not called here because we may put RHS as a parameter in a function
+
 		auto gen_call_to_operator_func = [&LHS,&RHS,&resolved_type,&Pos,&func](const string name) {
 			auto itr = LHS->resolved_type.class_ast->funcmap.find(name);
 			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
@@ -2262,7 +2306,7 @@ If usage vararg name is "", match the closest vararg
 				CompileAssert(LHS->resolved_type.isInteger() && RHS->resolved_type.isInteger(), Pos, "Logical operators can only be applied on integers or booleans");
 				CompileAssert(Op != tok_logic_and && Op != tok_logic_or, Pos, "Shortcut logical operators can only be applied on booleans");
 			}
-			resolved_type.type = PromoteNumberExpression(LHS, RHS, false, Pos);
+			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
 		}
 
 	}
@@ -2309,6 +2353,8 @@ If usage vararg name is "", match the closest vararg
 	llvm::Value * Birdee::ScriptAST::GetLValue(bool checkHas)
 	{
 		CompileAssert(instance_of<ExprAST>(stmt.get()), Pos, "Getting LValue from statement is illegal");
-		return static_cast<ExprAST*>(stmt.get())->GetLValue(checkHas);
+		auto expr = static_cast<ExprAST*>(stmt.get());
+		assert(expr->resolved_type.isResolved());
+		return expr->GetLValue(checkHas);
 	}
 }

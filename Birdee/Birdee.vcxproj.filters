@@ -133,6 +133,9 @@
     <Text Include="..\tests\operators.txt">
       <Filter>资源文件\tests</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\src\vector.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">

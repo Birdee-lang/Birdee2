@@ -18,13 +18,16 @@ dim a = new complex(1,2), b = new complex(3,4)
 dim c = (a == a+b)##
 
 
-class vector
-	private buf as int[]
-	public func __getitem__ (idx as int) as int => buf[idx]
+class vector[T]
+	private buf as T[]
+	public func __getitem__ (idx as int) as T => buf[idx]
 	public func __init__(sz as int) 
-		buf=new int * sz
+		buf=new T * sz
 	end
+
+	public func __setitem__ (idx as int,value as T)  => buf[idx]=value
 end
 
-dim vec = new vector(10)
+dim vec = new vector[int](10)
 dim itm as int = vec[2]
+vec[2]=itm

@@ -1311,8 +1311,9 @@ llvm::Value * Birdee::NullExprAST::Generate()
 
 llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 {
-	if (checkHas)
-		return ( isTemplateInstance()?nullptr: (llvm::Value *)1 );
+	if (checkHas)//if expr is moved, it is either a template instance or a overloaded call to __getitem__
+		return (Expr==nullptr || isTemplateInstance()) ? nullptr: (llvm::Value *)1 ;
+	assert(Expr);
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();

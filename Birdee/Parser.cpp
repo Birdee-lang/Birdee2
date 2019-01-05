@@ -1468,10 +1468,13 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 
 void ImportedModule::HandleImport()
 {
-	if (user_imports.size())
+	if (imported_classmap.size() == 0)
 	{
 		for (auto& imp : auto_import_packages)
 			DoImportPackageAllInImportedModule(this, imp);
+	}
+	if (user_imports.size())
+	{
 		for (auto& imp : user_imports)
 		{
 			if (imp.back() == "*")

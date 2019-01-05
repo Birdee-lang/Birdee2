@@ -1,4 +1,4 @@
-all: birdee list hash_map
+all: birdee list hash_map vector tuple fmt
 BLIB_DIR=$(BIRDEE_HOME)\blib: 
 
 $(BLIB_DIR):
@@ -11,6 +11,15 @@ list: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\list.txt
 
 hash_map: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\hash_map.txt
 	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\hash_map.txt -o $(BIRDEE_HOME)\blib\hash_map.obj
+
+vector: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\vector.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\vector.txt -o $(BIRDEE_HOME)\blib\vector.obj
+
+tuple: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\tuple.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\tuple.txt -o $(BIRDEE_HOME)\blib\tuple.obj
+
+fmt: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\fmt.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\fmt.txt -o $(BIRDEE_HOME)\blib\fmt.obj
 
 clean:
 	del $(BLIB_DIR)\*.obj
