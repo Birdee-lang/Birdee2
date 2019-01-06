@@ -129,6 +129,8 @@ void RegisiterClassForBinding2(py::module& m) {
 			for (auto& v : ths.Body.body)
 				func(GetRef(v));
 		})
+		.def_property_readonly("template_instance_args", [](FunctionAST& ths) {return GetRef(ths.template_instance_args); })
+		.def_property_readonly("template_source_func", [](FunctionAST& ths) {return GetRef(ths.template_source_func); })
 		.def_readwrite("capture_this",&FunctionAST::capture_this)
 		//fix-me: add capture interface
 		.def("is_template", &FunctionAST::isTemplate)
@@ -254,7 +256,6 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](TemplateArgument& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); });
 	
 	py::class_< FunctionTemplateInstanceExprAST, ExprAST>(m, "FunctionTemplateInstanceExprAST")
-		.def_property_readonly("template_args", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.template_args); })
 		.def_property("expr", [](FunctionTemplateInstanceExprAST& ths) {return GetRef(ths.expr); },
 			[](FunctionTemplateInstanceExprAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
 		.def_readwrite("instance", &FunctionTemplateInstanceExprAST::instance)

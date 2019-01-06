@@ -196,3 +196,12 @@ function add2[T1, v as int](a as T1, b as string) as T1
 	return a
 end
 add2(1,"2")''')
+
+ddd="'''"
+assert_ok(f'''
+dim a = {ddd}asd
+
+
+\n\a
+{ddd}, b as int
+print(a)''')

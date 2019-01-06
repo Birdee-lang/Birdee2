@@ -23,6 +23,7 @@ namespace Birdee
 		{ '|',tok_or },
 		{ '!',tok_not },
 		{ '^',tok_xor },
+		{'.',tok_dot},
 	};
 	BD_CORE_API std::map<int, Token> Tokenizer::single_token_map = {
 	{'(',tok_left_bracket },
@@ -31,7 +32,6 @@ namespace Birdee
 	{ ']',tok_right_index },
 	{'\n',tok_newline},
 	{ ',',tok_comma },
-	{'.',tok_dot},
 	{':',tok_colon },
 	};
 
@@ -59,6 +59,7 @@ namespace Birdee
 	{"import",tok_import},
 	{"boolean",tok_boolean},
 	{"function",tok_func},
+	{"func",tok_func},
 	{"declare",tok_declare},
 	{"addressof",tok_address_of},
 	{ "pointerof",tok_pointer_of },
@@ -85,6 +86,7 @@ namespace Birdee
 	{"=>",tok_into},
 	{"functype",tok_functype},
 	{"closure",tok_closure},
+	{"...",tok_ellipsis},
 	};
 }
 
@@ -419,6 +421,7 @@ Token Birdee::Tokenizer::gettok() {
 			}
 			if (LastChar == EOF)
 				throw TokenizerError(line, pos, "Unexpected end of file: expected ##");
+			LastChar = GetChar();
 		}
 		else
 		{
@@ -430,6 +433,37 @@ Token Birdee::Tokenizer::gettok() {
 
 		if (LastChar != EOF)
 			return gettok();
+	}
+	if (LastChar == '\'')
+	{
+		LastChar = GetChar();
+		if (LastChar != '\'')
+			throw TokenizerError(line, pos, "Expecting \' for raw string");
+		LastChar = GetChar();
+		if (LastChar != '\'')
+			throw TokenizerError(line, pos, "Expecting \' for raw string");
+		int cnt_dot = 0;
+		IdentifierStr = "";
+		while (LastChar != EOF)
+		{
+			LastChar = GetChar();
+			IdentifierStr += LastChar;
+			if (LastChar == '\'')
+			{
+				cnt_dot++;
+				if (cnt_dot == 3)
+				{
+					IdentifierStr.pop_back(); IdentifierStr.pop_back(); IdentifierStr.pop_back();
+					break;
+				}
+			}
+			else
+				cnt_dot = 0;
+		}
+		if (LastChar == EOF)
+			throw TokenizerError(line, pos, "Unexpected end of file: expecting \'\'\'");
+		LastChar = GetChar();
+		return tok_string_literal;
 	}
 	if (LastChar == '@')
 	{

@@ -1,0 +1,64 @@
+{@
+ty_str=resolve_type("string")
+ty_int=resolve_type("int")
+ty_double=resolve_type("double")
+ty_pointer=resolve_type("pointer")
+ty_bool=resolve_type("boolean")
+@}
+
+function fmtprint[fmt as string,...](...)
+{@
+fmtexpr=expr("fmt")
+fmt=fmtexpr.get().impl.value
+cur_fun=get_cur_func()
+args=cur_fun.proto.args
+arg_cnt=len(args)
+body=cur_fun.body
+cur_str=''
+in_ctrl=False
+arg_idx=0
+
+def check_arg():
+	if arg_idx>=arg_cnt:
+		raise RuntimeError(f'Too less arguments given. Expecting the {arg_idx}-th argument, but {arg_cnt} are given')
+def check_type(idx,ty):
+	if args[idx].resolved_type!=ty:
+		raise RuntimeError(f'Expecting the {idx}-th argument to be {ty}, but {args[idx].resolved_type} is given')
+
+for i in range(len(fmt)):
+	if in_ctrl:
+		in_ctrl=False
+		if fmt[i]=='%':
+			cur_str+='%'
+		else:
+			if cur_str:
+				body.push_back(expr(f"print('''{cur_str}''')"))
+				cur_str=""
+			check_arg()
+			if fmt[i]=='d':
+				check_type(arg_idx,ty_int)
+				body.push_back(expr(f"print(int2str(___vararg{arg_idx}))"))
+			elif fmt[i]=='s':
+				check_type(arg_idx,ty_str)
+				body.push_back(expr(f"print(___vararg{arg_idx})"))
+			elif fmt[i]=='p':
+				check_type(arg_idx,ty_pointer)
+				body.push_back(expr(f"print(pointer2str(___vararg{arg_idx}))"))
+			elif fmt[i]=='b':
+				check_type(arg_idx,ty_bool)
+				body.push_back(expr(f"print(bool2str(___vararg{arg_idx}))"))
+			else:
+				raise RuntimeError(f"Bad control character {fmt[i]}")
+			arg_idx+=1
+	else:
+		if fmt[i]!='%':
+			cur_str+=fmt[i]
+		else:
+			in_ctrl=True
+
+if arg_idx!=arg_cnt:
+	raise RuntimeError(f"Too many arguments given. Expecting {arg_idx} but {arg_cnt} are given")
+if cur_str:
+	body.push_back(expr(f"print('''{cur_str}''')"))
+@}
+end

@@ -640,6 +640,8 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Expr, Index;
 		unique_ptr<FunctionTemplateInstanceExprAST> instance;
 		void Phase1();
+		//is_in_call: if this IndexExprAST is in a "CallExpr". If true, will throw if is_vararg & even if all template arguments are given
+		void Phase1(bool is_in_call);
 		std::unique_ptr<StatementAST> Copy();
 		bool isTemplateInstance();
 		llvm::Value* Generate();
@@ -671,20 +673,23 @@ namespace Birdee {
 		unique_ptr<ExprAST> expr; //fix-me: should use union?
 		ResolvedType type;
 		TemplateArgument Copy() const;
+		TemplateArgument():kind(TEMPLATE_ARG_EXPR){}
 		TemplateArgument(ResolvedType type) :kind(TEMPLATE_ARG_TYPE),type(type), expr(nullptr){}
 		TemplateArgument(unique_ptr<ExprAST>&& expr) :kind(TEMPLATE_ARG_EXPR),expr(std::move(expr)),type(nullptr) {}
 		TemplateArgument(TemplateArgument&& other) :kind(other.kind), expr(std::move(other.expr)), type(other.type) {}
 		TemplateArgument& operator = (TemplateArgument&&) = default;
 		bool operator < (const TemplateArgument&) const;
+		string GetString() const;
 	};
 
 	class BD_CORE_API FunctionTemplateInstanceExprAST : public ExprAST {
 	public:
 		FunctionAST* instance = nullptr;
 		vector<unique_ptr<ExprAST>> raw_template_args;
-		vector<TemplateArgument> template_args;
 		std::unique_ptr<ExprAST> expr;
 		void Phase1();
+		//is_in_call: if this FunctionTemplateInstanceExprAST is in a "CallExpr". If true, will throw if is_vararg & even if all template arguments are given
+		void Phase1(bool is_in_call);
 		std::unique_ptr<StatementAST> Copy();
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override { return nullptr; };
@@ -962,14 +967,17 @@ namespace Birdee {
 	struct TemplateParameters
 	{
 
+		bool is_vararg = false;
+		string vararg_name; //if is_vararg and if this field is not empty, it means the name of vararg
 		vector<TemplateParameter> params;
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
 		SourceStringHolder source; //no need to copy this field
 		ImportedModule* mod = nullptr;
+		AnnotationStatementAST* annotation = nullptr;
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
-		BD_CORE_API T* GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos);
+		BD_CORE_API T* GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos);
 		T* Get(vector<TemplateArgument>& v)
 		{
 			auto f = instances.find(v);
@@ -982,11 +990,11 @@ namespace Birdee {
 			assert(instances.find(v) == instances.end());
 			instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(v), std::move(impl)));
 		}
-		TemplateParameters(vector<TemplateParameter>&& params) : params(std::move(params)){};
+		TemplateParameters(vector<TemplateParameter>&& params, bool is_vararg) : params(std::move(params)),is_vararg(is_vararg){};
 		//TemplateParameters(vector<TemplateParameter>&& params, string&& src) : params(std::move(params)), source(std::move(src)){};
 		TemplateParameters() {}
 		BD_CORE_API unique_ptr<TemplateParameters<T>> Copy();
-		BD_CORE_API void ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos);
+		BD_CORE_API unique_ptr<vector<TemplateArgument>> ValidateArguments(T* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg);
 	};
 
 	/// FunctionAST - This class represents a function definition itself.
@@ -997,8 +1005,13 @@ namespace Birdee {
 		bool isDeclare;
 		bool isTemplateInstance = false;
 		bool isImported=false;
+		bool is_vararg = false;
+		string vararg_name;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
+		//the source template and the template args for the template function instance
+		unique_ptr<vector<TemplateArgument>> template_instance_args;
+		FunctionAST* template_source_func = nullptr;
 		
 		vector<VariableSingleDefAST*> captured_var;
 		bool capture_this = false;
@@ -1033,8 +1046,10 @@ namespace Birdee {
 			ASTBasicBlock&& Body)
 			: Proto(std::move(Proto)), Body(std::move(Body)), isDeclare(false){}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,
-			ASTBasicBlock&& Body, unique_ptr<TemplateParameters<FunctionAST>>&& template_param, SourcePos pos)
-			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)), isDeclare(false) {
+			ASTBasicBlock&& Body, unique_ptr<TemplateParameters<FunctionAST>>&& template_param,
+			bool is_vararg, string&& vararg_name,SourcePos pos)
+			: Proto(std::move(Proto)), Body(std::move(Body)), template_param(std::move(template_param)),
+			isDeclare(false), is_vararg(is_vararg),vararg_name(std::move(vararg_name)){
 			Pos = pos;
 		}
 		FunctionAST(std::unique_ptr<PrototypeAST> Proto,const string& link_name , SourcePos pos)
@@ -1048,21 +1063,11 @@ namespace Birdee {
 		}
 
 		//resolve the types of the argument and the returned value
-		//put a phase0 because we may reference a function before we parse the function in phase1
-		void Phase0()
-		{
-			if (isTemplate())
-				return;
-			if (resolved_type.isResolved())
-				return;
-			resolved_type.type = tok_func;
-			resolved_type.index_level = 0;
-			resolved_type.proto_ast = Proto.get();
-			Proto->Phase0();
-		}
+		//we add a phase0 because we may reference a function before we parse the function in phase1
+		void Phase0();
 		void Phase1();
 
-		bool isTemplate() { return template_param!=nullptr && template_param->params.size() != 0; }
+		bool isTemplate() { return template_param!=nullptr && (template_param->is_vararg || template_param->params.size() != 0); }
 
 		const string& GetName()
 		{
@@ -1169,7 +1174,7 @@ namespace Birdee {
 			Pos = pos;
 		}
 		bool isTemplateInstance() { return template_instance_args != nullptr; }
-		bool isTemplate() { return template_param != nullptr && template_param->params.size() != 0; }
+		bool isTemplate() { return template_param != nullptr && (template_param->params.size() != 0 || template_param->is_vararg); }
 		string GetUniqueName();
 		void PreGenerate();
 		void PreGenerateFuncs();

@@ -13,7 +13,7 @@ using namespace Birdee;
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel();
-extern FunctionAST* GetCurrentPreprocessedFunction();
+extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 extern std::unique_ptr<Type> ParseTypeName();
 extern unique_ptr<StatementAST> ParseStatement();
 
@@ -215,20 +215,19 @@ BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType*
 	outexpr = nullptr;
 }
 
-BIRDEE_BINDING_API void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
+BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,StatementAST* impl,SourcePos pos)
 {
-	ths->impl->Phase1();
 	auto& main_module = InitPython().main_module;
 	try
 	{
-		for (auto& func_name : ths->anno)
+		for (auto& func_name : anno)
 		{
-			main_module.attr(func_name.c_str())(GetRef(ths->impl));
+			main_module.attr(func_name.c_str())(GetRef(impl));
 		}
 	}
 	catch (py::error_already_set& e)
 	{
-		throw CompileError(ths->Pos.line, ths->Pos.pos, string("\nScript exception:\n") + e.what());
+		throw CompileError(pos.line, pos.pos, string("\nScript exception:\n") + e.what());
 	}
 }
 
@@ -252,7 +251,7 @@ static void CompileClassBody(ClassAST* cls, const char* src)
 		}
 		if (cls->fields.size() != field_cnt)
 		{
-			cls->fields.back().decl->Phase1();
+			cls->fields.back().decl->Phase1InClass();
 			field_cnt = cls->fields.size();
 		}
 	}

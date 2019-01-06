@@ -193,6 +193,7 @@
   <ItemGroup>
     <Text Include="..\BirdeeHome\src\birdee.txt" />
     <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt" />
+    <Text Include="..\BirdeeHome\src\fmt.txt" />
     <Text Include="..\BirdeeHome\src\hash_map.txt" />
     <Text Include="..\BirdeeHome\src\list.txt" />
     <Text Include="..\BirdeeHome\src\templates.txt" />
@@ -200,8 +201,10 @@
     <Text Include="..\BirdeeHome\src\test.txt" />
     <Text Include="..\BirdeeHome\src\test2.txt" />
     <Text Include="..\BirdeeHome\src\template_test.txt" />
+    <Text Include="..\BirdeeHome\src\tuple.txt" />
     <Text Include="..\tests\hash_map_test.txt" />
     <Text Include="..\tests\logic_obj_cmp.txt" />
+    <Text Include="..\tests\template_vararg.py" />
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>
