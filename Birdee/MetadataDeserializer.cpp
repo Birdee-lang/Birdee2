@@ -584,7 +584,6 @@ void Get2DStringArray(vector<vector<string>>& ret, const json& js)
 	}
 }
 
-
 void ImportedModule::Init(const vector<string>& package, const string& module_name)
 {
 	json json;
@@ -644,4 +643,19 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 
 	BuildGlobalVaribleFromJson(json["Variables"], *this);
 	BuildGlobalFuncFromJson(json["Functions"], *this);
+
+	{
+		auto itr = json.find("InitScripts");
+		if (itr != json.end())
+		{
+			BirdeeAssert(itr->is_string(), "InitScripts field in bmm file should be a string");
+			//if it has a init script, construct a temp ScriptAST and run it
+			ScriptAST tmp= ScriptAST(string());
+			tmp.script = itr->get<string>();
+			if (!tmp.script.empty())
+			{
+				tmp.Phase1();
+			}
+		}
+	}
 }

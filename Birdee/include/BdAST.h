@@ -315,6 +315,7 @@ namespace Birdee {
 	};
 
 	class PrototypeAST;
+	class ScriptAST;
 
 	class BD_CORE_API CompileUnit
 	{
@@ -343,6 +344,9 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
 		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
 		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
+
+		//the scripts that are marked "init_script". They will be exported to the "bmm" file
+		vector<ScriptAST*> init_scripts;
 
 		vector<ClassAST*> imported_class_templates;
 		vector<FunctionAST*> imported_func_templates;

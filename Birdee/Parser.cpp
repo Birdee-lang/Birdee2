@@ -138,23 +138,28 @@ std::unique_ptr<IfBlockAST> ParseIf();
 PrototypeAST *current_func_proto = nullptr;
 int unnamed_func_cnt = 0;
 
-static unordered_map<string, std::function<void(StatementAST*)>> interal_annontation_map = {
-	{"stack_capture", [](StatementAST* stmt) {
+static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_annontation_map = {
+	{"stack_capture", [](StatementAST* stmt,bool is_top_level) {
 		CompileAssert(isa<FunctionAST>(stmt),"The stack_capture can only be applied on functions");
 		FunctionAST* func = static_cast<FunctionAST*>(stmt);
 		func->capture_on_stack = true;
 	}},
+	{"init_script", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(is_top_level && isa<ScriptAST>(stmt),"The init_script can only be applied on top-level scripts");
+		ScriptAST* func = static_cast<ScriptAST*>(stmt);
+		cu.init_scripts.push_back(func);
+	}},
 };
 
 //for all annotation, find interal annotation and apply them
-static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt)
+static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
 {
 	for (auto itr = anno.begin(); itr != anno.end();)
 	{
 		auto mapitr = interal_annontation_map.find(*itr);
 		if (mapitr != interal_annontation_map.end())
 		{
-			mapitr->second(stmt); //call the annotation function
+			mapitr->second(stmt,is_top_level); //call the annotation function
 			itr = anno.erase(itr);
 		}
 		else
@@ -1610,7 +1615,7 @@ BD_CORE_API int ParseTopLevel()
 		}
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
-			ApplyInternalAnnotations(anno, st.get());
+			ApplyInternalAnnotations(anno, st.get(), true);
 			if (anno.size())
 				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else

@@ -1,12 +1,14 @@
-function fmtprint[fmt as string,...](...)
+@init_script
 {@
-
 ty_str=resolve_type("birdee.string")
 ty_int=resolve_type("int")
 ty_double=resolve_type("double")
 ty_pointer=resolve_type("pointer")
 ty_bool=resolve_type("boolean")
+@}
 
+function fmtprint[fmt as string,...](...)
+{@
 fmtexpr=expr("fmt")
 fmt=fmtexpr.get().impl.value
 cur_fun=get_cur_func()

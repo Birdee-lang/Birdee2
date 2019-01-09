@@ -412,6 +412,18 @@ void BuildExportedPrototypes()
 	}
 }
 
+string BuildInitScript(vector<ScriptAST*>& scripts)
+{
+	string ret;
+	for (auto& s : scripts)
+	{
+		ret += s->script;
+		if (s->script.back() != '\n')
+			ret += '\n';
+	}
+	return ret;
+}
+
 BD_CORE_API void SeralizeMetadata(std::ostream& out)
 {
 	json outjson;
@@ -438,5 +450,6 @@ BD_CORE_API void SeralizeMetadata(std::ostream& out)
 	outjson["Imports"] = cu.imports;
 	outjson["ImportedClasses"] = imported_class;
 	outjson["FunctionTypes"] = exported_functype;
+	outjson["InitScripts"] = BuildInitScript(cu.init_scripts);
 	out << std::setw(4)<< outjson;
 }
