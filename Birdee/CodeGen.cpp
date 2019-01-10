@@ -1351,7 +1351,8 @@ namespace Birdee
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	llvm_obj = Obj->Generate();
+	if(Obj)
+		llvm_obj = Obj->Generate();
 	if (kind == member_field)
 	{
 		return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));

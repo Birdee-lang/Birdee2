@@ -1,6 +1,8 @@
 import vector:vector
 import fmt:fmtprint
+import tuple
 
+dim t = tuple.mktuple(1,2,3.5,"f")
 dim f = new vector[int](0)
 for dim i=0 to 32
 	f.push_back(i)

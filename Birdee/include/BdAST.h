@@ -11,6 +11,7 @@
 #include "TokenDef.h"
 #include <LibDef.h>
 #include <assert.h>
+#include "PyWrapper.h"
 
 namespace Birdee
 {
@@ -90,6 +91,8 @@ namespace Birdee {
 	BD_CORE_API extern SourcePos GetCurrentSourcePos();
 	BD_CORE_API extern string GetTokenString(Token tok);
 
+	class AnnotationStatementAST;
+
 	struct ImportedModule
 	{
 		unordered_map<string, unique_ptr<ClassAST>> classmap;
@@ -103,6 +106,8 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
 
 		vector<vector<string>> user_imports;
+		vector<unique_ptr<AnnotationStatementAST>> annotations;
+		PyHandle py_scope;
 		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};

@@ -205,3 +205,25 @@ dim a = {ddd}asd
 \n\a
 {ddd}, b as int
 print(a)''')
+
+
+#tests for python script scopes
+assert_ok('''
+{@
+a=123
+@}
+func bbb() as int
+	{@print("global a = ",a)@}
+	{@b=321@}
+	{@assert(b==321)@}
+	if 1==1 then
+		if 1==1 then
+			{@assert(b==321)@}
+		end
+	end
+	{@global a
+a=111@}
+end
+{@assert(a==111)
+assert('b' not in globals())@}
+''')

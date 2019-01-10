@@ -24,6 +24,11 @@ extern BD_CORE_API Tokenizer tokenizer;
 
 static void init_embedded_module();
 
+namespace Birdee
+{
+	extern void ClearPyHandles();
+}
+
 struct BirdeePyContext
 {
 	py::scoped_interpreter guard;
@@ -42,11 +47,18 @@ struct BirdeePyContext
 		if (cu.is_script_mode)
 		{
 			PyObject* newdict = PyDict_Copy(main_module.attr("__dict__").ptr());
-			copied_scope = py::cast<py::object>(newdict);
+			copied_scope = py::reinterpret_steal<py::object>(newdict);
 		}
 		py::module::import("birdeec");
 		py::exec("from birdeec import *");
 		orig_scope = main_module.attr("__dict__");
+	}
+
+	~BirdeePyContext()
+	{
+		ClearPyHandles();
+		cu.imported_packages.map.clear();
+		cu.imported_packages.mod = nullptr;
 	}
 };
 static BirdeePyContext& InitPython()
@@ -54,6 +66,9 @@ static BirdeePyContext& InitPython()
 	static BirdeePyContext context;
 	return context;
 }
+
+static_assert(sizeof(py::object) == sizeof(void*), "expecting sizeof(py::object) == sizeof(void*)");
+
 
 
 BIRDEE_BINDING_API void RunGenerativeScript()
@@ -71,13 +86,41 @@ BIRDEE_BINDING_API void RunGenerativeScript()
 		std::cerr << e.what();
 	}
 }
+/*the python internal data structure, for debug use*/
+/*
+struct _dictkeysobject {
+	Py_ssize_t dk_refcnt;
+	Py_ssize_t dk_size;
+	void* dk_lookup;
+	Py_ssize_t dk_usable;
+	Py_ssize_t dk_nentries;
+	char dk_indices[]; 
+};*/
 
-BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths)
+BIRDEE_BINDING_API void BirdeeDerefObj(void* obj)
+{
+	Py_XDECREF(obj);
+}
+
+BIRDEE_BINDING_API void* BirdeeCopyPyScope(void* src)
+{
+	if (!src)
+		return PyDict_New();
+	return PyDict_Copy((PyObject*)src);
+}
+
+BIRDEE_BINDING_API void* BirdeeGetOrigScope()
+{
+	return InitPython().orig_scope.ptr();
+}
+
+BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, void* locals)
 {
 	auto& env=InitPython();
 	try
 	{
-		py::exec(ths->script.c_str(),env.orig_scope);
+		py::exec(ths->script.c_str(), py::cast<py::object>((PyObject*)globals),
+			py::cast<py::object>((PyObject*)locals));
 	}
 	catch (py::error_already_set& e)
 	{
@@ -195,12 +238,13 @@ static auto NewNumberExpr(Token tok, py::object& obj) {
 }
 
 
-BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths,SourcePos pos)
+BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths,SourcePos pos,void* globals, void* locals)
 {
 	auto& env = InitPython();
 	try
 	{
-		py::exec(ths->script.c_str(), env.orig_scope);
+		py::exec(ths->script.c_str(), py::reinterpret_borrow<py::object>((PyObject*)globals),
+			py::reinterpret_borrow<py::object>((PyObject*)locals));
 	}
 	catch (py::error_already_set& e)
 	{
@@ -215,14 +259,19 @@ BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType*
 	outexpr = nullptr;
 }
 
-BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,StatementAST* impl,SourcePos pos)
+BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,StatementAST* impl,SourcePos pos, void* globals)
 {
 	auto& main_module = InitPython().main_module;
+	py::dict g_dict = py::cast<py::dict>((PyObject*)globals);
 	try
 	{
 		for (auto& func_name : anno)
 		{
-			main_module.attr(func_name.c_str())(GetRef(impl));
+			auto pfunc = PyDict_GetItemString(g_dict.ptr(), func_name.c_str());
+			auto func = py::cast<py::object>(pfunc);
+			if (!func)
+				throw CompileError(pos.line, pos.pos, string("\nCannot find function for annotation: ") + func_name);
+			func(GetRef(impl));
 		}
 	}
 	catch (py::error_already_set& e)

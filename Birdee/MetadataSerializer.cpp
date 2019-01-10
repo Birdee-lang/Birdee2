@@ -313,7 +313,12 @@ json BuildGlobalFuncJson(json& func_template)
 			{
 				BuildAndPushFunctionJson(arr,instance.second.get());
 			}
-			func_template.push_back(itr.second.get().template_param->source.get());
+			json template_obj;
+			auto ptr = itr.second.get().template_param.get();
+			template_obj["template"] = ptr->source.get();
+			if (ptr->annotation)
+				template_obj["annotations"] = ptr->annotation->anno;
+			func_template.push_back(std::move(template_obj));
 		}
 		else
 			BuildAndPushFunctionJson(arr,&itr.second.get());
@@ -329,6 +334,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	{
 		assert(!cls.template_param->source.empty());
 		json_cls["template"] = cls.template_param->source.get();
+		if (cls.template_param->annotation)
+			json_cls["annotations"] = cls.template_param->annotation->anno;
 	}
 	else
 	{
@@ -369,6 +376,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 				}
 				else
 					json_func["template"] = source.get();
+				if (func.decl->template_param->annotation)
+					json_func["annotations"] = func.decl->template_param->annotation->anno;
 			}
 			else
 			{

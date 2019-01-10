@@ -19,10 +19,10 @@ cur_str=''
 in_ctrl=False
 arg_idx=0
 
-def check_arg():
+def check_arg(arg_idx,arg_cnt):
 	if arg_idx>=arg_cnt:
 		raise RuntimeError(f'Too less arguments given. Expecting the {arg_idx}-th argument, but {arg_cnt} are given')
-def check_type(idx,ty):
+def check_type(args,idx,ty):
 	if args[idx].resolved_type!=ty:
 		raise RuntimeError(f'Expecting the {idx}-th argument to be {ty}, but {args[idx].resolved_type} is given')
 
@@ -35,18 +35,18 @@ for i in range(len(fmt)):
 			if cur_str:
 				body.push_back(expr(f"print('''{cur_str}''')"))
 				cur_str=""
-			check_arg()
+			check_arg(arg_idx,arg_cnt)
 			if fmt[i]=='d':
-				check_type(arg_idx,ty_int)
+				check_type(args,arg_idx,ty_int)
 				body.push_back(expr(f"print(int2str(___vararg{arg_idx}))"))
 			elif fmt[i]=='s':
-				check_type(arg_idx,ty_str)
+				check_type(args,arg_idx,ty_str)
 				body.push_back(expr(f"print(___vararg{arg_idx})"))
 			elif fmt[i]=='p':
-				check_type(arg_idx,ty_pointer)
+				check_type(args,arg_idx,ty_pointer)
 				body.push_back(expr(f"print(pointer2str(___vararg{arg_idx}))"))
 			elif fmt[i]=='b':
-				check_type(arg_idx,ty_bool)
+				check_type(args,arg_idx,ty_bool)
 				body.push_back(expr(f"print(bool2str(___vararg{arg_idx}))"))
 			else:
 				raise RuntimeError(f"Bad control character {fmt[i]}")

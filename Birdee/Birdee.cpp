@@ -175,6 +175,9 @@ int main(int argc,char** argv)
 	cu.is_compiler_mode = true;
 	ParseParameters(argc, argv);
 	
+	//it is important to clear the imported modules before python interpreter quits
+	//because imported modules may have PyObject reference, and they must be deleted before
+	//destruction of python interpreter 
 
 	if (cu.is_script_mode)
 	{
