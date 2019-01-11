@@ -31,12 +31,14 @@ namespace Birdee
 
 struct BirdeePyContext
 {
-	py::scoped_interpreter guard;
+	std::unique_ptr<py::scoped_interpreter> guard;
 	py::module main_module;
 	py::object orig_scope;
 	py::object copied_scope;
 	BirdeePyContext()
 	{
+		if (cu.is_compiler_mode)//if is called by birdeec, load interpreter
+			guard = make_unique<py::scoped_interpreter>();
 		//init_embedded_module();
 		main_module = py::module::import("__main__");
 		auto sysmod = py::module::import("sys");
@@ -49,16 +51,28 @@ struct BirdeePyContext
 			PyObject* newdict = PyDict_Copy(main_module.attr("__dict__").ptr());
 			copied_scope = py::reinterpret_steal<py::object>(newdict);
 		}
-		py::module::import("birdeec");
+
+		auto bdmodule = py::module::import("birdeec");
+		auto ths = this;
+		bdmodule.def("__on_exit__", [ths]() {ths->Close(); });
 		py::exec("from birdeec import *");
 		orig_scope = main_module.attr("__dict__");
+		py::module::import("atexit").attr("register")(bdmodule.attr("__on_exit__"));
+	}
+
+	void Close()
+	{
+		main_module = py::cast<py::object>((PyObject*)nullptr);
+		orig_scope = py::cast<py::object>((PyObject*)nullptr);
+		copied_scope = py::cast<py::object>((PyObject*)nullptr);
+		ClearPyHandles();
+		cu.imported_packages.map.clear();
+		cu.imported_packages.mod = nullptr;
 	}
 
 	~BirdeePyContext()
 	{
-		ClearPyHandles();
-		cu.imported_packages.map.clear();
-		cu.imported_packages.mod = nullptr;
+		Close();
 	}
 };
 static BirdeePyContext& InitPython()
