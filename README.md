@@ -99,7 +99,7 @@ clear_compile_unit()
 
 ## Documents
 
-Please view our [wiki](https://github.com/Menooker/Birdee2/wiki).
+Please view our [wiki](https://github.com/Birdee-lang/Birdee2/wiki).
 
 ## Building Birdee on Ubuntu
 
