@@ -33,12 +33,12 @@ def tuple_add_constructor(func):
 @}
 
 @tuple_add_fields
-class tuple[...]
+struct tuple[...]
 
 end
 
 function mktuple[...](...) as {@tuple_expand_vararg()@} #the return type is tuple[...]
-	dim ret = new {@set_type(get_cur_func().proto.return_type)@} #set the type as the return type
+	dim ret as {@set_type(get_cur_func().proto.return_type)@} #set the type as the return type
 	{@tuple_add_constructor(get_cur_func())@}
 end
 

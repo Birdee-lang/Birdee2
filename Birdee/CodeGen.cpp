@@ -79,37 +79,29 @@ struct LLVMHelper {
 		bool isNotNull() { return next && cont; }
 	}cur_loop{ nullptr,nullptr };
 
-	unordered_map<Birdee::ResolvedType, llvm::Type*> typemap;
-	unordered_map<Birdee::ResolvedType, DIType *> dtypemap;
+	struct TypePair
+	{
+		llvm::Type* llvm_ty=nullptr;
+		DIType * dty=nullptr;
+	};
+	unordered_map<Birdee::ResolvedType, TypePair> typemap;
 	llvm::Type* GetType(const Birdee::ResolvedType& ty)
 	{
-		PDIType dtype;
-		return  GetType(ty, dtype);
+		return  GetTypeNode(ty).llvm_ty;
 	}
-	llvm::Type* GetType(const Birdee::ResolvedType& ty, PDIType& dtype)
+	TypePair& GetTypeNode(const Birdee::ResolvedType& ty)
 	{
 		auto itr = typemap.find(ty);
 		if (itr != typemap.end())
 		{
-			dtype = dtypemap[ty];
 			return itr->second;
 		}
 		llvm::Type* ret;
+		DIType* dtype;
 		GenerateType(ty, dtype,ret);
-		typemap[ty] = ret;
-		dtypemap[ty] = dtype;
-		return ret;
+		typemap[ty] = { ret,dtype };
+		return typemap[ty];
 	}
-
-	DIType* GetDType(const Birdee::ResolvedType& ty)
-	{
-		auto itr = dtypemap.find(ty);
-		if (itr != dtypemap.end())
-			return itr->second;
-		assert(0 && "Cannot find the DIType");
-		return nullptr;
-	}
-
 } ;
 
 static DIBuilder* GetDBuilder();
@@ -252,13 +244,17 @@ void DebugInfo::emitLocation(Birdee::StatementAST *AST) {
 
 llvm::Type* BuildArrayType(llvm::Type* ty, DIType* & dty,string& name,DIType* & outdtype)
 {
-	vector<llvm::Type*> types{llvm::Type::getInt32Ty(context),ArrayType::get(ty,0)};
-	SmallVector<Metadata *, 8> dtypes{ dinfo.GetIntType(),DBuilder->createArrayType(0, 0, dty,{}) }; //fix-me: what is the last parameter for???
-
-	name +="_2_3";
 	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
 		dinfo.cu->getDirectory());
-	outdtype = DBuilder->createStructType(dinfo.cu, name, Unit, 0, 128, 64, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+	vector<llvm::Type*> types{llvm::Type::getInt32Ty(context),ArrayType::get(ty,0)};
+	SmallVector<Metadata *, 8> dtypes{
+		DBuilder->createMemberType(dinfo.cu,"size",Unit,1,32,32,0,DINode::DIFlags::FlagZero,dinfo.GetIntType()),
+		DBuilder->createMemberType(dinfo.cu,"array",Unit,1,0,32,32,DINode::DIFlags::FlagZero,DBuilder->createArrayType(0, 0, dty,{}))
+	}; //fix-me: what is the last parameter for???
+
+	name +="_2_3";
+
+	outdtype = DBuilder->createStructType(dinfo.cu, name, Unit, 0, 32, 64, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
 	outdtype = DBuilder->createPointerType(outdtype, 64);
 	return  StructType::create(context, types, name)->getPointerTo();
 
@@ -272,7 +268,11 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		PDIType mydtype;
 		Birdee::ResolvedType subtype = type;
 		subtype.index_level--;
-		mybase = helper.GetType(subtype, mydtype);
+
+		auto node = helper.GetTypeNode(subtype);
+		mybase = node.llvm_ty;
+		mydtype = node.dty;
+
 		string name;
 		if (type.index_level > 1 || type.type == tok_class)
 		{ //bypass a "bug" in llvm: cannot getName from debugtype for some long struct name
@@ -318,6 +318,7 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		base = llvm::Type::getDoubleTy(context);
 		dtype =DBuilder->createBasicType("double", 64, dwarf::DW_ATE_float);
 		break;
+	case tok_null:
 	case tok_pointer:
 		base = llvm::Type::getInt8PtrTy(context);
 		dtype = DBuilder->createBasicType("pointer", 64, dwarf::DW_ATE_address);
@@ -334,13 +335,17 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		}
 		else
 		{
-			SmallVector<Metadata *, 8> dtypes = { funcdty , DBuilder->createBasicType("pointer",64,dwarf::DW_ATE_address) };
-
 			base = StructType::create({ functy,builder.getInt8PtrTy() });
-			DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
-				dinfo.cu->getDirectory());
 			auto size = module->getDataLayout().getTypeAllocSizeInBits(base);
 			auto align = module->getDataLayout().getPrefTypeAlignment(base);
+
+			DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
+				dinfo.cu->getDirectory());
+			SmallVector<Metadata *, 8> dtypes = { 
+				DBuilder->createMemberType(dinfo.cu,"pfunc",Unit,1,64,align*8,0,DINode::DIFlags::FlagZero, funcdty) ,
+				DBuilder->createMemberType(dinfo.cu,"pclosure",Unit,1,64,align * 8,64,DINode::DIFlags::FlagZero,
+					DBuilder->createBasicType("pointer",64,dwarf::DW_ATE_address))
+			};
 			dtype = DBuilder->createStructType(dinfo.cu, "", Unit, type.proto_ast->pos.line, size, align * 8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
 		}
 		break;
@@ -355,7 +360,10 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 			string name;
 			MangleNameAndAppend(name, type.class_ast->GetUniqueName());
 			base = StructType::create(context, name);
-			dtype = DBuilder->createUnspecifiedType(name);
+			DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
+				dinfo.cu->getDirectory());
+			dtype = DBuilder->createReplaceableCompositeType(llvm::dwarf::DW_TAG_structure_type, name, dinfo.cu,Unit, type.class_ast->Pos.line);
+			type.class_ast->llvm_dtype = dtype;
 		}
 		else
 		{
@@ -388,8 +396,9 @@ llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 
 void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& package_name)
 {
-	DIType* ty;
-	auto type = helper.GetType(resolved_type, ty);
+	auto type_n = helper.GetTypeNode(resolved_type);
+	auto type = type_n.llvm_ty;
+	DIType* ty = type_n.dty;
 	string resolved_name;
 	MangleNameAndAppend(resolved_name, package_name);
 	resolved_name += "_0";
@@ -406,8 +415,9 @@ void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& pack
 
 void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 {
-	DIType* ty;
-	auto type=helper.GetType(resolved_type, ty);
+	auto type_n = helper.GetTypeNode(resolved_type);
+	auto type = type_n.llvm_ty;
+	DIType* ty = type_n.dty;
 	string var_name = GetMangledSymbolPrefix() + name;
 	GlobalVariable* v = new GlobalVariable(*module, type,false,GlobalValue::CommonLinkage,
 		Constant::getNullValue(type), var_name);
@@ -423,8 +433,9 @@ void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int 
 {
 	if (!llvm_value)
 	{
-		DIType* ty;
-		auto t = helper.GetType(resolved_type, ty);
+		auto type_n = helper.GetTypeNode(resolved_type);
+		auto t = type_n.llvm_ty;
+		DIType* ty = type_n.dty;
 		assert(capture_import_type == CAPTURE_NONE);
 		if (capture_export_type == CAPTURE_VAL)
 		{
@@ -456,8 +467,9 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	dinfo.emitLocation(this);
 	if (!llvm_value)
 	{
-		DIType* ty;
-		auto t = helper.GetType(resolved_type, ty);
+		auto type_n = helper.GetTypeNode(resolved_type);
+		auto t = type_n.llvm_ty;
+		DIType* ty = type_n.dty;
 		assert(capture_import_type == CAPTURE_NONE);
 		if (capture_export_type == CAPTURE_VAL)
 		{
@@ -726,7 +738,6 @@ void Birdee::CompileUnit::Generate()
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
 {
 	std::vector<llvm::Type*> args;
-	DIType* dummy;
 	if (cls) {
 		args.push_back(cls->llvm_type->getPointerTo());
 	}
@@ -737,17 +748,18 @@ llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
 	}
 	for (auto& arg : resolved_args)
 	{
-		llvm::Type* argty = helper.GetType(arg->resolved_type, dummy);
+		llvm::Type* argty = helper.GetType(arg->resolved_type);
 		args.push_back(argty);
 	}
-	return FunctionType::get(helper.GetType(resolved_type, dummy),args,false);
+	return FunctionType::get(helper.GetType(resolved_type),args,false);
 }
 
 DIType * Birdee::PrototypeAST::GenerateDebugType()
 {
 	SmallVector<Metadata *, 8> dargs;
 	// Add the result type.
-	dargs.push_back(helper.GetDType(resolved_type));
+	auto type_n = helper.GetTypeNode(resolved_type);
+	dargs.push_back(type_n.dty);
 	
 	if (cls) {
 		dargs.push_back(DBuilder->createPointerType(cls->llvm_dtype,64));
@@ -758,7 +770,7 @@ DIType * Birdee::PrototypeAST::GenerateDebugType()
 	}
 	for (auto& arg : resolved_args)
 	{
-		DIType* darg = helper.GetDType(arg->resolved_type);
+		DIType* darg = helper.GetTypeNode(arg->resolved_type).dty;
 		dargs.push_back(darg);
 	}
 	return DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray(dargs));
@@ -785,23 +797,44 @@ void Birdee::ClassAST::PreGenerate()
 	vector<llvm::Type*> types;
 	SmallVector<Metadata *, 8> dtypes;
 
+	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
+		dinfo.cu->getDirectory());
+	vector<LLVMHelper::TypePair*> ty_nodes;
+	ty_nodes.reserve(fields.size());
 	for (auto& field : fields)
 	{
-		DIType* dty;
-		types.push_back(helper.GetType(field.decl->resolved_type, dty));
-		dtypes.push_back(dty); 
+		auto& node2 = helper.GetTypeNode(field.decl->resolved_type);
+		types.push_back(node2.llvm_ty);
+		ty_nodes.push_back(&node2);
 	}
-	auto ty =  helper.GetType(ResolvedType(this));
+	auto& node = helper.GetTypeNode(ResolvedType(this));
+	auto ty =  node.llvm_ty;
 	if (!is_struct)
 		llvm_type = (llvm::StructType*)ty->getPointerElementType();
 	else
 		llvm_type = (llvm::StructType*)ty;
 	llvm_type->setBody(types);
-	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
-		dinfo.cu->getDirectory());
+
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
 	auto align = module->getDataLayout().getPrefTypeAlignment(llvm_type);
-	llvm_dtype=DBuilder->createStructType(dinfo.cu, GetUniqueName(), Unit, Pos.line, size, align*8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+
+	int _idx = 0;
+	for (auto& field : fields)
+	{
+		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[_idx]->llvm_ty);
+		auto memb = DBuilder->createMemberType(dinfo.cu, field.decl->name, Unit, field.decl->Pos.line, fsize, align,
+			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(_idx), DINode::DIFlags::FlagZero,
+			ty_nodes[_idx]->dty);
+		dtypes.push_back(memb);
+		_idx++;
+	}
+	ty_nodes.clear();
+
+	auto new_dty=DBuilder->createStructType(dinfo.cu, llvm_type->getName(), Unit, Pos.line, size, align*8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+	if(llvm_dtype)
+		llvm_dtype->replaceAllUsesWith(new_dty);
+	llvm_dtype = new_dty;
+	node.dty = is_struct ? llvm_dtype: DBuilder->createPointerType(llvm_dtype, 64);
 	//fix-me: now the debug info is not portable
 }
 
@@ -832,7 +865,7 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return nullptr;
 	}
 	if (llvm_func)
-		return helper.dtypemap[resolved_type];
+		return helper.typemap[resolved_type].dty;
 	string prefix;
 	if (Proto->cls)
 	{
@@ -876,7 +909,7 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		llvm_func->setDSOLocal(true);
 	}
 	DIType* ret = Proto->GenerateDebugType();
-	helper.dtypemap[resolved_type] = ret;
+	helper.typemap[resolved_type].dty = ret;
 	return ret;
 }
 
@@ -1032,8 +1065,17 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 		dinfo.emitLocation(this);
 		auto itr = llvm_func->args().begin();
+		int param_offset = 0;
 		if (Proto->cls)
 		{
+			DILocalVariable *D = DBuilder->createParameterVariable(
+				dinfo.LexicalBlocks.back(), "this", 1, dinfo.cu->getFile(), Pos.line, helper.GetTypeNode(ResolvedType(Proto->cls)).dty,
+				true);
+
+			DBuilder->insertDeclare(itr, D, DBuilder->createExpression(),
+				DebugLoc::get(Pos.line, Pos.pos, dinfo.LexicalBlocks.back()),
+				builder.GetInsertBlock());
+			param_offset = 1;
 			itr++;
 		}
 		if (Proto->is_closure)
@@ -1047,8 +1089,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			for (auto& v : imported_captured_var)
 			{
 				auto var = v.second.get();
-				DIType* ty;
-				helper.GetType(var->resolved_type, ty);
+				DIType* ty = helper.GetTypeNode(var->resolved_type).dty;
 				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
 				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
 					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }, var->name);
@@ -1112,11 +1153,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			}
 			//the exported variables will be generated in variable definition statements
 		}
-		int i = 0;
-		for (; itr != llvm_func->args().end(); itr++)
+		
+		for (int i = 0;itr != llvm_func->args().end(); itr++,i++)
 		{
-			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1);
-			i++;
+			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1 + param_offset);
 		}
 
 
@@ -1780,7 +1820,6 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		assert(lv);
 		auto rv = RHS->Generate();
 		dinfo.emitLocation(this);
-		gen_context.cur_func->llvm_func->print(errs());
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}
