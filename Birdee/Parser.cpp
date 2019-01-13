@@ -1150,7 +1150,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	return true;
 }
 
-void ParseClassInPlace(ClassAST* ret)
+void ParseClassInPlace(ClassAST* ret, bool is_struct)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
@@ -1158,6 +1158,7 @@ void ParseClassInPlace(ClassAST* ret)
 	//std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
 	ret->name = name;
 	ret->Pos = pos;
+	ret->is_struct = is_struct;
 	int view_pos = 0;
 	bool is_template = false;
 	if (tokenizer.CurTok == tok_left_index)
@@ -1165,7 +1166,7 @@ void ParseClassInPlace(ClassAST* ret)
 		is_template = true;
 		if (!tokenizer.is_recording)
 		{
-			tokenizer.StartRecording(string("class ") + name + " [");
+			tokenizer.StartRecording(string(is_struct? "struct ":"class ") + name + " [");
 		}
 		else
 		{
@@ -1184,8 +1185,20 @@ void ParseClassInPlace(ClassAST* ret)
 		if (tokenizer.CurTok == tok_end)
 		{
 			tokenizer.GetNextToken(); //eat end
-			if (tokenizer.CurTok == tok_class) //optional: end class
-				tokenizer.GetNextToken(); //eat class
+			if (is_struct)
+			{
+				if (tokenizer.CurTok == tok_class)
+					throw CompileError("Expecting \"struct\" after \"end\", no \"class\" allowed here");
+				if (tokenizer.CurTok == tok_struct)
+					tokenizer.GetNextToken();
+			}
+			else
+			{
+				if (tokenizer.CurTok == tok_class)
+					tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_struct)
+					throw CompileError("Expecting \"class\" after \"end\", no \"struct\" allowed here");
+			}
 			goto done;
 		}
 		else if(tokenizer.CurTok == tok_eof)
@@ -1204,15 +1217,15 @@ done:
 		{
 			auto curlen = tokenizer.GetTemplateSourcePosition();
 			assert(curlen > view_pos);
-			ret->template_param->source.set(string("class ") + name + " [", view_pos, curlen - 1 - view_pos);
+			ret->template_param->source.set(string(is_struct ? "struct " : "class ") + name + " [", view_pos, curlen - 1 - view_pos);
 		}
 	}
 	//return std::move(ret);
 }
-std::unique_ptr<ClassAST> ParseClass()
+std::unique_ptr<ClassAST> ParseClass(bool is_struct)
 {
 	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(string(), SourcePos(0,0,0));
-	ParseClassInPlace(ret.get());
+	ParseClassInPlace(ret.get(), is_struct);
 	return std::move(ret);
 }
 void ParsePackageName(vector<string>& ret)
@@ -1689,9 +1702,11 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
 		case tok_class:
+		case tok_struct:
 		{
+			bool is_struct = tokenizer.CurTok == tok_struct;
 			tokenizer.GetNextToken(); //eat class
-			auto classdef = ParseClass();
+			auto classdef = ParseClass(is_struct);
 			std::reference_wrapper<const string> clscname = classdef->name;
 			std::reference_wrapper<ClassAST> classref = *classdef;
 			CompileCheckGlobalConflict(classdef->Pos, clscname);

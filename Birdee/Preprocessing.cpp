@@ -2012,6 +2012,7 @@ If usage vararg name is "", match the closest vararg
 		if (resolved_type.index_level == 0)
 		{
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
+			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
 			if (!method.empty())
 			{

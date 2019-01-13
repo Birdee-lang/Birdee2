@@ -66,6 +66,7 @@ namespace Birdee
 	{"pointer",tok_pointer},
 	{"end",tok_end},
 	{"class",tok_class},
+	{"struct",tok_struct},
 	{"private",tok_private},
 	{"public",tok_public},
 	{"if",tok_if},

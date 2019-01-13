@@ -491,6 +491,9 @@ namespace Birdee {
 	class BD_CORE_API ThisExprAST : public ExprAST {
 	public:
 		void Phase1();
+		//this mothod will always generate a pointer for "this"
+		llvm::Value* GeneratePtr();
+		//for struct types, this will generate a value rather than a pointer
 		llvm::Value* Generate();
 		ThisExprAST()   {}
 		std::unique_ptr<StatementAST> Copy();
@@ -1166,6 +1169,7 @@ namespace Birdee {
 		std::unique_ptr<ClassAST> CopyNoTemplate();
 		llvm::Value* Generate();
 		std::string name;
+		bool is_struct = false;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
 		unique_ptr< vector<TemplateArgument>> template_instance_args;

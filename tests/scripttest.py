@@ -169,7 +169,7 @@ top_level(
 	add4(40.0, true)
 	''')
 process_top_level()
-generate()
+#generate()
 clear_compile_unit()
 
 # tests for failed template parameters derivation
@@ -227,3 +227,61 @@ end
 {@assert(a==111)
 assert('b' not in globals())@}
 ''')
+
+#tests on struct
+assert_ok('''
+struct complex
+	public a as double
+	public b as double
+	public func set(real as double, img as double)
+		a=real
+		b=img
+	end
+	public func __add__(other as complex) as complex
+		dim ret as complex
+		ret.a=a+other.a
+		ret.b=b+other.b
+		return ret
+	end
+	public func tostr() as string => "complex(" + int2str(a) + "," + int2str(b) + ")"
+end
+
+func mkcomplex(real as double,img as double) as complex
+		dim ret as complex
+		ret.a=real
+		ret.b=img
+		return ret
+end
+
+dim a = mkcomplex(1,2)
+dim b = mkcomplex(3,4)
+dim c = a+b
+print((a+c).tostr())
+dim d = (b+c).a
+dim e = addressof(a.b)
+''')
+
+assert_ok('''
+closure fff() as complex
+struct complex
+	public a as double
+	public b as double
+	public func get_closure() as fff
+		return func () as complex => this
+	end
+
+end
+
+dim x as complex
+dim y = x.get_closure()()''')
+
+assert_fail('''
+struct complex
+	public a as double
+	public b as double
+end
+func mkcomplex() as complex
+end
+dim x = addressof(mkcomplex().a)''')
+
+print("All tests done!")

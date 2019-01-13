@@ -354,13 +354,18 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		{
 			string name;
 			MangleNameAndAppend(name, type.class_ast->GetUniqueName());
-			base = StructType::create(context, name)->getPointerTo();
-			dtype = DBuilder->createPointerType(DBuilder->createUnspecifiedType(name),64);
+			base = StructType::create(context, name);
+			dtype = DBuilder->createUnspecifiedType(name);
 		}
 		else
 		{
-			base = type.class_ast->llvm_type->getPointerTo();
-			dtype = DBuilder->createPointerType(type.class_ast->llvm_dtype, 64);
+			base = type.class_ast->llvm_type;
+			dtype = type.class_ast->llvm_dtype;
+		}
+		if (!type.class_ast->is_struct)
+		{
+			base = base->getPointerTo();
+			dtype= DBuilder->createPointerType(dtype, 64);
 		}
 		break;
 	default:
@@ -786,7 +791,11 @@ void Birdee::ClassAST::PreGenerate()
 		types.push_back(helper.GetType(field.decl->resolved_type, dty));
 		dtypes.push_back(dty); 
 	}
-	llvm_type = (llvm::StructType*) helper.GetType(ResolvedType(this))->getPointerElementType();//StructType::create(context, types, GetUniqueName());
+	auto ty =  helper.GetType(ResolvedType(this));
+	if (!is_struct)
+		llvm_type = (llvm::StructType*)ty->getPointerElementType();
+	else
+		llvm_type = (llvm::StructType*)ty;
 	llvm_type->setBody(types);
 	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
 		dinfo.cu->getDirectory());
@@ -938,6 +947,7 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	}
 
 	assert(resolved_type.type == tok_class);
+	assert(!resolved_type.class_ast->is_struct);
 	auto llvm_ele_ty = resolved_type.class_ast->llvm_type;
 	size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
 	dinfo.emitLocation(this);
@@ -971,6 +981,14 @@ bool Birdee::ASTBasicBlock::Generate()
 
 llvm::Value * Birdee::ThisExprAST::Generate()
 {
+	if (resolved_type.class_ast->is_struct)
+		return builder.CreateLoad(GeneratePtr());
+	else
+		return GeneratePtr();
+}
+
+llvm::Value * Birdee::ThisExprAST::GeneratePtr()
+{
 	dinfo.emitLocation(this);
 	if (gen_context.cur_func && gen_context.cur_func->parent)//(gen_context.cur_func && gen_context.cur_func->parent && gen_context.cur_func->parent->capture_this)
 	{
@@ -984,6 +1002,7 @@ llvm::Value * Birdee::ThisExprAST::Generate()
 		return helper.cur_llvm_func->args().begin();
 	}
 }
+
 
 llvm::Value * Birdee::FunctionAST::Generate()
 {
@@ -1046,7 +1065,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			}
 			itr++;
 		}
-		if (captured_var.size())
+		if (captured_var.size() || capture_this)
 		{ //if my own variables are captured by children functions
 			vector<llvm::Type*> captype;
 			if (capture_this)
@@ -1351,11 +1370,30 @@ namespace Birdee
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	if(Obj)
-		llvm_obj = Obj->Generate();
+	if (Obj)
+	{
+		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
+		{
+			llvm_obj = Obj->GetLValue(false);
+			if (!llvm_obj)
+			{
+				if(auto thisexpr = dyncast_resolve_anno<ThisExprAST>(Obj.get()))
+					llvm_obj = thisexpr->GeneratePtr();
+			}
+		}
+		else
+		{
+			llvm_obj = Obj->Generate();
+			assert(llvm_obj);
+		}
+	}
+	dinfo.emitLocation(this);
 	if (kind == member_field)
 	{
-		return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
+		if (llvm_obj)//if we have a pointer to the object
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
+		else //else, we only have a RValue of struct
+			return builder.CreateExtractValue(Obj->Generate(), field->index);
 	}
 	else if (kind == member_function)
 	{
@@ -1363,6 +1401,11 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			gen_context.array_cls = GetArrayClass();
 		if (Obj->resolved_type.index_level > 0)
 			llvm_obj = builder.CreatePointerCast(llvm_obj, gen_context.array_cls->llvm_type->getPointerTo());
+		if (!llvm_obj) //if we only have a RValue of struct
+		{
+			llvm_obj = builder.CreateAlloca(Obj->resolved_type.class_ast->llvm_type); //alloca temp memory for the value
+			builder.CreateStore(Obj->Generate(), llvm_obj); //store the obj to the alloca
+		}
 		return func->decl->llvm_func;
 	}
 	else if (kind == member_imported_dim)
@@ -1539,12 +1582,46 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 {
 	if (checkHas)
 	{
+		if (Obj)
+		{
+			assert(Obj->resolved_type.isResolved());
+			//if obj is a struct, whether its members are LValue depends on whether obj is a lvalue 
+			if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
+			{
+				if(Obj->GetLValue(true))
+					return (llvm::Value *)1;
+				else
+				{
+					//this expr is a special case, itself is a pointer. So its members are LValues
+					if (dyncast_resolve_anno<ThisExprAST>(Obj.get()))
+					{
+						return (llvm::Value *)1;
+					}
+					//if obj is not LValue, the memberexpr is not LValue
+					return nullptr;
+				}
+			}
+		}
 		return (llvm::Value *)1;
 	}
 	dinfo.emitLocation(this);
-	llvm_obj = Obj->Generate();
-	if(kind==member_field)
+	if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
+	{
+		llvm_obj = Obj->GetLValue(false);
+		if (!llvm_obj)
+		{
+			auto thisexpr = dyncast_resolve_anno<ThisExprAST>(Obj.get());
+			assert(thisexpr);
+			llvm_obj = thisexpr->GeneratePtr();
+		}
+	}
+	else
+		llvm_obj = Obj->Generate();
+	if (kind == member_field)
+	{
 		return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) });
+	}
+		
 	return nullptr;
 }
 
@@ -1703,6 +1780,7 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		assert(lv);
 		auto rv = RHS->Generate();
 		dinfo.emitLocation(this);
+		gen_context.cur_func->llvm_func->print(errs());
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}

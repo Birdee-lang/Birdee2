@@ -476,6 +476,7 @@ void RegisiterClassForBinding(py::module& m)
 		.def("is_template_instance", &ClassAST::isTemplateInstance)
 		.def("is_template", &ClassAST::isTemplate)
 		.def("get_unique_name", &ClassAST::GetUniqueName)
+		.def_property_readonly("is_struct", [](ClassAST& ths) {return ths.is_struct; })
 		.def("run", [](LocalVarExprAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
 //	unordered_map<reference_wrapper<const string>, int> fieldmap;
 //	unordered_map<reference_wrapper<const string>, int> funcmap;
