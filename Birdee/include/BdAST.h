@@ -1162,6 +1162,23 @@ namespace Birdee {
 
 		}
 	};
+	class BD_CORE_API TypeofExprAST : public ExprAST {
+	public:
+		unique_ptr<ExprAST> arg;
+		ClassAST* type=nullptr;
+		std::unique_ptr<StatementAST> Copy();
+		//first resolve variables then resolve class names
+		void Phase1();
+		llvm::Value* Generate();
+		TypeofExprAST(unique_ptr<ExprAST>&& arg, SourcePos Pos)
+			: arg(std::move(arg)) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "typeof "<<arg<<"\n";
+		}
+	};
 
 	class BD_CORE_API ClassAST : public StatementAST {
 	public:
@@ -1169,6 +1186,7 @@ namespace Birdee {
 		std::unique_ptr<ClassAST> CopyNoTemplate();
 		llvm::Value* Generate();
 		std::string name;
+		bool needs_rtti = false;
 		bool is_struct = false;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;

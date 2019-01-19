@@ -149,9 +149,14 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 		ScriptAST* func = static_cast<ScriptAST*>(stmt);
 		cu.init_scripts.push_back(func);
 	}},
+	{"enable_rtti", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(isa<ClassAST>(stmt),"The init_script can only be applied on class definitions");
+		ClassAST* cls = static_cast<ClassAST*>(stmt);
+		cls->needs_rtti = true;
+	}},
 };
 
-//for all annotation, find interal annotation and apply them
+//for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
 static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
 {
 	for (auto itr = anno.begin(); itr != anno.end();)
@@ -519,6 +524,15 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
+		break;
+	}
+	case tok_typeof:
+	{
+		tokenizer.GetNextToken();
+		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof");
+		firstexpr = ParseExpressionUnknown();
+		CompileExpect(tok_right_bracket, "Expected \')\'");
+		push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:

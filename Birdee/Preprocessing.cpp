@@ -2037,6 +2037,25 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
+	ClassAST* GetTypeInfoClass()
+	{
+		string name("type_info");
+		if (cu.is_corelib)
+			return &(cu.classmap.find(name)->second.get());
+		else
+			return cu.imported_classmap.find(name)->second;
+	}
+
+	void TypeofExprAST::Phase1()
+	{
+		arg->Phase1();
+		CompileAssert(arg->resolved_type.type == tok_class
+			&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+			Pos ,"typeof must be appiled on class references with runtime type info");
+		type = arg->resolved_type.class_ast;
+		resolved_type = ResolvedType(GetTypeInfoClass());
+	}
+
 	void ClassAST::Phase1()
 	{
 		if (isTemplate())
@@ -2317,8 +2336,6 @@ If usage vararg name is "", match the closest vararg
 		else
 			return cu.imported_classmap.find(name)->second;
 	}
-
-
 
 	void StringLiteralAST::Phase1()
 	{

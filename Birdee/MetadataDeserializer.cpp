@@ -262,6 +262,9 @@ unique_ptr<vector<TemplateArgument>> BuildTemplateArgsFromJson(const json& args)
 
 void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_idx, ImportedModule& mod)
 {
+	auto rtti_itr = json_cls.find("needs_rtti");
+	if (rtti_itr != json_cls.end())
+		ret->needs_rtti = rtti_itr->get<bool>();
 	auto temp_itr = json_cls.find("template");
 	if (temp_itr != json_cls.end()) //if it's a template
 	{

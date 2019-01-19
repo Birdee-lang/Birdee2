@@ -284,4 +284,15 @@ func mkcomplex() as complex
 end
 dim x = addressof(mkcomplex().a)''')
 
+assert_ok('''
+@enable_rtti
+class someclass
+
+end
+
+dim a as someclass = new someclass
+println(typeof(a).get_name())
+'''
+)
+
 print("All tests done!")

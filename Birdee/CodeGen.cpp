@@ -57,7 +57,9 @@ std::size_t Birdee::ResolvedType::rawhash() const
 namespace Birdee
 {
 	extern ClassAST* GetStringClass();
+	extern ClassAST* GetTypeInfoClass();
 }
+
 template<typename T>
 void Print(T* v)
 {
@@ -66,6 +68,40 @@ void Print(T* v)
 	v->print(rso);
 	std::cout << rso.str();
 }
+
+struct StringRefOrHolder
+{
+private:
+	const string* pstr = nullptr;
+	string str;
+public:
+	const string& get() const
+	{
+		if (pstr)
+			return *pstr;
+		return str;
+	}
+	bool operator ==(const StringRefOrHolder& other) const
+	{
+		return get() == other.get();
+	}
+	StringRefOrHolder(const string* pstr):pstr(pstr) {}
+	StringRefOrHolder(const string& str) :str(str) {}
+	StringRefOrHolder() {}
+};
+
+namespace std
+{
+	template <>
+	struct hash<StringRefOrHolder>
+	{
+		std::size_t operator()(const StringRefOrHolder& a) const
+		{
+			return hash<string>()(a.get());
+		}
+	};
+}
+
 
 typedef DIType* PDIType;
 void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base);
@@ -145,13 +181,14 @@ struct GeneratorContext
 	Function* malloc_obj_func = nullptr;
 	Function* malloc_arr_func = nullptr;
 	StructType* cls_string = nullptr;
+	ClassAST* cls_typeinfo = nullptr;
 	DebugInfo dinfo;
-	unordered_map<reference_wrapper<const string>, GlobalVariable*> stringpool;
+	unordered_map<StringRefOrHolder, GlobalVariable*> stringpool;
 	llvm::Type* byte_arr_ty = nullptr;
 	ClassAST* array_cls = nullptr;
 	LLVMHelper helper;
 	FunctionAST* cur_func = nullptr;
-
+	unordered_map<ClassAST*, GlobalVariable*> rtti_map;
 
 	//the wrappers for raw functions, useful for conversion from functype to closure
 	unordered_map<Function*, Function*> function_wrapper_cache;
@@ -175,6 +212,28 @@ DIBuilder* GetDBuilder()
 #define ty_long (gen_context.ty_long)
 #define dinfo  (gen_context.dinfo)
 
+
+static ClassAST* GetTypeInfoType()
+{
+	if (gen_context.cls_typeinfo)
+		return gen_context.cls_typeinfo;
+	gen_context.cls_typeinfo = GetTypeInfoClass();
+	return gen_context.cls_typeinfo;
+}
+
+static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
+{
+	auto itr = gen_context.rtti_map.find(cls);
+	if (itr != gen_context.rtti_map.end())
+	{
+		return itr->second;
+	}
+	auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
+		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
+		cls->GetUniqueName() + "0_typeinfo", nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+	gen_context.rtti_map[cls] = newv;
+	return newv;
+}
 
 template<typename Derived>
 Derived* dyncast_resolve_anno(StatementAST* p)
@@ -797,10 +856,28 @@ void Birdee::ClassAST::PreGenerate()
 	vector<llvm::Type*> types;
 	SmallVector<Metadata *, 8> dtypes;
 
+	int field_offset = 0;
+	LLVMHelper::TypePair type_info_llvm_pair;
+	if (needs_rtti)
+	{
+		field_offset = 1;
+		ClassAST* type_info_ty = nullptr;
+		type_info_ty = GetTypeInfoType();
+		assert(type_info_ty->llvm_dtype);
+		assert(type_info_ty->llvm_type);
+		type_info_llvm_pair = LLVMHelper::TypePair{ type_info_ty->llvm_type->getPointerTo(),
+			DBuilder->createPointerType(type_info_ty->llvm_dtype, 64) };
+	}
+
 	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
 		dinfo.cu->getDirectory());
 	vector<LLVMHelper::TypePair*> ty_nodes;
-	ty_nodes.reserve(fields.size());
+	ty_nodes.reserve(fields.size()+ field_offset);
+	if (needs_rtti)
+	{
+		types.push_back(type_info_llvm_pair.llvm_ty);
+		ty_nodes.push_back(&type_info_llvm_pair);
+	}
 	for (auto& field : fields)
 	{
 		auto& node2 = helper.GetTypeNode(field.decl->resolved_type);
@@ -835,6 +912,11 @@ void Birdee::ClassAST::PreGenerate()
 		llvm_dtype->replaceAllUsesWith(new_dty);
 	llvm_dtype = new_dty;
 	node.dty = is_struct ? llvm_dtype: DBuilder->createPointerType(llvm_dtype, 64);
+	
+	if (needs_rtti)
+	{
+		GetOrCreateTypeInfoGlobal(this);
+	}
 	//fix-me: now the debug info is not portable
 }
 
@@ -994,6 +1076,11 @@ llvm::Value * Birdee::NewExprAST::Generate()
 		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
+	if (resolved_type.class_ast->needs_rtti)
+	{
+		builder.CreateStore(GetOrCreateTypeInfoGlobal(resolved_type.class_ast),
+			builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(0) }));
+	}
 	if(func)
 		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args,this->Pos);
 	return ret;
@@ -1225,11 +1312,13 @@ llvm::Value * Birdee::LoopControlAST::Generate()
 	return nullptr;
 }
 
+
 StructType* GetStringType()
 {
 	if (gen_context.cls_string)
 		return gen_context.cls_string;
-	return GetStringClass()->llvm_type;
+	gen_context.cls_string = GetStringClass()->llvm_type;
+	return gen_context.cls_string;
 }
 
 llvm::Value * Birdee::BoolLiteralExprAST::Generate()
@@ -1237,9 +1326,9 @@ llvm::Value * Birdee::BoolLiteralExprAST::Generate()
 	return builder.getInt1(v);
 }
 
-llvm::Value * Birdee::StringLiteralAST::Generate()
+
+static llvm::GlobalVariable* GenerateStr(const StringRefOrHolder& Val)
 {
-	dinfo.emitLocation(this);
 	auto itr = gen_context.stringpool.find(Val);
 	if (itr != gen_context.stringpool.end())
 	{
@@ -1252,31 +1341,13 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 		ty.index_level = 1;
 		gen_context.byte_arr_ty = helper.GetType(ty);
 	}
-	/*
-	Constant * str = ConstantDataArray::getString(context, Val);
-	GlobalVariable* vstr = new GlobalVariable(*module,str->getType(), true, GlobalValue::PrivateLinkage, nullptr);
-	vstr->setAlignment(1);
-	vstr->setInitializer(str);
-	//vstr->print(errs(), true);
-	std::vector<Constant*> const_ptr_5_indices;
-	ConstantInt* const_int64_6 = ConstantInt::get(context, APInt(64, 0));
-	const_ptr_5_indices.push_back(const_int64_6);
-	const_ptr_5_indices.push_back(const_int64_6);
-	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr,vstr, const_ptr_5_indices);
-	//const_ptr_5->print(errs(), true);
 
-	Constant * obj= llvm::ConstantStruct::get(GetStringType(),{
-		const_ptr_5,
-		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length(),true))
-		});*/
-	
-
-	Constant * str = ConstantDataArray::getString(context, Val);
-	vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(builder.getInt8Ty(),Val.length() + 1) };
-	auto cur_array_ty=  StructType::create(context, types);
+	Constant * str = ConstantDataArray::getString(context, Val.get());
+	vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(builder.getInt8Ty(),Val.get().length() + 1) };
+	auto cur_array_ty = StructType::create(context, types);
 
 	Constant * strarr = llvm::ConstantStruct::get(cur_array_ty, {
-		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length()+1,true)),
+		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.get().length() + 1,true)),
 		str
 		});
 
@@ -1292,12 +1363,17 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 
 	Constant * obj = llvm::ConstantStruct::get(GetStringType(), {
 		const_ptr_5,
-		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.length(),true))
+		ConstantInt::get(llvm::Type::getInt32Ty(context),APInt(32,Val.get().length(),true))
 		});
 	GlobalVariable* vobj = new GlobalVariable(*module, GetStringType(), true, GlobalValue::PrivateLinkage, nullptr);
 	vobj->setInitializer(obj);
 	gen_context.stringpool[Val] = vobj;
 	return vobj;
+}
+llvm::Value * Birdee::StringLiteralAST::Generate()
+{
+	dinfo.emitLocation(this);
+	return GenerateStr(StringRefOrHolder(&Val)); //generate a string and put the string in a pool with string reference
 }
 
 llvm::Value * Birdee::LocalVarExprAST::Generate()
@@ -1410,6 +1486,7 @@ namespace Birdee
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
+	int field_offset = 0;
 	if (Obj)
 	{
 		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
@@ -1426,14 +1503,18 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			llvm_obj = Obj->Generate();
 			assert(llvm_obj);
 		}
+		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti)
+		{
+			field_offset = 1;
+		}
 	}
 	dinfo.emitLocation(this);
 	if (kind == member_field)
 	{
 		if (llvm_obj)//if we have a pointer to the object
-			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) }));
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
 		else //else, we only have a RValue of struct
-			return builder.CreateExtractValue(Obj->Generate(), field->index);
+			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
 	}
 	else if (kind == member_function)
 	{
@@ -1611,6 +1692,22 @@ llvm::Value * Birdee::ClassAST::Generate()
 		}
 		return nullptr;
 	}
+
+	if (needs_rtti) //the class is instantiated in the current module, generate type_info
+	{
+		auto tyinfo = GetOrCreateTypeInfoGlobal(this);
+		tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
+		tyinfo->setExternallyInitialized(false);
+
+		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
+		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
+
+		auto val = ConstantStruct::get(GetTypeInfoType()->llvm_type, {
+				const_ptr_5
+			});
+		tyinfo->setInitializer(val);
+	}
+
 	for (auto& func : funcs)
 	{
 		func.decl->Generate();
@@ -1645,21 +1742,29 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 		return (llvm::Value *)1;
 	}
 	dinfo.emitLocation(this);
+	int offset = 0;
 	if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
 	{
-		llvm_obj = Obj->GetLValue(false);
-		if (!llvm_obj)
-		{
-			auto thisexpr = dyncast_resolve_anno<ThisExprAST>(Obj.get());
-			assert(thisexpr);
-			llvm_obj = thisexpr->GeneratePtr();
-		}
+			llvm_obj = Obj->GetLValue(false);
+			if (!llvm_obj)
+			{
+				auto thisexpr = dyncast_resolve_anno<ThisExprAST>(Obj.get());
+				assert(thisexpr);
+				llvm_obj = thisexpr->GeneratePtr();
+			}
 	}
 	else
 		llvm_obj = Obj->Generate();
+
+
+	if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti) //if the class has rtti, add 1 offset to the field index
+	{
+		offset = 1;
+	}
+
 	if (kind == member_field)
 	{
-		return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index) });
+		return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
 	}
 		
 	return nullptr;
@@ -1972,4 +2077,11 @@ Value * Birdee::FunctionToClosureAST::Generate()
 	auto ptr = builder.CreateInsertValue(UndefValue::get(type), outfunc_value, 0);
 	ptr = builder.CreateInsertValue(ptr, capture, 1);
 	return ptr;
+}
+
+llvm::Value * Birdee::TypeofExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	auto val = arg->Generate();
+	return builder.CreateLoad(builder.CreateGEP(val, {builder.getInt32(0),builder.getInt32(0)}));
 }
