@@ -1,6 +1,13 @@
 import vector:vector
 import fmt:fmtprint
+import tuple
 
+#declare function getchar() as int
+#declare function MessageBoxA(hWnd as pointer, strCaption as pointer, strText as pointer, tag as uint) as int
+
+#MessageBoxA(pointerof(null),"Hi!".getRaw(),"Hello world".getRaw(),64)
+#getchar()
+dim t = tuple.mktuple(1,2,3.5,"f")
 dim f = new vector[int](0)
 for dim i=0 to 32
 	f.push_back(i)

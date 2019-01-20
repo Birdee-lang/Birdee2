@@ -287,10 +287,19 @@ namespace Birdee
 			nfuncs.push_back(std::move(def));
 			idx++;
 		}
+		clsdef->is_struct = is_struct;
+		clsdef->needs_rtti = needs_rtti;
 		clsdef->template_source_class = template_source_class;
 		assert(clsdef->template_instance_args==nullptr);
 		cur_cls = old_cls;
 		return std::move(clsdef);
+	}
+	
+	std::unique_ptr<StatementAST> TypeofExprAST::Copy()
+	{
+		auto ret = make_unique<TypeofExprAST>(ToExpr(arg->Copy()), Pos);
+		ret->type = type;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::FunctionAST::Copy()

@@ -13,6 +13,25 @@ extern void SeralizeMetadata(std::ostream& out);
 extern void ParseTopLevelImportsOnly();
 extern string GetModuleNameByArray(const vector<string>& package);
 
+//GetCurrentDir copied from http://www.codebind.com/cpp-tutorial/c-get-current-directory-linuxwindows/
+#include <stdio.h>  /* defines FILENAME_MAX */
+// #define WINDOWS  /* uncomment this line to use it for windows.*/ 
+#ifdef _WIN32
+#include <direct.h>
+#define GetCurrentDir _getcwd
+#else
+#include <unistd.h>
+#define GetCurrentDir getcwd
+#endif
+
+std::string GetCurrentWorkingDir(void) {
+	char buff[FILENAME_MAX];
+	GetCurrentDir(buff, FILENAME_MAX);
+	std::string current_working_dir(buff);
+	return current_working_dir;
+}
+
+
 #ifdef _WIN32
 extern void RunGenerativeScript();
 #else
@@ -134,12 +153,14 @@ void ParseParameters(int argc, char** argv)
 		found = source.find_last_of("/\\");
 		if (found == string::npos)
 		{
-			cu.directory = ".";
+			cu.directory = GetCurrentWorkingDir();
 			cu.filename = source;
 		}
 		else
 		{
 			cu.directory = source.substr(0, found);
+			if (cu.directory[0] == '.')
+				cu.directory = GetCurrentWorkingDir() + "/" + cu.directory;
 			cu.filename = source.substr(found + 1);
 		}
 		if (!cu.is_script_mode)
@@ -175,6 +196,9 @@ int main(int argc,char** argv)
 	cu.is_compiler_mode = true;
 	ParseParameters(argc, argv);
 	
+	//it is important to clear the imported modules before python interpreter quits
+	//because imported modules may have PyObject reference, and they must be deleted before
+	//destruction of python interpreter 
 
 	if (cu.is_script_mode)
 	{

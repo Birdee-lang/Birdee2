@@ -173,6 +173,7 @@
     <ClInclude Include="include\Metadata.h" />
     <ClInclude Include="include\NameMangling.h" />
     <ClInclude Include="include\OpEnums.h" />
+    <ClInclude Include="include\PyWrapper.h" />
     <ClInclude Include="include\SourcePos.h" />
     <ClInclude Include="include\TemplateUtil.h" />
     <ClInclude Include="include\TokenDef.h" />

@@ -72,6 +72,11 @@ class string
 	end
 end class
 
+class type_info
+	private name as string
+	public function get_name() as string => name
+end
+
 declare function BirdeeI2S (i as int) as string
 declare function BirdeeP2S (i as pointer) as string
 

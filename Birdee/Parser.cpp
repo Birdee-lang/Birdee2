@@ -138,23 +138,33 @@ std::unique_ptr<IfBlockAST> ParseIf();
 PrototypeAST *current_func_proto = nullptr;
 int unnamed_func_cnt = 0;
 
-static unordered_map<string, std::function<void(StatementAST*)>> interal_annontation_map = {
-	{"stack_capture", [](StatementAST* stmt) {
+static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_annontation_map = {
+	{"stack_capture", [](StatementAST* stmt,bool is_top_level) {
 		CompileAssert(isa<FunctionAST>(stmt),"The stack_capture can only be applied on functions");
 		FunctionAST* func = static_cast<FunctionAST*>(stmt);
 		func->capture_on_stack = true;
 	}},
+	{"init_script", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(is_top_level && isa<ScriptAST>(stmt),"The init_script can only be applied on top-level scripts");
+		ScriptAST* func = static_cast<ScriptAST*>(stmt);
+		cu.init_scripts.push_back(func);
+	}},
+	{"enable_rtti", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(isa<ClassAST>(stmt),"The init_script can only be applied on class definitions");
+		ClassAST* cls = static_cast<ClassAST*>(stmt);
+		cls->needs_rtti = true;
+	}},
 };
 
-//for all annotation, find interal annotation and apply them
-static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt)
+//for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
+static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
 {
 	for (auto itr = anno.begin(); itr != anno.end();)
 	{
 		auto mapitr = interal_annontation_map.find(*itr);
 		if (mapitr != interal_annontation_map.end())
 		{
-			mapitr->second(stmt); //call the annotation function
+			mapitr->second(stmt,is_top_level); //call the annotation function
 			itr = anno.erase(itr);
 		}
 		else
@@ -514,6 +524,15 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
+		break;
+	}
+	case tok_typeof:
+	{
+		tokenizer.GetNextToken();
+		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof");
+		firstexpr = ParseExpressionUnknown();
+		CompileExpect(tok_right_bracket, "Expected \')\'");
+		push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:
@@ -1145,7 +1164,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	return true;
 }
 
-void ParseClassInPlace(ClassAST* ret)
+void ParseClassInPlace(ClassAST* ret, bool is_struct)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
@@ -1153,6 +1172,7 @@ void ParseClassInPlace(ClassAST* ret)
 	//std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
 	ret->name = name;
 	ret->Pos = pos;
+	ret->is_struct = is_struct;
 	int view_pos = 0;
 	bool is_template = false;
 	if (tokenizer.CurTok == tok_left_index)
@@ -1160,7 +1180,7 @@ void ParseClassInPlace(ClassAST* ret)
 		is_template = true;
 		if (!tokenizer.is_recording)
 		{
-			tokenizer.StartRecording(string("class ") + name + " [");
+			tokenizer.StartRecording(string(is_struct? "struct ":"class ") + name + " [");
 		}
 		else
 		{
@@ -1179,8 +1199,20 @@ void ParseClassInPlace(ClassAST* ret)
 		if (tokenizer.CurTok == tok_end)
 		{
 			tokenizer.GetNextToken(); //eat end
-			if (tokenizer.CurTok == tok_class) //optional: end class
-				tokenizer.GetNextToken(); //eat class
+			if (is_struct)
+			{
+				if (tokenizer.CurTok == tok_class)
+					throw CompileError("Expecting \"struct\" after \"end\", no \"class\" allowed here");
+				if (tokenizer.CurTok == tok_struct)
+					tokenizer.GetNextToken();
+			}
+			else
+			{
+				if (tokenizer.CurTok == tok_class)
+					tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_struct)
+					throw CompileError("Expecting \"class\" after \"end\", no \"struct\" allowed here");
+			}
 			goto done;
 		}
 		else if(tokenizer.CurTok == tok_eof)
@@ -1199,15 +1231,15 @@ done:
 		{
 			auto curlen = tokenizer.GetTemplateSourcePosition();
 			assert(curlen > view_pos);
-			ret->template_param->source.set(string("class ") + name + " [", view_pos, curlen - 1 - view_pos);
+			ret->template_param->source.set(string(is_struct ? "struct " : "class ") + name + " [", view_pos, curlen - 1 - view_pos);
 		}
 	}
 	//return std::move(ret);
 }
-std::unique_ptr<ClassAST> ParseClass()
+std::unique_ptr<ClassAST> ParseClass(bool is_struct)
 {
 	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(string(), SourcePos(0,0,0));
-	ParseClassInPlace(ret.get());
+	ParseClassInPlace(ret.get(), is_struct);
 	return std::move(ret);
 }
 void ParsePackageName(vector<string>& ret)
@@ -1610,7 +1642,7 @@ BD_CORE_API int ParseTopLevel()
 		}
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
-			ApplyInternalAnnotations(anno, st.get());
+			ApplyInternalAnnotations(anno, st.get(), true);
 			if (anno.size())
 				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else
@@ -1684,9 +1716,11 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
 		case tok_class:
+		case tok_struct:
 		{
+			bool is_struct = tokenizer.CurTok == tok_struct;
 			tokenizer.GetNextToken(); //eat class
-			auto classdef = ParseClass();
+			auto classdef = ParseClass(is_struct);
 			std::reference_wrapper<const string> clscname = classdef->name;
 			std::reference_wrapper<ClassAST> classref = *classdef;
 			CompileCheckGlobalConflict(classdef->Pos, clscname);

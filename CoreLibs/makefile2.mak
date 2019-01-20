@@ -1,8 +1,8 @@
 all: birdee list hash_map vector tuple fmt
-BLIB_DIR=$(BIRDEE_HOME)\blib: 
+BLIB_DIR=$(BIRDEE_HOME)\blib
 
 $(BLIB_DIR):
-	mkdir $(BIRDEE_HOME)\blib
+	cmd /c "if not exist $@ mkdir $@"
 birdee: $(BLIB_DIR) $(BIRDEE_HOME)\src\birdee.txt
 	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\birdee.txt -o $(BIRDEE_HOME)\blib\birdee.obj --corelib
 

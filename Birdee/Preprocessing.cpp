@@ -63,10 +63,12 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 	return impl;
 }
 
-#define Birdee_RunAnnotationsOn_NAME "?Birdee_RunAnnotationsOn@@YAXAEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAVStatementAST@Birdee@@USourcePos@4@@Z"
-#define Birdee_ScriptAST_Phase1_NAME "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@@Z"
-#define Birdee_ScriptType_Resolve_NAME "?Birdee_ScriptType_Resolve@@YAXPEAVResolvedType@Birdee@@PEAVScriptType@2@USourcePos@2@@Z"
-
+#define Birdee_RunAnnotationsOn_NAME "?Birdee_RunAnnotationsOn@@YAXAEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAVStatementAST@Birdee@@USourcePos@4@PEAX@Z"
+#define Birdee_ScriptAST_Phase1_NAME "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@PEAX1@Z"
+#define Birdee_ScriptType_Resolve_NAME "?Birdee_ScriptType_Resolve@@YAXPEAVResolvedType@Birdee@@PEAVScriptType@2@USourcePos@2@PEAX3@Z"
+#define BirdeeCopyPyScope_NAME "?BirdeeCopyPyScope@@YAPEAXPEAX@Z"
+#define BirdeeDerefObj_NAME "?BirdeeDerefObj@@YAXPEAX@Z"
+#define BirdeeGetOrigScope_NAME "?BirdeeGetOrigScope@@YAPEAXXZ"
 #else
 
 #include <dlfcn.h>
@@ -89,49 +91,93 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 	return impl;
 }
 
-#define Birdee_RunAnnotationsOn_NAME "_Z23Birdee_RunAnnotationsOnRSt6vectorINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESaIS5_EEPN6Birdee12StatementASTENS9_9SourcePosE"
-#define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE"
-#define Birdee_ScriptType_Resolve_NAME "_Z25Birdee_ScriptType_ResolvePN6Birdee12ResolvedTypeEPNS_10ScriptTypeENS_9SourcePosE"
+#define Birdee_RunAnnotationsOn_NAME "_Z23Birdee_RunAnnotationsOnRSt6vectorINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESaIS5_EEPN6Birdee12StatementASTENS9_9SourcePosEPv"
+#define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTEPvS2_"
+#define Birdee_ScriptType_Resolve_NAME "_Z25Birdee_ScriptType_ResolvePN6Birdee12ResolvedTypeEPNS_10ScriptTypeENS_9SourcePosEPvS5_"
+#define BirdeeCopyPyScope_NAME "_Z17BirdeeCopyPyScopePv"
+#define BirdeeDerefObj_NAME "_Z14BirdeeDerefObjPv"
+#define BirdeeGetOrigScope_NAME "_Z18BirdeeGetOrigScopev"
 #endif
 
-static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos)
+static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
 {
 
-	typedef void(*PtrImpl)(std::vector<std::string>& anno, StatementAST* impl, SourcePos pos);
+	typedef void(*PtrImpl)(std::vector<std::string>& anno, StatementAST* impl, SourcePos pos, void* globalscope);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
 		impl = (PtrImpl)LoadBindingFunction(Birdee_RunAnnotationsOn_NAME);
 	}
-	impl(anno, ths, pos);
+	impl(anno, ths, pos, globalscope);
 }
-static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
+static void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globalscope, void* localscope)
 {
-	typedef void(*PtrImpl)(ScriptAST* ths);
+	typedef void(*PtrImpl)(ScriptAST* ths, void* globalscope, void* scope);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
 		impl = (PtrImpl)LoadBindingFunction(Birdee_ScriptAST_Phase1_NAME);
 	}
-	impl(ths);
+	impl(ths, globalscope, localscope);
 }
 
-static void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos)
+static void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos, void* globalscope, void* localscope)
 {
-	typedef void(*PtrImpl)(ResolvedType* out,ScriptType* ths, SourcePos);
+	typedef void(*PtrImpl)(ResolvedType* out,ScriptType* ths, SourcePos, void* globalscope, void* localscope);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
 		impl = (PtrImpl)LoadBindingFunction(Birdee_ScriptType_Resolve_NAME);
 	}
-	impl(out, ths, pos);
+	impl(out, ths, pos, globalscope, localscope);
 }
 
-#else
-extern void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths);
-extern void Birdee_ScriptAST_Phase1(ScriptAST* ths);
-#endif
+static void* BirdeeCopyPyScope(void* src)
+{
+	typedef void*(*PtrImpl)(void* src);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(BirdeeCopyPyScope_NAME);
+	}
+	return impl(src);
+}
 
+static void BirdeeDerefObj(void* obj)
+{
+	typedef void*(*PtrImpl)(void* obj);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(BirdeeDerefObj_NAME);
+	}
+	impl(obj);
+}
+
+static void* BirdeeGetOrigScope()
+{
+	static void* orig_scope = nullptr;
+	if (!orig_scope)
+	{
+
+		typedef void*(*PtrImpl)();
+		static PtrImpl impl = nullptr;
+		if (impl == nullptr)
+		{
+			impl = (PtrImpl)LoadBindingFunction(BirdeeGetOrigScope_NAME);
+		}
+		orig_scope = impl();
+	}
+	return orig_scope;
+}
+#else
+extern void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);
+extern void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globalscope, void* localscope);
+extern void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos, void* globalscope, void* localscope);
+extern void* BirdeeCopyPyScope(void* src);
+extern void BirdeeDerefObj(void* obj);
+extern void* BirdeeGetOrigScope();
+#endif
 
 class ScopeManager
 {
@@ -142,6 +188,17 @@ public:
 	BasicBlock top_level_bb;
 	//the sub-scopes of top-level code, they are not global
 	vector<BasicBlock> top_level_scopes;
+
+	//the scope dicts for python. May be null it script is not current executed
+	//One PyScope object represents a Birdee module. scope_dicts field represents the nested scopes of the module.
+	//mod->py_scope is the "globals" scope of the module
+	struct PyScope
+	{
+		ImportedModule* mod; // null for main module
+		vector<Birdee::PyHandle> scope_dicts;
+		PyScope(ImportedModule* mod) : mod(mod) {}
+	};
+	vector<PyScope> py_scope_dicts; 
 
 	//the scopes for nested functions
 	//function_scopes.back() is the lowest level of nested function
@@ -158,9 +215,11 @@ public:
 		unordered_map<string, ExprAST*> exprmap;
 		SourcePos pos;
 		bool isClass;
+		bool isEmpty;
 		ImportedModule* imported_mod;
-		TemplateEnv():pos(0,0,0), isClass(false),imported_mod(nullptr){};
-		TemplateEnv(SourcePos pos, bool isClass, ImportedModule* imported_mod): pos(pos), isClass(isClass) , imported_mod(imported_mod){}
+		TemplateEnv():pos(0,0,0), isClass(false),imported_mod(nullptr), isEmpty(true){};
+		TemplateEnv(SourcePos pos, bool isClass, ImportedModule* imported_mod): 
+			pos(pos), isClass(isClass), imported_mod(imported_mod), isEmpty(false){}
 		TemplateEnv& operator = (TemplateEnv&& v)
 		{
 			typemap = std::move(v.typemap);
@@ -179,6 +238,12 @@ public:
 	vector<TemplateEnv> template_class_stack;
 	typedef std::pair<vector<TemplateEnv>*, int> template_stack_frame;
 	vector<template_stack_frame> template_trace_back_stack;
+
+	ScopeManager()
+	{
+		//initially push a PyScope for the current main module
+		py_scope_dicts.emplace_back(PyScope(nullptr));
+	}
 
 	inline bool IsCurrentClass(ClassAST* cls)
 	{
@@ -286,12 +351,14 @@ public:
 	void SetTemplateEnv(const vector<TemplateArgument>& template_args,
 		const vector<TemplateParameter>& parameters, ImportedModule* mod, SourcePos pos)
 	{
+		py_scope_dicts.push_back(PyScope(mod));
 		TemplateEnv env = CreateTemplateEnv(template_args, parameters,false, mod, pos);
 		template_stack.push_back(std::move(env));
 	}
 
 	void RestoreTemplateEnv()
 	{
+		py_scope_dicts.pop_back();
 		template_stack.pop_back();
 	}
 
@@ -314,6 +381,7 @@ public:
 
 	void PushBasicBlock()
 	{
+		py_scope_dicts.back().scope_dicts.push_back(nullptr);
 		if (function_scopes.empty())
 			//if we are in top-level code, push the scope in top-level's sub-scopes
 			top_level_scopes.push_back(BasicBlock());
@@ -323,6 +391,7 @@ public:
 	}
 	void PopBasicBlock()
 	{
+		py_scope_dicts.back().scope_dicts.pop_back();
 		if (function_scopes.empty())
 			//if we are in top-level code, pop the scope in top-level's sub-scopes
 			top_level_scopes.pop_back();
@@ -552,6 +621,7 @@ public:
 struct PreprocessingState
 {
 	ScopeManager _scope_mgr;
+	PyHandle main_global_scope;
 	FunctionAST* _cur_func = nullptr;
 	ClassAST* array_cls = nullptr;
 	ClassAST* string_cls = nullptr;
@@ -786,6 +856,14 @@ extern string GetModuleNameByArray(const vector<string>& package);
 
 namespace Birdee
 {
+	void PushPyScope(ImportedModule* mod)
+	{
+		scope_mgr.py_scope_dicts.push_back(ScopeManager::PyScope(mod));
+	}
+	void PopPyScope()
+	{
+		scope_mgr.py_scope_dicts.pop_back();
+	}
 	BD_CORE_API string GetClassASTName(ClassAST* cls)
 	{
 		return cls->GetUniqueName();
@@ -876,6 +954,95 @@ namespace Birdee
 		}
 	}
 
+	void* PyHandle::ptr()
+	{
+		return p;
+	}
+
+	void PyHandle::set(void* newp)
+	{
+		assert(!p);
+		p = newp;
+	}
+	void PyHandle::reset()
+	{
+		if (p)
+		{
+			BirdeeDerefObj(p);
+			p = nullptr;
+		}
+	}
+	PyHandle::PyHandle()
+	{
+		p = nullptr;
+	}
+	PyHandle::PyHandle(PyHandle&& other) noexcept
+	{
+		p = other.p;
+		other.p = nullptr;
+	}
+
+	PyHandle::PyHandle(void* pt)
+	{
+		p = pt;
+	}
+
+	PyHandle::~PyHandle()
+	{
+		if (p)
+			BirdeeDerefObj(p);
+	}
+
+	BD_CORE_API void ClearPyHandles()
+	{
+		preprocessing_state.main_global_scope.reset();
+		scope_mgr.py_scope_dicts.clear();
+	}
+
+	void GetPyScope(void*& globals, void*& locals)
+	{
+		auto& scope = scope_mgr.py_scope_dicts.back();
+		//if we are in another module and the module has not a valid global pyscope, create one from "original scope"
+		if (scope.mod)
+		{
+			if (!scope.mod->py_scope.ptr())
+				scope.mod->py_scope.set(BirdeeCopyPyScope(BirdeeGetOrigScope()));
+			globals = scope.mod->py_scope.ptr();
+		}
+		else
+		{
+			if(!preprocessing_state.main_global_scope.ptr())
+				preprocessing_state.main_global_scope.set(BirdeeCopyPyScope(BirdeeGetOrigScope()));
+			globals = preprocessing_state.main_global_scope.ptr();
+		}
+			
+		//if we are in top-level, pass nullptr to scope_dict parameter
+		if (scope.scope_dicts.empty())
+			locals = nullptr;
+		else
+		{
+			//if the current scope dict is not null (because we have already run some script in the current level)
+			//use the ready scope_dict
+			auto& handle = scope.scope_dicts.back();
+			if (!handle.ptr())
+			{
+				//else, create a new scope dict
+				//first find the first non-null dict in the scopes
+				void* src_ptr = nullptr;
+				for (int i = scope.scope_dicts.size()-1; i >= 0; i--)
+				{
+					if (scope.scope_dicts[i].ptr())
+					{
+						src_ptr = scope.scope_dicts[i].ptr();
+						break;
+					}
+				}
+				handle.set(BirdeeCopyPyScope(src_ptr));
+			}
+			locals = handle.ptr();
+		}
+	}
+
 	string int2str(const int v)
 	{
 		std::stringstream stream;
@@ -946,7 +1113,9 @@ namespace Birdee
 	{
 		if (type.type == tok_script)
 		{
-			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type),pos);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type), pos, globals, locals);
 			return;
 		}
 		if (type.type == tok_func)
@@ -1245,9 +1414,12 @@ namespace Birdee
 		return v_ulong<v.v_ulong;
 	}
 
-	void Birdee::ScriptAST::Phase1()
+
+	void ScriptAST::Phase1()
 	{
-		Birdee_ScriptAST_Phase1(this);
+		void* globals, *locals;
+		GetPyScope(globals, locals);
+		Birdee_ScriptAST_Phase1(this, globals, locals);
 	}
 
 	llvm::Value* Birdee::AnnotationStatementAST::GetLValue(bool checkHas)
@@ -1259,6 +1431,8 @@ namespace Birdee
 
 	void Birdee::AnnotationStatementAST::Phase1()
 	{
+		void* globals, *locals;
+		GetPyScope(globals, locals);
 		if (isa<ClassAST>(impl.get()))
 		{
 			ClassAST* cls = static_cast<ClassAST*>(impl.get());
@@ -1266,7 +1440,7 @@ namespace Birdee
 			{
 				for (auto& inst : cls->template_param->instances)
 				{
-					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos);
+					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
 				}
 				cls->template_param->annotation = this;
 				return;
@@ -1280,7 +1454,7 @@ namespace Birdee
 			{
 				for (auto& inst : func->template_param->instances)
 				{
-					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos);
+					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
 				}
 				func->template_param->annotation = this;
 				return;
@@ -1288,7 +1462,7 @@ namespace Birdee
 			//if is not a template, fall through to the following code
 		}
 		impl->Phase1();
-		Birdee_RunAnnotationsOn(anno,this,impl->Pos);
+		Birdee_RunAnnotationsOn(anno,this,impl->Pos, globals);
 		if (is_expr)
 		{
 			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
@@ -1574,7 +1748,11 @@ If usage vararg name is "", match the closest vararg
 		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
 		if (annotation)
 		{
-			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos);
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos,globals);
+			PopPyScope();
 		}
 		return ret;
 	}
@@ -1834,6 +2012,7 @@ If usage vararg name is "", match the closest vararg
 		if (resolved_type.index_level == 0)
 		{
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
+			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
 			if (!method.empty())
 			{
@@ -1856,6 +2035,25 @@ If usage vararg name is "", match the closest vararg
 				}
 			}
 		}
+	}
+
+	ClassAST* GetTypeInfoClass()
+	{
+		string name("type_info");
+		if (cu.is_corelib)
+			return &(cu.classmap.find(name)->second.get());
+		else
+			return cu.imported_classmap.find(name)->second;
+	}
+
+	void TypeofExprAST::Phase1()
+	{
+		arg->Phase1();
+		CompileAssert(arg->resolved_type.type == tok_class
+			&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+			Pos ,"typeof must be appiled on class references with runtime type info");
+		type = arg->resolved_type.class_ast;
+		resolved_type = ResolvedType(GetTypeInfoClass());
 	}
 
 	void ClassAST::Phase1()
@@ -2138,8 +2336,6 @@ If usage vararg name is "", match the closest vararg
 		else
 			return cu.imported_classmap.find(name)->second;
 	}
-
-
 
 	void StringLiteralAST::Phase1()
 	{

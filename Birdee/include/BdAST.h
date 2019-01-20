@@ -11,6 +11,7 @@
 #include "TokenDef.h"
 #include <LibDef.h>
 #include <assert.h>
+#include "PyWrapper.h"
 
 namespace Birdee
 {
@@ -90,6 +91,8 @@ namespace Birdee {
 	BD_CORE_API extern SourcePos GetCurrentSourcePos();
 	BD_CORE_API extern string GetTokenString(Token tok);
 
+	class AnnotationStatementAST;
+
 	struct ImportedModule
 	{
 		unordered_map<string, unique_ptr<ClassAST>> classmap;
@@ -103,6 +106,8 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
 
 		vector<vector<string>> user_imports;
+		vector<unique_ptr<AnnotationStatementAST>> annotations;
+		PyHandle py_scope;
 		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};
@@ -315,6 +320,7 @@ namespace Birdee {
 	};
 
 	class PrototypeAST;
+	class ScriptAST;
 
 	class BD_CORE_API CompileUnit
 	{
@@ -343,6 +349,9 @@ namespace Birdee {
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
 		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
 		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
+
+		//the scripts that are marked "init_script". They will be exported to the "bmm" file
+		vector<ScriptAST*> init_scripts;
 
 		vector<ClassAST*> imported_class_templates;
 		vector<FunctionAST*> imported_func_templates;
@@ -482,6 +491,9 @@ namespace Birdee {
 	class BD_CORE_API ThisExprAST : public ExprAST {
 	public:
 		void Phase1();
+		//this mothod will always generate a pointer for "this"
+		llvm::Value* GeneratePtr();
+		//for struct types, this will generate a value rather than a pointer
 		llvm::Value* Generate();
 		ThisExprAST()   {}
 		std::unique_ptr<StatementAST> Copy();
@@ -1150,6 +1162,23 @@ namespace Birdee {
 
 		}
 	};
+	class BD_CORE_API TypeofExprAST : public ExprAST {
+	public:
+		unique_ptr<ExprAST> arg;
+		ClassAST* type=nullptr;
+		std::unique_ptr<StatementAST> Copy();
+		//first resolve variables then resolve class names
+		void Phase1();
+		llvm::Value* Generate();
+		TypeofExprAST(unique_ptr<ExprAST>&& arg, SourcePos Pos)
+			: arg(std::move(arg)) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "typeof "<<arg<<"\n";
+		}
+	};
 
 	class BD_CORE_API ClassAST : public StatementAST {
 	public:
@@ -1157,6 +1186,8 @@ namespace Birdee {
 		std::unique_ptr<ClassAST> CopyNoTemplate();
 		llvm::Value* Generate();
 		std::string name;
+		bool needs_rtti = false;
+		bool is_struct = false;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
 		unique_ptr< vector<TemplateArgument>> template_instance_args;

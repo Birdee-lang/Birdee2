@@ -1,0 +1,12 @@
+@enable_rtti
+class cls1
+
+end
+
+
+@enable_rtti
+class cls2[T]
+
+end
+
+dim b as cls2[int]

@@ -23,9 +23,8 @@ static string current_package_name;
 static int current_module_idx;
 
 extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
-extern std::unique_ptr<ClassAST> ParseClass();
 extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
-extern void ParseClassInPlace(ClassAST* ret);
+extern void ParseClassInPlace(ClassAST* ret, bool is_struct);
 
 extern std::vector<std::string> Birdee::source_paths;
 
@@ -40,11 +39,11 @@ import template class instance
 */
 
 
-static Tokenizer StartParseTemplate(string&& str, Token first_tok)
+static Tokenizer StartParseTemplate(string&& str, Token& first_tok)
 {
 	Tokenizer toknzr(std::make_unique<StringStream>(std::move(str)), source_paths.size() - 1);
 	toknzr.GetNextToken();
-	BirdeeAssert(toknzr.CurTok == first_tok, "The first token of template should be function");
+	first_tok = toknzr.CurTok;
 	toknzr.GetNextToken();
 	return SwitchTokenizer(std::move(toknzr));
 }
@@ -174,35 +173,55 @@ void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
 	}
 }
 
+void BuildAnnotationsOnTemplate(const json& json_cls, AnnotationStatementAST*& annotation, ImportedModule& mod)
+{
+	auto anno_itr = json_cls.find("annotations");
+	if (anno_itr != json_cls.end())
+	{
+		BirdeeAssert(anno_itr->is_array(), "The \'annotations\' json field should be an array");
+		vector<string> data;
+		for (auto& j : *anno_itr)
+		{
+			data.emplace_back(j.get<string>());
+		}
+		mod.annotations.push_back(make_unique<AnnotationStatementAST>(std::move(data), nullptr)); //fix-me: assign ret to AnnotationStatementAST?
+		annotation = mod.annotations.back().get();
+	}
+}
+
 void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 {
 	BirdeeAssert(globals.is_array(), "Expected a JSON array");
 	for (auto& itr : globals)
 	{
-		auto var = StartParseTemplate(itr.get<string>(), tok_func);
+		auto strsrc = itr["template"];
+		Token first_tok;
+		auto var = StartParseTemplate(strsrc.get<string>(), first_tok);
+		BirdeeAssert(tok_func == first_tok , "The first token of template should be function");
 		auto func = ParseFunction(nullptr);
 		BirdeeAssert(func->template_param.get(), "func->template_param");
 		func->template_param->mod = &mod;
-		func->template_param->source.set(itr.get<string>());
+		func->template_param->source.set(strsrc.get<string>());
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
+		BuildAnnotationsOnTemplate(itr, func->template_param->annotation, mod);
 		mod.funcmap[func->Proto->GetName()] = std::move(func);
 	}
 }
 
 void BuildTemplateClassFromJson(const json& itr, ClassAST* cls, int module_idx, ImportedModule& mod)
 {
-
-	auto var = StartParseTemplate(itr.get<string>(), tok_class);
-	ParseClassInPlace(cls);
+	Token first_tok;
+	auto var = StartParseTemplate(itr.get<string>(), first_tok);
+	BirdeeAssert(tok_class == first_tok || tok_struct == first_tok, "The first token of template should be class/struct");
+	ParseClassInPlace(cls, tok_struct == first_tok);
 	BirdeeAssert(cls->template_param.get(), "cls->template_param");
 	cls->template_param->mod = &mod;
 	cls->template_param->source.set(itr.get<string>());
 	SwitchTokenizer(std::move(var));
 	cu.imported_class_templates.push_back(cls);
 	cls->package_name_idx = module_idx;
-
 }
 
 unique_ptr<vector<TemplateArgument>> BuildTemplateArgsFromJson(const json& args)
@@ -243,11 +262,16 @@ unique_ptr<vector<TemplateArgument>> BuildTemplateArgsFromJson(const json& args)
 
 void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_idx, ImportedModule& mod)
 {
+	auto rtti_itr = json_cls.find("needs_rtti");
+	if (rtti_itr != json_cls.end())
+		ret->needs_rtti = rtti_itr->get<bool>();
 	auto temp_itr = json_cls.find("template");
 	if (temp_itr != json_cls.end()) //if it's a template
 	{
 		BuildTemplateClassFromJson(*temp_itr, ret, module_idx, mod);
 		BirdeeAssert(ret->isTemplate(), "The class with \'template\' json field should be a template");
+		BuildAnnotationsOnTemplate(json_cls,ret->template_param->annotation , mod);
+
 		//find the template instances in orphan classes whose name starts with: package.clazzname[......
 		string starts = current_package_name + '.' + ret->name + '[';
 		for (auto itr = cu.orphan_class.lower_bound(starts); itr != cu.orphan_class.end();)
@@ -290,7 +314,9 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 		auto templ = func.find("template");
 		if (templ != func.end())
 		{
-			Tokenizer old = StartParseTemplate(templ->get<string>(), tok_func);
+			Token first_tok;
+			Tokenizer old = StartParseTemplate(templ->get<string>(), first_tok);
+			BirdeeAssert(tok_func == first_tok, "The first token of template should be function");
 			funcdef = ParseFunction(ret);
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
 			funcdef->template_param->mod = &mod;
@@ -298,6 +324,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 			cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
+			BuildAnnotationsOnTemplate(func, funcdef->template_param->annotation, mod);
 		}
 		else
 		{
@@ -583,8 +610,11 @@ void Get2DStringArray(vector<vector<string>>& ret, const json& js)
 		}
 	}
 }
-
-
+namespace Birdee
+{
+	extern void PushPyScope(ImportedModule* mod);
+	extern void PopPyScope();
+}
 void ImportedModule::Init(const vector<string>& package, const string& module_name)
 {
 	json json;
@@ -644,4 +674,21 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 
 	BuildGlobalVaribleFromJson(json["Variables"], *this);
 	BuildGlobalFuncFromJson(json["Functions"], *this);
+
+	{
+		auto itr = json.find("InitScripts");
+		if (itr != json.end())
+		{
+			BirdeeAssert(itr->is_string(), "InitScripts field in bmm file should be a string");
+			//if it has a init script, construct a temp ScriptAST and run it
+			Birdee::PushPyScope(this);
+			ScriptAST tmp= ScriptAST(string());
+			tmp.script = itr->get<string>();
+			if (!tmp.script.empty())
+			{
+				tmp.Phase1();
+			}
+			Birdee::PopPyScope();
+		}
+	}
 }
