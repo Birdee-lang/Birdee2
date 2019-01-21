@@ -138,23 +138,33 @@ std::unique_ptr<IfBlockAST> ParseIf();
 PrototypeAST *current_func_proto = nullptr;
 int unnamed_func_cnt = 0;
 
-static unordered_map<string, std::function<void(StatementAST*)>> interal_annontation_map = {
-	{"stack_capture", [](StatementAST* stmt) {
+static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_annontation_map = {
+	{"stack_capture", [](StatementAST* stmt,bool is_top_level) {
 		CompileAssert(isa<FunctionAST>(stmt),"The stack_capture can only be applied on functions");
 		FunctionAST* func = static_cast<FunctionAST*>(stmt);
 		func->capture_on_stack = true;
 	}},
+	{"init_script", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(is_top_level && isa<ScriptAST>(stmt),"The init_script can only be applied on top-level scripts");
+		ScriptAST* func = static_cast<ScriptAST*>(stmt);
+		cu.init_scripts.push_back(func);
+	}},
+	{"enable_rtti", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(isa<ClassAST>(stmt),"The init_script can only be applied on class definitions");
+		ClassAST* cls = static_cast<ClassAST*>(stmt);
+		cls->needs_rtti = true;
+	}},
 };
 
-//for all annotation, find interal annotation and apply them
-static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt)
+//for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
+static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
 {
 	for (auto itr = anno.begin(); itr != anno.end();)
 	{
 		auto mapitr = interal_annontation_map.find(*itr);
 		if (mapitr != interal_annontation_map.end())
 		{
-			mapitr->second(stmt); //call the annotation function
+			mapitr->second(stmt,is_top_level); //call the annotation function
 			itr = anno.erase(itr);
 		}
 		else
@@ -281,31 +291,53 @@ std::unique_ptr<VariableSingleDefAST> ParseSingleDim()
 	return make_unique<VariableSingleDefAST>(identifier, std::move(type), std::move(val), pos);
 }
 
-std::unique_ptr<VariableDefAST> ParseDim(bool isglobal = false)
+std::unique_ptr<VariableDefAST> ParseDim(bool isglobal = false,bool* pout_vararg=nullptr,string* pout_vararg_name=nullptr)
 {
 	std::vector<std::unique_ptr<VariableSingleDefAST>> defs;
 	auto pos = tokenizer.GetSourcePos();
-	auto def = ParseSingleDim();
-	defs.push_back(std::move(def));
-	for (;;)
-	{
-
-		switch (tokenizer.CurTok)
+	auto process_vararg = [pout_vararg, pout_vararg_name]() {
+		CompileAssert(pout_vararg, "\"...\" is only allowed in function parameters");
+		tokenizer.GetNextToken();
+		*pout_vararg = true;
+		if (tokenizer.CurTok == tok_identifier)
 		{
-		case tok_comma:
+			*pout_vararg_name = std::move(tokenizer.IdentifierStr);
 			tokenizer.GetNextToken();
-			def = ParseSingleDim();
-			defs.push_back(std::move(def));
-			break;
-		case tok_newline:
-		case tok_eof:
-		case tok_right_bracket:
-			goto done;
-			break;
-		default:
-			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected a new line after variable definition");
 		}
+		CompileAssert(tokenizer.CurTok==tok_right_bracket, "\"...\" should be the last parameter. Expecting \')\' here.");
+	};
+	if (tokenizer.CurTok == tok_ellipsis)
+	{
+		process_vararg();
+	}
+	else
+	{
+		auto def = ParseSingleDim();
+		defs.push_back(std::move(def));
+		for (;;)
+		{
 
+			switch (tokenizer.CurTok)
+			{
+			case tok_comma:
+				tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_ellipsis)
+				{
+					process_vararg();
+					goto done;
+				}
+				def = ParseSingleDim();
+				defs.push_back(std::move(def));
+				break;
+			case tok_newline:
+			case tok_eof:
+			case tok_right_bracket:
+				goto done;
+				break;
+			default:
+				throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected a new line after variable definition");
+			}
+		}
 	}
 done:
 	if (isglobal)
@@ -492,6 +524,15 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
+		break;
+	}
+	case tok_typeof:
+	{
+		tokenizer.GetNextToken();
+		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof");
+		firstexpr = ParseExpressionUnknown();
+		CompileExpect(tok_right_bracket, "Expected \')\'");
+		push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:
@@ -858,28 +899,42 @@ std::unique_ptr<IfBlockAST> ParseIf()
 	return make_unique<IfBlockAST>(std::move(cond), std::move(true_block), std::move(false_block), pos);
 }
 
-vector<TemplateParameter> ParseTemplateParameters()
+vector<TemplateParameter> ParseTemplateParameters(bool& is_vararg,string& vararg_name)
 {
 	vector<TemplateParameter> ret;
 	if (tokenizer.CurTok == tok_right_index)
 		throw CompileError("The template parameters cannot be empty");
 	for (;;)
 	{
-		CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier");
-		string identifier = tokenizer.IdentifierStr;
-		tokenizer.GetNextToken();
-		if (tokenizer.CurTok == tok_as)
+		if (tokenizer.CurTok == tok_ellipsis)
 		{
-			unique_ptr<Type> ty = ParseType();
-			if (ty->index_level > 0)
-				throw CompileError("Arrays are not supported in template parameters");
-			ret.push_back(TemplateParameter(std::move(ty), identifier));
+			tokenizer.GetNextToken();
+			is_vararg = true;
+			if (tokenizer.CurTok == tok_identifier) //if it is a named vararg
+			{
+				vararg_name = std::move(tokenizer.IdentifierStr);
+				tokenizer.GetNextToken();
+			}
+			CompileExpect(tok_right_index, "Expecting \"]\" after ..., as it should be the last parameter");
+			break;
 		}
 		else
 		{
-			ret.push_back(TemplateParameter(nullptr, identifier));
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier");
+			string identifier = tokenizer.IdentifierStr;
+			tokenizer.GetNextToken();
+			if (tokenizer.CurTok == tok_as)
+			{
+				unique_ptr<Type> ty = ParseType();
+				if (ty->index_level > 0)
+					throw CompileError("Arrays are not supported in template parameters");
+				ret.push_back(TemplateParameter(std::move(ty), identifier));
+			}
+			else
+			{
+				ret.push_back(TemplateParameter(nullptr, identifier));
+			}
 		}
-
 		if (tokenizer.CurTok == tok_right_index)
 		{
 			tokenizer.GetNextToken();
@@ -930,12 +985,18 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		}
 		tokenizer.GetNextToken();
 		template_param = make_unique<TemplateParameters<FunctionAST>>();
-		template_param->params=std::move(ParseTemplateParameters());
+		template_param->params=std::move(ParseTemplateParameters(template_param->is_vararg,template_param->vararg_name));
 	}
 	CompileExpect(tok_left_bracket, "Expected \'(\'");
 	std::unique_ptr<VariableDefAST> args;
+	bool is_vararg = false;
+	string vararg_name;
 	if (tokenizer.CurTok != tok_right_bracket)
-		args = ParseDim();
+		args = ParseDim(/*is_global*/false, &is_vararg, &vararg_name);
+	if (is_vararg)
+	{
+		CompileAssert(is_template || (cls && cls->isTemplate()), "Vararg in function parameters can only be used within a function or class template");
+	}
 	CompileExpect(tok_right_bracket, "Expected \')\'");
 	auto rettype = ParseType();
 	bool is_return_void = false;
@@ -981,7 +1042,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 		}
 	}
 
-	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), pos);
+	return make_unique<FunctionAST>(std::move(funcproto), std::move(body), std::move(template_param), is_vararg,std::move(vararg_name), pos);
 }
 
 std::unique_ptr<PrototypeAST> ParseFunctionPrototype(ClassAST* cls, bool allow_alias, string* out_link_name , bool is_closure , bool needs_newline ,bool needs_name)
@@ -1103,7 +1164,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	return true;
 }
 
-void ParseClassInPlace(ClassAST* ret)
+void ParseClassInPlace(ClassAST* ret, bool is_struct)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
@@ -1111,6 +1172,7 @@ void ParseClassInPlace(ClassAST* ret)
 	//std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(name, pos);
 	ret->name = name;
 	ret->Pos = pos;
+	ret->is_struct = is_struct;
 	int view_pos = 0;
 	bool is_template = false;
 	if (tokenizer.CurTok == tok_left_index)
@@ -1118,7 +1180,7 @@ void ParseClassInPlace(ClassAST* ret)
 		is_template = true;
 		if (!tokenizer.is_recording)
 		{
-			tokenizer.StartRecording(string("class ") + name + " [");
+			tokenizer.StartRecording(string(is_struct? "struct ":"class ") + name + " [");
 		}
 		else
 		{
@@ -1126,7 +1188,7 @@ void ParseClassInPlace(ClassAST* ret)
 		}
 		tokenizer.GetNextToken();
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
-		ret->template_param->params = std::move(ParseTemplateParameters());
+		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg, ret->template_param->vararg_name));
 	}
 	CompileExpect(tok_newline, "Expected an newline after class name");
 	
@@ -1137,8 +1199,20 @@ void ParseClassInPlace(ClassAST* ret)
 		if (tokenizer.CurTok == tok_end)
 		{
 			tokenizer.GetNextToken(); //eat end
-			if (tokenizer.CurTok == tok_class) //optional: end class
-				tokenizer.GetNextToken(); //eat class
+			if (is_struct)
+			{
+				if (tokenizer.CurTok == tok_class)
+					throw CompileError("Expecting \"struct\" after \"end\", no \"class\" allowed here");
+				if (tokenizer.CurTok == tok_struct)
+					tokenizer.GetNextToken();
+			}
+			else
+			{
+				if (tokenizer.CurTok == tok_class)
+					tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_struct)
+					throw CompileError("Expecting \"class\" after \"end\", no \"struct\" allowed here");
+			}
 			goto done;
 		}
 		else if(tokenizer.CurTok == tok_eof)
@@ -1157,15 +1231,15 @@ done:
 		{
 			auto curlen = tokenizer.GetTemplateSourcePosition();
 			assert(curlen > view_pos);
-			ret->template_param->source.set(string("class ") + name + " [", view_pos, curlen - 1 - view_pos);
+			ret->template_param->source.set(string(is_struct ? "struct " : "class ") + name + " [", view_pos, curlen - 1 - view_pos);
 		}
 	}
 	//return std::move(ret);
 }
-std::unique_ptr<ClassAST> ParseClass()
+std::unique_ptr<ClassAST> ParseClass(bool is_struct)
 {
 	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(string(), SourcePos(0,0,0));
-	ParseClassInPlace(ret.get());
+	ParseClassInPlace(ret.get(), is_struct);
 	return std::move(ret);
 }
 void ParsePackageName(vector<string>& ret)
@@ -1275,7 +1349,7 @@ ImportTree* Birdee::ImportTree::Insert(const vector<string>& package, int level)
 	}
 }
 
-string GetModuleNameByArray(const vector<string>& package)
+BD_CORE_API string GetModuleNameByArray(const vector<string>& package)
 {
 	string ret=package[0];
 	for (int i = 1; i < package.size(); i++)
@@ -1426,10 +1500,13 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 
 void ImportedModule::HandleImport()
 {
-	if (user_imports.size())
+	if (imported_classmap.size() == 0)
 	{
 		for (auto& imp : auto_import_packages)
 			DoImportPackageAllInImportedModule(this, imp);
+	}
+	if (user_imports.size())
+	{
 		for (auto& imp : user_imports)
 		{
 			if (imp.back() == "*")
@@ -1452,7 +1529,7 @@ void ImportedModule::HandleImport()
 	}
 }
 
-void ParseImports()
+void ParseImports(bool need_do_import)
 {
 	for (;;)
 	{
@@ -1467,7 +1544,8 @@ void ParseImports()
 			vector<string> package = ParsePackageName();
 			if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
 			{
-				DoImportPackage(package);
+				if(need_do_import)
+					DoImportPackage(package);
 				cu.imports.push_back(std::move(package));
 				tokenizer.GetNextToken();
 			}
@@ -1479,7 +1557,8 @@ void ParseImports()
 					string name = tokenizer.IdentifierStr;
 					tokenizer.GetNextToken();
 					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
-					DoImportName(package, name);
+					if(need_do_import)
+						DoImportName(package, name);
 					package.push_back(string(":") + name);
 					cu.imports.push_back(std::move(package));
 				}
@@ -1487,7 +1566,8 @@ void ParseImports()
 				{
 					tokenizer.GetNextToken();
 					CompileExpect({ tok_newline,tok_eof }, "Expected a new line after import");
-					DoImportPackageAll(package);
+					if(need_do_import)
+						DoImportPackageAll(package);
 					package.push_back("*");
 					cu.imports.push_back(std::move(package));
 				}
@@ -1529,6 +1609,15 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement()
 	return std::move(ret);
 }
 
+BD_CORE_API void ParseTopLevelImportsOnly()
+{
+	tokenizer.GetNextToken();
+	while (tokenizer.CurTok == tok_newline)
+		tokenizer.GetNextToken();
+	ParsePackage();
+	ParseImports(/*need_do_import*/false);
+}
+
 BD_CORE_API int ParseTopLevel()
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
@@ -1540,7 +1629,7 @@ BD_CORE_API int ParseTopLevel()
 	if(!cu.is_corelib)
 		AddAutoImport();
 	ParsePackage();
-	ParseImports();
+	ParseImports(/*need_do_import*/true);
 	
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
 	{
@@ -1553,7 +1642,7 @@ BD_CORE_API int ParseTopLevel()
 		}
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
-			ApplyInternalAnnotations(anno, st.get());
+			ApplyInternalAnnotations(anno, st.get(), true);
 			if (anno.size())
 				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
 			else
@@ -1627,9 +1716,11 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
 		case tok_class:
+		case tok_struct:
 		{
+			bool is_struct = tokenizer.CurTok == tok_struct;
 			tokenizer.GetNextToken(); //eat class
-			auto classdef = ParseClass();
+			auto classdef = ParseClass(is_struct);
 			std::reference_wrapper<const string> clscname = classdef->name;
 			std::reference_wrapper<ClassAST> classref = *classdef;
 			CompileCheckGlobalConflict(classdef->Pos, clscname);

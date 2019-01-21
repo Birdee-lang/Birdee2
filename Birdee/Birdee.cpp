@@ -5,10 +5,32 @@
 #include <fstream>
 #include <cstdlib>
 #include <fstream>
+#include <iostream>
 using namespace Birdee;
 
 extern int ParseTopLevel();
 extern void SeralizeMetadata(std::ostream& out);
+extern void ParseTopLevelImportsOnly();
+extern string GetModuleNameByArray(const vector<string>& package);
+
+//GetCurrentDir copied from http://www.codebind.com/cpp-tutorial/c-get-current-directory-linuxwindows/
+#include <stdio.h>  /* defines FILENAME_MAX */
+// #define WINDOWS  /* uncomment this line to use it for windows.*/ 
+#ifdef _WIN32
+#include <direct.h>
+#define GetCurrentDir _getcwd
+#else
+#include <unistd.h>
+#define GetCurrentDir getcwd
+#endif
+
+std::string GetCurrentWorkingDir(void) {
+	char buff[FILENAME_MAX];
+	GetCurrentDir(buff, FILENAME_MAX);
+	std::string current_working_dir(buff);
+	return current_working_dir;
+}
+
 
 #ifdef _WIN32
 extern void RunGenerativeScript();
@@ -28,6 +50,7 @@ extern void* LoadBindingFunction(const char* name);
 #endif
 BD_CORE_API extern Tokenizer tokenizer;
 
+static bool is_print_import_mode = false;
 
 struct ArgumentsStream
 {
@@ -87,6 +110,10 @@ void ParseParameters(int argc, char** argv)
 				string ret = args.Get();
 				cu.symbol_prefix = ret;
 			}
+			else if (cmd == "--print-import")
+			{
+				is_print_import_mode = true;
+			}
 			else if (cmd == "--script" || cmd== "-s")
 			{
 				cu.is_script_mode = true;
@@ -111,19 +138,29 @@ void ParseParameters(int argc, char** argv)
 			else
 				goto fail;
 		}
-		if ( source == "" || target == "")
+		if (source == "")
+		{
+			std::cerr << "The input file is not specified.\n";
 			goto fail;
+		}
+		if (target == "" && !is_print_import_mode)
+		{
+			std::cerr << "The output file is not specified.\n";
+			goto fail;
+		}
 		//cut the source path into filename & dir path
 		size_t found;
 		found = source.find_last_of("/\\");
 		if (found == string::npos)
 		{
-			cu.directory = ".";
+			cu.directory = GetCurrentWorkingDir();
 			cu.filename = source;
 		}
 		else
 		{
 			cu.directory = source.substr(0, found);
+			if (cu.directory[0] == '.')
+				cu.directory = GetCurrentWorkingDir() + "/" + cu.directory;
 			cu.filename = source.substr(found + 1);
 		}
 		if (!cu.is_script_mode)
@@ -159,6 +196,9 @@ int main(int argc,char** argv)
 	cu.is_compiler_mode = true;
 	ParseParameters(argc, argv);
 	
+	//it is important to clear the imported modules before python interpreter quits
+	//because imported modules may have PyObject reference, and they must be deleted before
+	//destruction of python interpreter 
 
 	if (cu.is_script_mode)
 	{
@@ -166,19 +206,32 @@ int main(int argc,char** argv)
 		return 0;
 	}
 
-	cu.InitForGenerate();
 	try {
-		ParseTopLevel();
-		cu.Phase0();
-		cu.Phase1();
-		cu.Generate();
+		if (is_print_import_mode)
+		{
+			ParseTopLevelImportsOnly();
+			for (auto& imp : cu.imports)
+			{
+				std::cout<<GetModuleNameByArray(imp)<<'\n';
+			}
+			std::cout << cu.symbol_prefix;
+			return 0;
+		}
+		else
+		{
+			cu.InitForGenerate();
+			ParseTopLevel();
+			cu.Phase0();
+			cu.Phase1();
+			cu.Generate();
+		}
 	}
-	catch (CompileError e)
+	catch (CompileError& e)
 	{
 		e.print();
 		return 1;
 	}
-	catch (TokenizerError e)
+	catch (TokenizerError& e)
 	{
 		e.print();
 		return 1;

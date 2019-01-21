@@ -1,0 +1,54 @@
+class vector[T]
+	private buf as T[]
+	private len as uint
+	private func check_index(idx as uint)
+		if idx>=len then
+			breakpoint()
+		end
+	end
+
+	private func reserve_n(n as uint)
+		dim newsize = buf.length()
+		if len > n then
+			newsize = newsize + newsize
+		else
+			newsize = newsize + n
+		end
+		dim newbuf = new T * newsize
+		for dim i=0 till len
+			newbuf[i]=buf[i]
+		end
+		buf=newbuf
+	end
+
+	public func __getitem__ (idx as T) as T
+		check_index(idx)
+		return buf[idx]
+	end
+
+	public func __init__(sz as uint) 
+		buf=new T * sz
+		len=sz
+	end
+
+	public func size() as uint => len
+	
+	public func capacity() as uint => buf.length()
+
+	public func push_back(itm as T)
+		if len >= buf.length() then
+			reserve_n(1)
+		end
+		buf[len]=itm
+		len = len + 1
+	end
+
+	public func __setitem__ (idx as uint,value as T)
+		check_index(idx)
+		buf[idx]=value
+	end
+
+end
+
+
+

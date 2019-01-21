@@ -1,0 +1,45 @@
+@init_script
+{@
+def tuple_add_fields(cls):
+	assert(isinstance(cls,ClassAST))
+	idx=0
+	for arg in cls.template_instance_args:
+		if arg.kind!=TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE:
+			raise RuntimeError("The {}-th template argument should be a type".format(idx))
+		ty = arg.resolved_type
+		class_body(cls, f'public v{idx} as {ty}\n')
+		idx+=1
+
+def tuple_expand_vararg(): #make a type "tuple[...]"
+	func=get_cur_func()
+	targs=[]
+	for targ in func.template_instance_args:
+		if targ.kind!=TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE:
+			raise RuntimeError("The {}-th template argument should be a type".format(idx))
+		targs.append(str(targ.resolved_type))
+	strtypes=','.join(targs) # etc int,float,string
+	#print(resolve_type(f"tuple[{strtypes}]"))
+	set_type(resolve_type(f"tuple[{strtypes}]"))	
+
+def tuple_add_constructor(func):
+	assert(isinstance(func,FunctionAST))
+	args=func.proto.args
+	body=func.body
+	idx=0
+	for arg in args:
+		body.push_back(stmt(f"ret.v{idx}=___vararg{idx}"))
+		idx+=1
+	body.push_back(ReturnAST.new(expr("ret")))
+@}
+
+@tuple_add_fields
+struct tuple[...]
+
+end
+
+function mktuple[...](...) as {@tuple_expand_vararg()@} #the return type is tuple[...]
+	dim ret as {@set_type(get_cur_func().proto.return_type)@} #set the type as the return type
+	{@tuple_add_constructor(get_cur_func())@}
+end
+
+#mktuple(1,2,3.5,"f")

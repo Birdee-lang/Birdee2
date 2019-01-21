@@ -99,7 +99,7 @@ clear_compile_unit()
 
 ## Documents
 
-Please view our [wiki](https://github.com/Menooker/Birdee2/wiki).
+Please view our [wiki](https://github.com/Birdee-lang/Birdee2/wiki).
 
 ## Building Birdee on Ubuntu
 
@@ -150,7 +150,7 @@ make
 
 One more step, set some required environment variables. You can add something like (assuming that the root directory of Birdee source code is /home/menooker/Birdee2):
 ```bash
-export BIRDEE_HOME=/home/menooker/Birdee2/BirdeeHome/bin/
+export BIRDEE_HOME=/home/menooker/Birdee2/BirdeeHome/
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/menooker/Birdee2/lib
 ```
 
@@ -218,6 +218,8 @@ The above sources and generated files are included in the pre-built binary. Then
 
 ### Build Birdee with VS!
 
-Add an environment variable "BIRDEE_HOME" and set its value to the absolute path "X:\XXXX\Birdee\BirdeeHome\bin"
+Add an environment variable "BIRDEE_HOME" and set its value to the absolute path "X:\\XXXX\\Birdee\\BirdeeHome".
 
 Open "Birdee\\Birdee.sln" and build the project "Birdee" and "CoreLibs".
+
+Make a link at "X:\\XXXX\\Birdee\\BirdeeHome\\bin" to the Birdee compiler binary directory "X:\\XXXX\\Birdee\\x64\\Debug\\".

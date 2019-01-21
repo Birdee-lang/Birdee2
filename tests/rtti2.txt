@@ -1,0 +1,7 @@
+import rtti1:*
+
+dim a = new cls1
+println(typeof(a).get_name())
+
+dim b = new cls2[int]
+println(typeof(b).get_name())

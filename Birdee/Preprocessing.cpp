@@ -6,6 +6,7 @@
 #include <sstream>
 #include "TemplateUtil.h"
 #include <algorithm>
+#include <unordered_set>
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
@@ -35,6 +36,20 @@ T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
 	return (itr->second.get());
 }
 
+namespace Birdee
+{
+	class TemplateArgumentNumberError : public CompileError
+	{
+	public:
+		FunctionAST* src_template;
+		std::shared_ptr<vector<TemplateArgument>> args;
+
+		TemplateArgumentNumberError(SourcePos pos, const std::string& _msg,
+			FunctionAST* src_template, unique_ptr<vector<TemplateArgument>>&& args) :
+			src_template(src_template), args(std::move(args)), CompileError(pos.line,pos.pos,_msg)
+		{}
+	};
+}
 
 #ifdef BIRDEE_USE_DYN_LIB
 #ifdef _WIN32
@@ -48,10 +63,12 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 	return impl;
 }
 
-#define Birdee_AnnotationStatementAST_Phase1_NAME "?Birdee_AnnotationStatementAST_Phase1@@YAXPEAVAnnotationStatementAST@Birdee@@@Z"
-#define Birdee_ScriptAST_Phase1_NAME "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@@Z"
-#define Birdee_ScriptType_Resolve_NAME "?Birdee_ScriptType_Resolve@@YAXPEAVResolvedType@Birdee@@PEAVScriptType@2@USourcePos@2@@Z"
-
+#define Birdee_RunAnnotationsOn_NAME "?Birdee_RunAnnotationsOn@@YAXAEAV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@PEAVStatementAST@Birdee@@USourcePos@4@PEAX@Z"
+#define Birdee_ScriptAST_Phase1_NAME "?Birdee_ScriptAST_Phase1@@YAXPEAVScriptAST@Birdee@@PEAX1@Z"
+#define Birdee_ScriptType_Resolve_NAME "?Birdee_ScriptType_Resolve@@YAXPEAVResolvedType@Birdee@@PEAVScriptType@2@USourcePos@2@PEAX3@Z"
+#define BirdeeCopyPyScope_NAME "?BirdeeCopyPyScope@@YAPEAXPEAX@Z"
+#define BirdeeDerefObj_NAME "?BirdeeDerefObj@@YAXPEAX@Z"
+#define BirdeeGetOrigScope_NAME "?BirdeeGetOrigScope@@YAPEAXXZ"
 #else
 
 #include <dlfcn.h>
@@ -74,49 +91,93 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 	return impl;
 }
 
-#define Birdee_AnnotationStatementAST_Phase1_NAME "_Z36Birdee_AnnotationStatementAST_Phase1PN6Birdee22AnnotationStatementASTE"
-#define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTE"
-#define Birdee_ScriptType_Resolve_NAME "_Z25Birdee_ScriptType_ResolvePN6Birdee12ResolvedTypeEPNS_10ScriptTypeENS_9SourcePosE"
+#define Birdee_RunAnnotationsOn_NAME "_Z23Birdee_RunAnnotationsOnRSt6vectorINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESaIS5_EEPN6Birdee12StatementASTENS9_9SourcePosEPv"
+#define Birdee_ScriptAST_Phase1_NAME "_Z23Birdee_ScriptAST_Phase1PN6Birdee9ScriptASTEPvS2_"
+#define Birdee_ScriptType_Resolve_NAME "_Z25Birdee_ScriptType_ResolvePN6Birdee12ResolvedTypeEPNS_10ScriptTypeENS_9SourcePosEPvS5_"
+#define BirdeeCopyPyScope_NAME "_Z17BirdeeCopyPyScopePv"
+#define BirdeeDerefObj_NAME "_Z14BirdeeDerefObjPv"
+#define BirdeeGetOrigScope_NAME "_Z18BirdeeGetOrigScopev"
 #endif
 
-static void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths)
+static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
 {
 
-	typedef void(*PtrImpl)(AnnotationStatementAST* ths);
+	typedef void(*PtrImpl)(std::vector<std::string>& anno, StatementAST* impl, SourcePos pos, void* globalscope);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
-		impl = (PtrImpl)LoadBindingFunction(Birdee_AnnotationStatementAST_Phase1_NAME);
+		impl = (PtrImpl)LoadBindingFunction(Birdee_RunAnnotationsOn_NAME);
 	}
-	impl(ths);
+	impl(anno, ths, pos, globalscope);
 }
-static void Birdee_ScriptAST_Phase1(ScriptAST* ths)
+static void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globalscope, void* localscope)
 {
-	typedef void(*PtrImpl)(ScriptAST* ths);
+	typedef void(*PtrImpl)(ScriptAST* ths, void* globalscope, void* scope);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
 		impl = (PtrImpl)LoadBindingFunction(Birdee_ScriptAST_Phase1_NAME);
 	}
-	impl(ths);
+	impl(ths, globalscope, localscope);
 }
 
-static void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos)
+static void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos, void* globalscope, void* localscope)
 {
-	typedef void(*PtrImpl)(ResolvedType* out,ScriptType* ths, SourcePos);
+	typedef void(*PtrImpl)(ResolvedType* out,ScriptType* ths, SourcePos, void* globalscope, void* localscope);
 	static PtrImpl impl = nullptr;
 	if (impl == nullptr)
 	{
 		impl = (PtrImpl)LoadBindingFunction(Birdee_ScriptType_Resolve_NAME);
 	}
-	impl(out, ths, pos);
+	impl(out, ths, pos, globalscope, localscope);
 }
 
-#else
-extern void Birdee_AnnotationStatementAST_Phase1(AnnotationStatementAST* ths);
-extern void Birdee_ScriptAST_Phase1(ScriptAST* ths);
-#endif
+static void* BirdeeCopyPyScope(void* src)
+{
+	typedef void*(*PtrImpl)(void* src);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(BirdeeCopyPyScope_NAME);
+	}
+	return impl(src);
+}
 
+static void BirdeeDerefObj(void* obj)
+{
+	typedef void*(*PtrImpl)(void* obj);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(BirdeeDerefObj_NAME);
+	}
+	impl(obj);
+}
+
+static void* BirdeeGetOrigScope()
+{
+	static void* orig_scope = nullptr;
+	if (!orig_scope)
+	{
+
+		typedef void*(*PtrImpl)();
+		static PtrImpl impl = nullptr;
+		if (impl == nullptr)
+		{
+			impl = (PtrImpl)LoadBindingFunction(BirdeeGetOrigScope_NAME);
+		}
+		orig_scope = impl();
+	}
+	return orig_scope;
+}
+#else
+extern void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);
+extern void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globalscope, void* localscope);
+extern void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, SourcePos pos, void* globalscope, void* localscope);
+extern void* BirdeeCopyPyScope(void* src);
+extern void BirdeeDerefObj(void* obj);
+extern void* BirdeeGetOrigScope();
+#endif
 
 class ScopeManager
 {
@@ -127,6 +188,17 @@ public:
 	BasicBlock top_level_bb;
 	//the sub-scopes of top-level code, they are not global
 	vector<BasicBlock> top_level_scopes;
+
+	//the scope dicts for python. May be null it script is not current executed
+	//One PyScope object represents a Birdee module. scope_dicts field represents the nested scopes of the module.
+	//mod->py_scope is the "globals" scope of the module
+	struct PyScope
+	{
+		ImportedModule* mod; // null for main module
+		vector<Birdee::PyHandle> scope_dicts;
+		PyScope(ImportedModule* mod) : mod(mod) {}
+	};
+	vector<PyScope> py_scope_dicts; 
 
 	//the scopes for nested functions
 	//function_scopes.back() is the lowest level of nested function
@@ -143,9 +215,11 @@ public:
 		unordered_map<string, ExprAST*> exprmap;
 		SourcePos pos;
 		bool isClass;
+		bool isEmpty;
 		ImportedModule* imported_mod;
-		TemplateEnv():pos(0,0,0), isClass(false),imported_mod(nullptr){};
-		TemplateEnv(SourcePos pos, bool isClass, ImportedModule* imported_mod): pos(pos), isClass(isClass) , imported_mod(imported_mod){}
+		TemplateEnv():pos(0,0,0), isClass(false),imported_mod(nullptr), isEmpty(true){};
+		TemplateEnv(SourcePos pos, bool isClass, ImportedModule* imported_mod): 
+			pos(pos), isClass(isClass), imported_mod(imported_mod), isEmpty(false){}
 		TemplateEnv& operator = (TemplateEnv&& v)
 		{
 			typemap = std::move(v.typemap);
@@ -164,6 +238,12 @@ public:
 	vector<TemplateEnv> template_class_stack;
 	typedef std::pair<vector<TemplateEnv>*, int> template_stack_frame;
 	vector<template_stack_frame> template_trace_back_stack;
+
+	ScopeManager()
+	{
+		//initially push a PyScope for the current main module
+		py_scope_dicts.emplace_back(PyScope(nullptr));
+	}
 
 	inline bool IsCurrentClass(ClassAST* cls)
 	{
@@ -258,7 +338,7 @@ public:
 		const vector<TemplateParameter>& parameters, bool isClass, ImportedModule* mod,SourcePos pos)
 	{
 		TemplateEnv env(pos, isClass,mod);
-		for (int i = 0; i<template_args.size(); i++)
+		for (int i = 0; i< parameters.size(); i++)
 		{
 			if (template_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
 				env.typemap[parameters[i].name] = template_args[i].type;
@@ -271,12 +351,14 @@ public:
 	void SetTemplateEnv(const vector<TemplateArgument>& template_args,
 		const vector<TemplateParameter>& parameters, ImportedModule* mod, SourcePos pos)
 	{
+		py_scope_dicts.push_back(PyScope(mod));
 		TemplateEnv env = CreateTemplateEnv(template_args, parameters,false, mod, pos);
 		template_stack.push_back(std::move(env));
 	}
 
 	void RestoreTemplateEnv()
 	{
+		py_scope_dicts.pop_back();
 		template_stack.pop_back();
 	}
 
@@ -299,6 +381,7 @@ public:
 
 	void PushBasicBlock()
 	{
+		py_scope_dicts.back().scope_dicts.push_back(nullptr);
 		if (function_scopes.empty())
 			//if we are in top-level code, push the scope in top-level's sub-scopes
 			top_level_scopes.push_back(BasicBlock());
@@ -308,6 +391,7 @@ public:
 	}
 	void PopBasicBlock()
 	{
+		py_scope_dicts.back().scope_dicts.pop_back();
 		if (function_scopes.empty())
 			//if we are in top-level code, pop the scope in top-level's sub-scopes
 			top_level_scopes.pop_back();
@@ -537,6 +621,7 @@ public:
 struct PreprocessingState
 {
 	ScopeManager _scope_mgr;
+	PyHandle main_global_scope;
 	FunctionAST* _cur_func = nullptr;
 	ClassAST* array_cls = nullptr;
 	ClassAST* string_cls = nullptr;
@@ -546,9 +631,9 @@ struct PreprocessingState
 #define cur_func (preprocessing_state._cur_func)
 
 static PreprocessingState preprocessing_state;
-BD_CORE_API FunctionAST* GetCurrentPreprocessedFunction()
+BD_CORE_API std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction()
 {
-	return cur_func;
+	return std::reference_wrapper<FunctionAST>(*cur_func);
 }
 
 BD_CORE_API void PushClass(ClassAST* cls)
@@ -771,6 +856,14 @@ extern string GetModuleNameByArray(const vector<string>& package);
 
 namespace Birdee
 {
+	void PushPyScope(ImportedModule* mod)
+	{
+		scope_mgr.py_scope_dicts.push_back(ScopeManager::PyScope(mod));
+	}
+	void PopPyScope()
+	{
+		scope_mgr.py_scope_dicts.pop_back();
+	}
 	BD_CORE_API string GetClassASTName(ClassAST* cls)
 	{
 		return cls->GetUniqueName();
@@ -861,11 +954,168 @@ namespace Birdee
 		}
 	}
 
+	void* PyHandle::ptr()
+	{
+		return p;
+	}
+
+	void PyHandle::set(void* newp)
+	{
+		assert(!p);
+		p = newp;
+	}
+	void PyHandle::reset()
+	{
+		if (p)
+		{
+			BirdeeDerefObj(p);
+			p = nullptr;
+		}
+	}
+	PyHandle::PyHandle()
+	{
+		p = nullptr;
+	}
+	PyHandle::PyHandle(PyHandle&& other) noexcept
+	{
+		p = other.p;
+		other.p = nullptr;
+	}
+
+	PyHandle::PyHandle(void* pt)
+	{
+		p = pt;
+	}
+
+	PyHandle::~PyHandle()
+	{
+		if (p)
+			BirdeeDerefObj(p);
+	}
+
+	BD_CORE_API void ClearPyHandles()
+	{
+		preprocessing_state.main_global_scope.reset();
+		scope_mgr.py_scope_dicts.clear();
+	}
+
+	void GetPyScope(void*& globals, void*& locals)
+	{
+		auto& scope = scope_mgr.py_scope_dicts.back();
+		//if we are in another module and the module has not a valid global pyscope, create one from "original scope"
+		if (scope.mod)
+		{
+			if (!scope.mod->py_scope.ptr())
+				scope.mod->py_scope.set(BirdeeCopyPyScope(BirdeeGetOrigScope()));
+			globals = scope.mod->py_scope.ptr();
+		}
+		else
+		{
+			if(!preprocessing_state.main_global_scope.ptr())
+				preprocessing_state.main_global_scope.set(BirdeeCopyPyScope(BirdeeGetOrigScope()));
+			globals = preprocessing_state.main_global_scope.ptr();
+		}
+			
+		//if we are in top-level, pass nullptr to scope_dict parameter
+		if (scope.scope_dicts.empty())
+			locals = nullptr;
+		else
+		{
+			//if the current scope dict is not null (because we have already run some script in the current level)
+			//use the ready scope_dict
+			auto& handle = scope.scope_dicts.back();
+			if (!handle.ptr())
+			{
+				//else, create a new scope dict
+				//first find the first non-null dict in the scopes
+				void* src_ptr = nullptr;
+				for (int i = scope.scope_dicts.size()-1; i >= 0; i--)
+				{
+					if (scope.scope_dicts[i].ptr())
+					{
+						src_ptr = scope.scope_dicts[i].ptr();
+						break;
+					}
+				}
+				handle.set(BirdeeCopyPyScope(src_ptr));
+			}
+			locals = handle.ptr();
+		}
+	}
+
+	string int2str(const int v)
+	{
+		std::stringstream stream;
+		stream << v;
+		return stream.str();
+	}
+	static void ValidateOneTemplateArg(const vector<TemplateArgument>& args, const vector<TemplateParameter>& params, SourcePos& Pos, int i)
+	{
+		if (params[i].isTypeParameter())
+		{
+			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
+		}
+		else
+		{
+			CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
+			CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
+				string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
+			args[i].expr->Phase1();
+			CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
+				string("The expression type does not match at the template parameter number ") + int2str(i + 1));
+		}
+	}
+	static unique_ptr<vector<TemplateArgument>> DoTemplateValidateArguments(FunctionAST* src_template, bool is_vararg, const vector<TemplateParameter>& params,
+		unique_ptr<vector<TemplateArgument>>&& pargs, SourcePos Pos, bool throw_if_vararg)
+	{
+		vector<TemplateArgument>& args = *pargs;
+		if (!is_vararg)
+		{
+			if (params.size() != args.size())
+			{
+				throw TemplateArgumentNumberError(Pos,
+					string("The template requires ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
+					src_template, std::move(pargs));
+			}
+		}
+		else
+		{
+			if (params.size() > args.size() || (throw_if_vararg && params.size() == args.size()))
+			{
+				throw TemplateArgumentNumberError(Pos,
+					string("The template requires at least ") + int2str(params.size()) + " arguments, but " + int2str(args.size()) + " are given",
+					src_template, std::move(pargs));
+			}
+		}
+
+		for (int i = 0; i < params.size(); i++)
+		{
+			ValidateOneTemplateArg(args, params, Pos, i);
+		}
+		return std::move(pargs);
+
+	}
+
+
+	template<>
+	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<FunctionAST>::ValidateArguments(FunctionAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
+	{
+		return DoTemplateValidateArguments(ths, is_vararg, params, std::move(args), Pos, throw_if_vararg);
+	}
+
+	template<>
+	unique_ptr<vector<TemplateArgument>> Birdee::TemplateParameters<ClassAST>::ValidateArguments(ClassAST* ths, unique_ptr<vector<TemplateArgument>>&& args, SourcePos Pos, bool throw_if_vararg)
+	{
+		return DoTemplateValidateArguments(nullptr, is_vararg, params, std::move(args), Pos, throw_if_vararg);
+	}
+
 	void ResolvedType::ResolveType(Type& type, SourcePos pos)
 	{
 		if (type.type == tok_script)
 		{
-			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type),pos);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type), pos, globals, locals);
 			return;
 		}
 		if (type.type == tok_func)
@@ -886,6 +1136,7 @@ namespace Birdee
 			if (rtype.type != tok_error)
 			{
 				*this = rtype;
+				this->index_level = type.index_level;
 				return;
 			}
 			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
@@ -994,11 +1245,11 @@ namespace Birdee
 			if (ty->template_args)
 			{
 				CompileAssert(class_ast->isTemplate(),pos, "The class must be a template class");
-				vector<TemplateArgument>& arg= *(new vector<TemplateArgument>());
+				auto arg= make_unique<vector<TemplateArgument>>();
 				auto& args = *ty->template_args.get();
-				ParseRawTemplateArgs(args, arg);
-				class_ast->template_param->ValidateArguments(arg, pos);
-				class_ast = class_ast->template_param->GetOrCreate(&arg, class_ast, pos); //will take the ownership of the pointer arg
+				ParseRawTemplateArgs(args, *arg);
+				arg = class_ast->template_param->ValidateArguments(class_ast, std::move(arg), pos, false);
+				class_ast = class_ast->template_param->GetOrCreate(std::move(arg), class_ast, pos); //will take the ownership of the pointer arg
 			}
 		}
 		if(this->type==tok_class)
@@ -1163,9 +1414,12 @@ namespace Birdee
 		return v_ulong<v.v_ulong;
 	}
 
-	void Birdee::ScriptAST::Phase1()
+
+	void ScriptAST::Phase1()
 	{
-		Birdee_ScriptAST_Phase1(this);
+		void* globals, *locals;
+		GetPyScope(globals, locals);
+		Birdee_ScriptAST_Phase1(this, globals, locals);
 	}
 
 	llvm::Value* Birdee::AnnotationStatementAST::GetLValue(bool checkHas)
@@ -1177,7 +1431,38 @@ namespace Birdee
 
 	void Birdee::AnnotationStatementAST::Phase1()
 	{
-		Birdee_AnnotationStatementAST_Phase1(this);
+		void* globals, *locals;
+		GetPyScope(globals, locals);
+		if (isa<ClassAST>(impl.get()))
+		{
+			ClassAST* cls = static_cast<ClassAST*>(impl.get());
+			if (cls->isTemplate())
+			{
+				for (auto& inst : cls->template_param->instances)
+				{
+					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
+				}
+				cls->template_param->annotation = this;
+				return;
+			}
+			//if is not a template, fall through to the following code
+		}
+		else if(isa<FunctionAST>(impl.get()))
+		{
+			FunctionAST* func = static_cast<FunctionAST*>(impl.get());
+			if (func->isTemplate())
+			{
+				for (auto& inst : func->template_param->instances)
+				{
+					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
+				}
+				func->template_param->annotation = this;
+				return;
+			}
+			//if is not a template, fall through to the following code
+		}
+		impl->Phase1();
+		Birdee_RunAnnotationsOn(anno,this,impl->Pos, globals);
 		if (is_expr)
 		{
 			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
@@ -1237,36 +1522,7 @@ namespace Birdee
 		return false;
 	}
 
-	string int2str(const int v)
-	{
-		std::stringstream stream;
-		stream << v;
-		return stream.str();   
-	}
 
-	void DoTemplateValidateArguments(const vector<TemplateParameter>& params, const vector<TemplateArgument>& args, SourcePos Pos)
-	{
-		CompileAssert(params.size() == args.size(), Pos, 
-			string("The template requires ") + int2str(params.size()) + " Arguments, but " + int2str(args.size()) + "are given");
-		
-		for (int i = 0; i < args.size(); i++)
-		{
-			if (params[i].isTypeParameter())
-			{
-				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("Expected a type at the template parameter number ") + int2str(i + 1));
-			}
-			else
-			{
-				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_EXPR, Pos, string("Expected an expression at the template parameter number ") + int2str(i + 1));
-				CompileAssert(instance_of<StringLiteralAST>(args[i].expr.get()) || instance_of<NumberExprAST>(args[i].expr.get()), Pos,
-					string("Expected an constant expression at the template parameter number ") + int2str(i + 1));
-				args[i].expr->Phase1();
-				CompileAssert(ResolvedType(*params[i].type, Pos) == args[i].expr->resolved_type, Pos,
-					string("The expression type does not match at the template parameter number ") + int2str(i + 1));
-			}
-		}
-		
-	}
 
 	vector<string> Birdee::MemberExprAST::ToStringArray()
 	{
@@ -1287,25 +1543,92 @@ namespace Birdee
 			cur = node->Obj.get();
 		}
 		vector<string> ret;
-		for (int i = reverse.size() - 1; i >= 0; i++)
+		for (int i = reverse.size() - 1; i >= 0; i--)
 		{
 			ret.push_back(*reverse[i]);
 		}
 		return ret;
 	}
 
-
+	void FunctionAST::Phase0()
+	{
+		FunctionAST* template_func = template_source_func;
+		const vector<TemplateArgument>* templ_args = template_instance_args.get();
+		auto& Proto = this->Proto;
+		auto& Pos = this->Pos;
+		auto& is_vararg = this->is_vararg;
+		if (isTemplate())
+			return;
+		if (resolved_type.isResolved())
+			return;
+		resolved_type.type = tok_func;
+		resolved_type.index_level = 0;
+		resolved_type.proto_ast = Proto.get();
+		auto add_var_arg = [&Proto,&Pos,&is_vararg](const vector<TemplateArgument>& args, int start_idx)
+		{
+			is_vararg = false;
+			for (int i = start_idx; i < args.size(); i++)
+			{
+				CompileAssert(args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE, Pos, string("The ") + int2str(i+1) +"-th vararg should be a type");
+				auto arg_variable = make_unique< VariableSingleDefAST>(string("___vararg") + int2str(i - start_idx), args[i].type);
+				arg_variable->Pos = Pos;
+				Proto->resolved_args.push_back(std::move(arg_variable));
+			}
+			
+		};
+		auto prv_func = cur_func;
+		cur_func = this;
+		Proto->Phase0();
+		cur_func = prv_func;
+/*
+vararg matching:
+first match function template's vararg
+then the classes'.
+If using named vararg, the vararg declaration name must be the same as the vararg usage name
+If usage vararg name is "", match the closest vararg
+*/
+		if (is_vararg && isTemplateInstance)
+		{
+			assert(templ_args && template_func);
+			if (template_func->template_param->is_vararg)
+			{
+				if (vararg_name.empty() || vararg_name == template_func->template_param->vararg_name)
+				{
+					add_var_arg(*templ_args, template_func->template_param->params.size());
+					//will set is_vararg=false
+				}
+			}
+		}
+		if (is_vararg && Proto->cls && Proto->cls->isTemplateInstance())
+		{
+			auto& src_templ_arg = Proto->cls->template_source_class->template_param;
+			if (src_templ_arg->is_vararg)
+			{
+				if (vararg_name.empty() || vararg_name == src_templ_arg->vararg_name)
+				{
+					add_var_arg(*Proto->cls->template_instance_args, src_templ_arg->params.size());
+					//will set is_vararg=false
+				}
+			}
+		}
+		CompileAssert(!is_vararg, Pos, string("Cannot resolve vararg parameter: \"") + vararg_name + "\"");
+	}
 	void FunctionTemplateInstanceExprAST::Phase1()
+	{
+		Phase1(false);
+	}
+	void FunctionTemplateInstanceExprAST::Phase1(bool is_in_call)
 	{
 		FunctionAST* func = nullptr;
 		expr->Phase1();
 		func = GetFunctionFromExpression(expr.get(),Pos);
 		CompileAssert(func, Pos, "Expected a function name or a member function for template");
 		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
-		ParseRawTemplateArgs(raw_template_args, template_args);
+		auto template_args = make_unique<vector<TemplateArgument>>();
+		ParseRawTemplateArgs(raw_template_args, *template_args);
 		raw_template_args.clear();
-		func->template_param->ValidateArguments(template_args, Pos);
-		instance = func->template_param->GetOrCreate(&template_args, func, Pos);
+		template_args = func->template_param->ValidateArguments(func, std::move(template_args), Pos, is_in_call);
+		instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 		resolved_type = instance->resolved_type;
 	}
 	static string GetTemplateArgumentString(const vector<TemplateArgument>& v)
@@ -1349,13 +1672,10 @@ namespace Birdee
 			return cu.imported_module_names[package_name_idx] + '.' + name;
 	}
 
-	/*
-	Will not Take the ownership of the pointer v
-	*/
-	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, const vector<TemplateArgument>& v,
+	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
-		func->Proto->Name += GetTemplateArgumentString(v);
+		func->Proto->Name += GetTemplateArgumentString(*v);
 		ClassAST* cls_template=nullptr;
 		if (func->Proto->cls) 
 		{
@@ -1373,11 +1693,13 @@ namespace Birdee
 		{
 			scope_mgr.SetEmptyClassTemplateEnv();
 		}
-		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
+		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
+		func->template_instance_args = std::move(v);
+		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
 		scope_mgr.RestoreTemplateEnv();
@@ -1393,13 +1715,14 @@ namespace Birdee
 	/*
 	Takes the ownership of the pointer v
 	*/
-	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, vector<TemplateArgument>& v,
+	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
-		cls->template_instance_args = unique_ptr<vector<TemplateArgument>>(&v);
+		auto& args = *v;
+		cls->template_instance_args = std::move(v);
 		cls->template_source_class = src_cls;
-		cls->name += GetTemplateArgumentString(v);
-		scope_mgr.SetClassTemplateEnv(v, parameters, mod, pos);
+		cls->name += GetTemplateArgumentString(args);
+		scope_mgr.SetClassTemplateEnv(args, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
 		for (auto& funcdef : cls->funcs)
 		{
@@ -1411,35 +1734,31 @@ namespace Birdee
 		scope_mgr.RestoreClassTemplateEnv();
 	}
 
-	static void NoOpForTemplateInstance(ClassAST* dummy, vector<TemplateArgument>* v)
-	{
-		delete v;
-	}
-
-	static void NoOpForTemplateInstance(FunctionAST* dummy, vector<TemplateArgument>* v)
-	{}
-
 	template<typename T>
-	T * Birdee::TemplateParameters<T>::GetOrCreate(vector<TemplateArgument>* v, T* source_template, SourcePos pos)
+	T * Birdee::TemplateParameters<T>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(*v);
 		if (ins != instances.end())
 		{
-			NoOpForTemplateInstance(source_template, v);
 			return ins->second.get();
 		}
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
-		Phase1ForTemplateInstance(ret, source_template, *v, params, mod, pos);
+		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
+		if (annotation)
+		{
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos,globals);
+			PopPyScope();
+		}
 		return ret;
 	}
 
-	template<typename T>
-	void Birdee::TemplateParameters<T>::ValidateArguments(const vector<TemplateArgument>& args, SourcePos Pos)
-	{
-		DoTemplateValidateArguments(params,args, Pos);
-	}
+
+
 	void AddressOfExprAST::Phase1()
 	{
 		
@@ -1451,10 +1770,17 @@ namespace Birdee
 		resolved_type.type = tok_pointer;
 	}
 
-	bool Birdee::IndexExprAST::isTemplateInstance()
+	bool IndexExprAST::isOverloaded()
 	{
-		if (!Expr)
-			return true;
+		if (!Expr->resolved_type.isResolved())
+			Expr->Phase1();
+		return 	Expr->resolved_type.type == tok_class;
+	}
+
+	bool IndexExprAST::isTemplateInstance()
+	{
+		if (!Expr)//if the expr is moved, check if "instance"  is callexpr. If so, it is an overloaded call to __getitem__
+			return !(isa<CallExprAST>(instance.get()));
 		auto func = GetFunctionFromExpression(Expr.get(), Pos);
 		if (func && func->isTemplate())
 		{
@@ -1462,19 +1788,42 @@ namespace Birdee
 		}
 		return false;
 	}
-
 	void IndexExprAST::Phase1()
 	{
-		Expr->Phase1();
+		Phase1(false);
+	}
+	void IndexExprAST::Phase1(bool is_in_call)
+	{
+		if(!Expr->resolved_type.isResolved())
+			Expr->Phase1();
 		if(isTemplateInstance())
 		{
 			vector<unique_ptr<ExprAST>> arg;
 			arg.push_back(std::move(Index));
-			instance = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
+			auto inst = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
 			Expr = nullptr;
+			inst->Phase1(is_in_call);
+			instance = std::move(inst);
+			resolved_type = instance->resolved_type;
+			return;
+		}
+		if (Expr->resolved_type.type == tok_class)
+		{
+			string str = "__getitem__";
+			auto itr = Expr->resolved_type.class_ast->funcmap.find(str);
+			CompileAssert(itr != Expr->resolved_type.class_ast->funcmap.end(), 
+				Pos, string("The method __getitem__ should be declared in class ")+ Expr->resolved_type.class_ast->GetUniqueName());
+			auto& func = Expr->resolved_type.class_ast->funcs[itr->second];
+			CompileAssert(func.access == AccessModifier::access_public, Pos, "The method __getitem__ should be public");
+			auto memberexpr = make_unique<MemberExprAST>(std::move(Expr), &func, Pos);
+			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(Index));
+			instance = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+			instance->Pos = Pos;
+			//Index->Phase1 will be called in CallExprAST
 			instance->Phase1();
 			resolved_type = instance->resolved_type;
 			return;
+
 		}
 		CompileAssert(Expr->resolved_type.index_level > 0, Pos, "The indexed expression should be indexable");
 		Index->Phase1();
@@ -1641,7 +1990,8 @@ namespace Birdee
 		int i = 0;
 		for (auto& arg : Args)
 		{
-			arg->Phase1();
+			if(!arg->resolved_type.isResolved())
+				arg->Phase1();
 			SourcePos pos = arg->Pos;
 			arg = FixTypeForAssignment(proto->resolved_args[i]->resolved_type, std::move(arg), pos);
 			i++;
@@ -1662,6 +2012,7 @@ namespace Birdee
 		if (resolved_type.index_level == 0)
 		{
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
+			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
 			if (!method.empty())
 			{
@@ -1684,6 +2035,25 @@ namespace Birdee
 				}
 			}
 		}
+	}
+
+	ClassAST* GetTypeInfoClass()
+	{
+		string name("type_info");
+		if (cu.is_corelib)
+			return &(cu.classmap.find(name)->second.get());
+		else
+			return cu.imported_classmap.find(name)->second;
+	}
+
+	void TypeofExprAST::Phase1()
+	{
+		arg->Phase1();
+		CompileAssert(arg->resolved_type.type == tok_class
+			&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+			Pos ,"typeof must be appiled on class references with runtime type info");
+		type = arg->resolved_type.class_ast;
+		resolved_type = ResolvedType(GetTypeInfoClass());
 	}
 
 	void ClassAST::Phase1()
@@ -1798,11 +2168,44 @@ namespace Birdee
 		}
 		throw CompileError(Pos.line, Pos.pos, "Cannot find member "+member);
 	}
-
+	string TemplateArgument::GetString() const
+	{
+		if (kind == TEMPLATE_ARG_EXPR)
+		{
+			return "expression()";
+		}
+		return string("type(")+type.GetString()+")";
+	}
 	void CallExprAST::Phase1()
 	{
-		Callee->Phase1();
-		auto func = GetFunctionFromExpression(Callee.get(),Pos);
+		FunctionAST* func = nullptr;
+		unordered_map<string, TemplateArgument> name2type;
+		try
+		{
+			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
+			{
+				indexexpr->Phase1(true);
+			}
+			else if(auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
+			{
+				templexpr->Phase1(true);
+			}
+			else
+			{
+				Callee->Phase1();
+				func = GetFunctionFromExpression(Callee.get(), Pos);
+			}
+		}
+		catch (TemplateArgumentNumberError& e)
+		{
+			func = e.src_template;
+			assert(func->isTemplate());
+			for (int i = 0; i < e.args->size(); i++)
+			{
+				ValidateOneTemplateArg(*e.args, func->template_param->params, Pos, i);
+				name2type[func->template_param->params[i].name] = std::move(e.args->at(i));
+			}
+		}
 		// if (func)
 		// 	CompileAssert(!func->isTemplate(), Pos, "Cannot call a template");
 		if (func && func->isTemplate()) {
@@ -1820,13 +2223,23 @@ namespace Birdee
 				}
 			}
 
-			if (singleArgs.size() != Args.size()) {
-				std::stringstream buf;
-				buf << "The function requires " << singleArgs.size() << " Arguments, but " << Args.size() << "are given";
-				CompileAssert(false, Pos, buf.str());
+			if (func->is_vararg)
+			{
+				if (singleArgs.size() > Args.size()) {
+					std::stringstream buf;
+					buf << "The function requires at least" << singleArgs.size() << " arguments, but " << Args.size() << " are given";
+					CompileAssert(false, Pos, buf.str());
+				}
+			}
+			else
+			{
+				if (singleArgs.size() != Args.size()) {
+					std::stringstream buf;
+					buf << "The function requires " << singleArgs.size() << " arguments, but " << Args.size() << " are given";
+					CompileAssert(false, Pos, buf.str());
+				}
 			}
 
-			unordered_map<string, ResolvedType> name2type;
 			for (int i = 0; i < singleArgs.size(); i++) {
 				Args[i]->Phase1();
 				if (singleArgs[i]->type->type == tok_identifier) {
@@ -1835,23 +2248,31 @@ namespace Birdee
 					
 					if (it == name2type.end())
 						name2type[identifierType->name] = Args[i]->resolved_type;
-					else if (!(it->second == Args[i]->resolved_type))
+					else if ( it->second.kind!=TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == Args[i]->resolved_type))
 						CompileAssert(false, Pos, string("Cannot derive template parameter type ")+ identifierType->name 
-							+ " from given arguments: conflicting argument types - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
+							+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
 				}
 			}
-
 			auto & params = func->template_param->params;
 			// construct FunctionTemplateInstanceAST to replace Callee
-			vector<TemplateArgument> template_args;
+			auto template_args=make_unique<vector<TemplateArgument>>();
 			for (auto & param : params) {
-				CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
+				//CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
 				auto itr = name2type.find(param.name);
 				CompileAssert(itr != name2type.end(), Pos, "Cannot derive the template parameter: " + param.name);
-				template_args.emplace_back(TemplateArgument(itr->second));
+				template_args->emplace_back(std::move(itr->second));
 			}
-			func->template_param->ValidateArguments(template_args, Pos);
-			auto instance = func->template_param->GetOrCreate(&template_args, func, Pos);
+			if (func->is_vararg)
+			{
+				//push the extra vararg types to the template args
+				for (int i = singleArgs.size(); i < Args.size(); i++)
+				{
+					Args[i]->Phase1();
+					template_args->emplace_back(TemplateArgument(Args[i]->resolved_type));
+				}
+			}
+			template_args = func->template_param->ValidateArguments(func,std::move(template_args), Pos, false);
+			auto instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 			if (auto memb = dyncast_resolve_anno<MemberExprAST>(Callee.get()))
 			{
 				memb->kind = MemberExprAST::member_imported_function;
@@ -1916,8 +2337,6 @@ namespace Birdee
 			return cu.imported_classmap.find(name)->second;
 	}
 
-
-
 	void StringLiteralAST::Phase1()
 	{
 		//fix-me: use the system package name of string
@@ -1945,44 +2364,87 @@ namespace Birdee
 		auto& Pos = this->Pos;
 		auto& func = this->func;
 
-		LHS->Phase1();
-		RHS->Phase1();
+		//if Op is tok_assign, then it is a special case
+		//we do not first do phase1 on LHS here, because it may be a overloaded indexexpr
+		//if we do phase1 on overloaded indexexpr, it will create a callexprast to "__getitem__" which is not necessary 
 		if (Op == tok_assign)
 		{
-			if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
-				CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
-				CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
-			else if (dyncast_resolve_anno<IndexExprAST>(LHS.get()))
-			{}
-			else
-				throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
+			auto indexexpr = dyncast_resolve_anno<IndexExprAST>(LHS.get());
+			if (indexexpr)
+			{
+				if (indexexpr->isOverloaded()) //if indexexpr's Expr is a class object, generate "__setitem__"
+				{
+					string str = "__setitem__";
+					auto classast = indexexpr->Expr->resolved_type.class_ast;
+					auto itr = classast->funcmap.find(str);
+					CompileAssert(itr != classast->funcmap.end(),
+						Pos, string("The method __setitem__ should be declared in class ") + classast->GetUniqueName());
+					auto& funcdef = classast->funcs[itr->second];
+					func = funcdef.decl.get();
+					CompileAssert(funcdef.access == AccessModifier::access_public, Pos, "The method __setitem__ should be public");
+					auto memberexpr = make_unique<MemberExprAST>(std::move(indexexpr->Expr), &funcdef, Pos);
+					vector<unique_ptr<ExprAST>> args; 
+					args.emplace_back(std::move(indexexpr->Index));
+					args.emplace_back(std::move(RHS));
+					LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+					LHS->Pos = Pos;
+					//Index->Phase1 and RHS->Phase1 will be called in CallExprAST
+					LHS->Phase1();
+					resolved_type = LHS->resolved_type;
+					return;
+				}
+				//else, goto the following control flow
+			}
+			LHS->Phase1();
+			if (!indexexpr) //if LHS is not IndexExprAST
+			{
+				if (IdentifierExprAST* idexpr = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
+					CompileAssert(idexpr->impl->isMutable(), Pos, "Cannot assign to an immutable value");
+				else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
+					CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
+				else
+					throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
+			}
+			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;
 			return;
 		}
+
+		LHS->Phase1();
+		//important! call RHS->Phase1()!
+		//it is not called here because we may put RHS as a parameter in a function
+
 		auto gen_call_to_operator_func = [&LHS,&RHS,&resolved_type,&Pos,&func](const string name) {
 			auto itr = LHS->resolved_type.class_ast->funcmap.find(name);
 			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
 				string("Cannot find function ") + name + " in class " + LHS->resolved_type.class_ast->GetUniqueName());
+			auto member_def = &LHS->resolved_type.class_ast->funcs[itr->second];
 			func = LHS->resolved_type.class_ast->funcs[itr->second].decl.get();
-			auto proto = func->resolved_type.proto_ast;
-			vector<unique_ptr<ExprAST>> args; args.push_back(std::move(RHS));
-			CheckFunctionCallParameters(proto, args, Pos);
-			RHS = std::move(args[0]);
-			resolved_type = proto->resolved_type;
+			auto memberexpr = make_unique<MemberExprAST>(std::move(LHS), member_def, Pos);
+			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(RHS));
+			LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+			LHS->Pos = Pos;
+			//RHS->Phase1 will be called in CallExprAST
+			LHS->Phase1();
+			resolved_type = LHS->resolved_type;
 		};
 		if (Op == tok_equal || Op == tok_ne)
 		{
 			if (LHS->resolved_type.type == tok_class && LHS->resolved_type.index_level == 0) //if is class object, check for operator overload
 				gen_call_to_operator_func(Op == tok_equal ? "__eq__": "__ne__");
-			else if (LHS->resolved_type == RHS->resolved_type)
-				resolved_type.type = tok_boolean;
 			else
-				resolved_type.type=PromoteNumberExpression(LHS, RHS, true, Pos);
+			{
+				RHS->Phase1();
+				if (LHS->resolved_type == RHS->resolved_type)
+					resolved_type.type = tok_boolean;
+				else
+					resolved_type.type = PromoteNumberExpression(LHS, RHS, true, Pos);
+			}
 		}
 		else if (Op == tok_cmp_equal || Op == tok_cmp_ne)
 		{
+			RHS->Phase1();
 			if (LHS->resolved_type == RHS->resolved_type)
 				resolved_type.type = tok_boolean;
 			else if (LHS->resolved_type.isNull() && RHS->resolved_type.isReference())
@@ -2023,6 +2485,7 @@ namespace Birdee
 				gen_call_to_operator_func(name);
 				return;
 			}
+			RHS->Phase1();
 			if (LHS->resolved_type.index_level == 0 && LHS->resolved_type.type == tok_boolean
 				&& RHS->resolved_type.index_level == 0 && RHS->resolved_type.type == tok_boolean) //boolean
 			{
@@ -2039,7 +2502,7 @@ namespace Birdee
 				CompileAssert(LHS->resolved_type.isInteger() && RHS->resolved_type.isInteger(), Pos, "Logical operators can only be applied on integers or booleans");
 				CompileAssert(Op != tok_logic_and && Op != tok_logic_or, Pos, "Shortcut logical operators can only be applied on booleans");
 			}
-			resolved_type.type = PromoteNumberExpression(LHS, RHS, false, Pos);
+			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
 		}
 
 	}
@@ -2086,6 +2549,8 @@ namespace Birdee
 	llvm::Value * Birdee::ScriptAST::GetLValue(bool checkHas)
 	{
 		CompileAssert(instance_of<ExprAST>(stmt.get()), Pos, "Getting LValue from statement is illegal");
-		return static_cast<ExprAST*>(stmt.get())->GetLValue(checkHas);
+		auto expr = static_cast<ExprAST*>(stmt.get());
+		assert(expr->resolved_type.isResolved());
+		return expr->GetLValue(checkHas);
 	}
 }

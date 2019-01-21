@@ -1,0 +1,10 @@
+dim a as int=312
+
+function add(a as int,b as int) as int =>a+b
+
+function addprint(a as int, b as int) as int
+	dim c as int =a+b
+	dim d as string = int2str(c)
+	println(d)
+	return c
+end

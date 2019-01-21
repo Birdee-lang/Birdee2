@@ -313,7 +313,12 @@ json BuildGlobalFuncJson(json& func_template)
 			{
 				BuildAndPushFunctionJson(arr,instance.second.get());
 			}
-			func_template.push_back(itr.second.get().template_param->source.get());
+			json template_obj;
+			auto ptr = itr.second.get().template_param.get();
+			template_obj["template"] = ptr->source.get();
+			if (ptr->annotation)
+				template_obj["annotations"] = ptr->annotation->anno;
+			func_template.push_back(std::move(template_obj));
 		}
 		else
 			BuildAndPushFunctionJson(arr,&itr.second.get());
@@ -325,10 +330,13 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 {
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
+	json_cls["needs_rtti"] = cls.needs_rtti;
 	if (cls.isTemplate())
 	{
 		assert(!cls.template_param->source.empty());
 		json_cls["template"] = cls.template_param->source.get();
+		if (cls.template_param->annotation)
+			json_cls["annotations"] = cls.template_param->annotation->anno;
 	}
 	else
 	{
@@ -369,6 +377,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 				}
 				else
 					json_func["template"] = source.get();
+				if (func.decl->template_param->annotation)
+					json_func["annotations"] = func.decl->template_param->annotation->anno;
 			}
 			else
 			{
@@ -412,6 +422,18 @@ void BuildExportedPrototypes()
 	}
 }
 
+string BuildInitScript(vector<ScriptAST*>& scripts)
+{
+	string ret;
+	for (auto& s : scripts)
+	{
+		ret += s->script;
+		if (s->script.back() != '\n')
+			ret += '\n';
+	}
+	return ret;
+}
+
 BD_CORE_API void SeralizeMetadata(std::ostream& out)
 {
 	json outjson;
@@ -438,5 +460,6 @@ BD_CORE_API void SeralizeMetadata(std::ostream& out)
 	outjson["Imports"] = cu.imports;
 	outjson["ImportedClasses"] = imported_class;
 	outjson["FunctionTypes"] = exported_functype;
+	outjson["InitScripts"] = BuildInitScript(cu.init_scripts);
 	out << std::setw(4)<< outjson;
 }

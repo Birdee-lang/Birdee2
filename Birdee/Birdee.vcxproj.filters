@@ -72,6 +72,12 @@
     <ClInclude Include="include\LibDef.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\NameMangling.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\PyWrapper.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -118,6 +124,21 @@
     <Text Include="..\tests\logic_obj_cmp.txt">
       <Filter>资源文件\tests</Filter>
     </Text>
+    <Text Include="..\tests\template_vararg.py">
+      <Filter>资源文件\tests</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\fmt.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\tuple.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\tests\operators.txt">
+      <Filter>资源文件\tests</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\vector.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">
@@ -126,11 +147,14 @@
     <None Include="..\tests\scripttest.py">
       <Filter>资源文件\tests</Filter>
     </None>
-    <None Include="..\BirdeeHome\bin\pylib\getset.py">
-      <Filter>资源文件\pylib</Filter>
-    </None>
     <None Include="..\tests\getset_test.py">
       <Filter>资源文件\tests</Filter>
+    </None>
+    <None Include="..\BirdeeHome\pylib\bbuild.py">
+      <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\pylib\getset.py">
+      <Filter>资源文件\pylib</Filter>
     </None>
   </ItemGroup>
 </Project>
