@@ -350,5 +350,8 @@ void RegisiterClassForBinding2(py::module& m) {
 				for(auto& itm: b.body)
 					pyfunc(GetRef(itm));
 		});
-
+	py::class_<ThrowAST, StatementAST>(m, "ThrowAST")
+		.def_property("expr", [](ThrowAST& ths) {return GetRef(ths.expr); },
+			[](ThrowAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
+		.def("run", [](ThrowAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.expr)); });
 }
