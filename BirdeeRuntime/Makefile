@@ -1,4 +1,4 @@
-$(LIB_DIR)/libBirdeeRuntime.a: BirdeeRuntime.o
+$(LIB_DIR)/libBirdeeRuntime.a: BirdeeRuntime.o BirdeeException.o
 	ar -crv $@ $^
 .PHONY:clean
 clean:

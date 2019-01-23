@@ -294,11 +294,31 @@ namespace Birdee
 		cur_cls = old_cls;
 		return std::move(clsdef);
 	}
-	
+
+	std::unique_ptr<StatementAST> TryBlockAST::Copy()
+	{
+		vector<unique_ptr<VariableSingleDefAST>> vars;
+		vector<ASTBasicBlock> bbs;
+		for (auto& b : catch_blocks)
+		{
+			bbs.emplace_back(b.Copy());
+		}
+		for (auto& v : catch_variables)
+		{
+			vars.emplace_back(unique_ptr_cast<VariableSingleDefAST>(v->Copy()));
+		}
+		return make_unique<TryBlockAST>(try_block.Copy(),std::move(vars),std::move(bbs),Pos);
+	}
+
 	std::unique_ptr<StatementAST> TypeofExprAST::Copy()
 	{
 		auto ret = make_unique<TypeofExprAST>(ToExpr(arg->Copy()), Pos);
-		ret->type = type;
+		return std::move(ret);
+	}
+
+	std::unique_ptr<StatementAST> ThrowAST::Copy()
+	{
+		auto ret = make_unique<TypeofExprAST>(ToExpr(expr->Copy()), Pos);
 		return std::move(ret);
 	}
 

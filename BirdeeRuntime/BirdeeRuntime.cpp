@@ -1,12 +1,12 @@
 #include <memory.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <gc.h>
+#include "BirdeeRuntime.h"
 
 extern "C" void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
 {
@@ -16,28 +16,7 @@ extern "C" void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
 	return ret;
 }
 
-struct GenericArray
-{
-	union {
-		struct
-		{
-			uint32_t sz;
-			char cbuf[1];
-		}packed;
-		struct
-		{
-			uint32_t sz;
-			void* buf[1];
-		}unpacked;
-	};
-};
 
-
-struct BirdeeString
-{
-	GenericArray* arr;
-	uint32_t sz;
-};
 
 static void* BirdeeAllocArr(va_list args, uint32_t sz,uint32_t cur, uint32_t param_sz)
 {
