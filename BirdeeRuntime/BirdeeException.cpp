@@ -10,8 +10,12 @@ Modified from LLVM project's ExceptionDemo.cpp
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-
+#ifdef _MSC_VER
+#include "unwind_windows.h"
+#else
 #include "unwind.h"
+#endif
+
 #include <cstdint>
 #include <cassert>
 #include "llvm/BinaryFormat/Dwarf.h"
@@ -23,7 +27,7 @@ Modified from LLVM project's ExceptionDemo.cpp
 #include <stdlib.h>
 
 
-#define EXCEPTION_DEBUG 1
+//#define EXCEPTION_DEBUG 1
 
 #define MKINT(a,i) (((uint64_t)(a))<<((i)*8))
 static const uint64_t MY_EXCEPTION_CLASS = MKINT('M', 7) | MKINT('N', 6) | MKINT('K', 5) // \0
@@ -469,39 +473,42 @@ extern "C" {
 				}
 
 				if (!(actions & _UA_SEARCH_PHASE)) {
+					if (exceptionMatched)
+					{
 #ifdef EXCEPTION_DEBUG
-					fprintf(stderr,
-						"handleLsda(...): installed landing pad "
-						"context.\n");
+						fprintf(stderr,
+							"handleLsda(...): installed landing pad "
+							"context.\n");
 #endif
 
-					// Found landing pad for the PC.
-					// Set Instruction Pointer to so we re-enter function
-					// at landing pad. The landing pad is created by the
-					// compiler to take two parameters in registers.
-					_Unwind_SetGR(context,
-						__builtin_eh_return_data_regno(0),
-						(uintptr_t)exceptionObject);
-
-					// Note: this virtual register directly corresponds
-					//       to the return of the llvm.eh.selector intrinsic
-					if (!actionEntry || !exceptionMatched) {
-						// We indicate cleanup only
+						// Found landing pad for the PC.
+						// Set Instruction Pointer to so we re-enter function
+						// at landing pad. The landing pad is created by the
+						// compiler to take two parameters in registers.
 						_Unwind_SetGR(context,
-							__builtin_eh_return_data_regno(1),
-							0);
-					}
-					else {
-						// Matched type info index of llvm.eh.selector intrinsic
-						// passed here.
-						_Unwind_SetGR(context,
-							__builtin_eh_return_data_regno(1),
-							actionValue);
-					}
+							__builtin_eh_return_data_regno(0),
+							(uintptr_t)exceptionObject);
 
-					// To execute landing pad set here
-					_Unwind_SetIP(context, funcStart + landingPad);
-					ret = _URC_INSTALL_CONTEXT;
+						// Note: this virtual register directly corresponds
+						//       to the return of the llvm.eh.selector intrinsic
+						if (!actionEntry || !exceptionMatched) {
+							// We indicate cleanup only
+							_Unwind_SetGR(context,
+								__builtin_eh_return_data_regno(1),
+								0);
+						}
+						else {
+							// Matched type info index of llvm.eh.selector intrinsic
+							// passed here.
+							_Unwind_SetGR(context,
+								__builtin_eh_return_data_regno(1),
+								actionValue);
+						}
+
+						// To execute landing pad set here
+						_Unwind_SetIP(context, funcStart + landingPad);
+						ret = _URC_INSTALL_CONTEXT;
+					}
 				}
 				else if (exceptionMatched) {
 #ifdef EXCEPTION_DEBUG
@@ -528,7 +535,6 @@ extern "C" {
 		return(ret);
 	}
 
-
 	/// This is the personality function which is embedded (dwarf emitted), in the
 	/// dwarf unwind info block. Again see: JITDwarfEmitter.cpp.
 	/// See @link http://itanium-cxx-abi.github.io/cxx-abi/abi-eh.html @unlink
@@ -540,7 +546,7 @@ extern "C" {
 	/// @param exceptionObject thrown _Unwind_Exception instance.
 	/// @param context unwind system context
 	/// @returns minimally supported unwinding control indicator
-	_Unwind_Reason_Code __Birdee_Personality(int version, _Unwind_Action actions,
+	static _Unwind_Reason_Code __Birdee_Personality_impl(int version, _Unwind_Action actions,
 		_Unwind_Exception_Class exceptionClass,
 		struct _Unwind_Exception *exceptionObject,
 		struct _Unwind_Context *context) {
@@ -573,4 +579,28 @@ extern "C" {
 			exceptionObject,
 			context));
 	}
+
+#if defined(_WIN32)
+#include <Windows.h>
+
+	extern EXCEPTION_DISPOSITION _GCC_specific_handler(PEXCEPTION_RECORD, void *,
+		PCONTEXT, PDISPATCHER_CONTEXT,
+		_Unwind_Personality_Fn);
+
+	EXCEPTION_DISPOSITION
+		__Birdee_Personality(PEXCEPTION_RECORD ms_exc, void *this_frame,
+			PCONTEXT ms_orig_context, PDISPATCHER_CONTEXT ms_disp)
+	{
+		return _GCC_specific_handler(ms_exc, this_frame, ms_orig_context, ms_disp,
+			__Birdee_Personality_impl);
+	}
+#else
+	_Unwind_Reason_Code __Birdee_Personality(int version, _Unwind_Action actions,
+		_Unwind_Exception_Class exceptionClass,
+		struct _Unwind_Exception *exceptionObject,
+		struct _Unwind_Context *context)
+	{
+		return __Birdee_Personality_impl(version, actions, exceptionClass, exceptionObject, context);
+	}
+#endif
 }

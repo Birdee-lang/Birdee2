@@ -23,10 +23,15 @@ class E3
 	public func print() => println("E3"+str)
 end
 
+#declare function getchar() as int
+#getchar()
+#println("Hello")
+
 function f1()
 
 	try
 		f2()
+		println("try conti")
 	catch e as E1
 		e.print()
 	catch e as E2
@@ -34,6 +39,7 @@ function f1()
 	catch e as E3
 		e.print()
 	end
+	println("Continue")
 end
 
 function f2()
@@ -41,8 +47,10 @@ function f2()
 	try
 		throw new E3("yo")
 	catch e as E1
+		print("f2")
 		e.print()
 	catch e as E2
+		print("f2")
 		e.print()
 	end
 end
