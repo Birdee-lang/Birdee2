@@ -99,7 +99,7 @@ clear_compile_unit()
 
 ## Documents
 
-Please view our [wiki](https://github.com/Menooker/Birdee2/wiki).
+Please view our [wiki](https://github.com/Birdee-lang/Birdee2/wiki).
 
 ## Building Birdee on Ubuntu
 
@@ -229,4 +229,5 @@ Make a link at "X:\\XXXX\\Birdee\\BirdeeHome\\bin" to the Birdee compiler binary
 
 To run Birdee programs that are compiled with Birdee compiler on Windows, make sure "gc_64.dll" is in DLL search path (e.g. where the ".exe" file is). If you use exceptions in your Birdee program, make sure "libgcc_s_seh-1.dll" and "libwinpthread-1.dll" are also in DLL search path.
 
-These DLL files can be downloaded via the following links. [BaiduYun](https://pan.baidu.com/s/1FWnHpQkxj5PC4DP1PEMRlg) or [GoogleDrive](https://drive.google.com/open?id=1GIH-YDe2IFMnaYE91uOXAJlnXJjX3PvT) . Note that "libgcc_s_seh-1.dll" and "libwinpthread-1.dll" are extracted from mingw64.
+These DLL files can be downloaded via the following links. [BaiduYun](https://pan.baidu.com/s/1FWnHpQkxj5PC4DP1PEMRlg) or [GoogleDrive](https://drive.google.com/open?id=1GIH-YDe2IFMnaYE91uOXAJlnXJjX3PvT). Note that "libgcc_s_seh-1.dll" and "libwinpthread-1.dll" are extracted from mingw64.
+
