@@ -1054,6 +1054,10 @@ Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<u
 		args.push_back(vargs->Generate());
 	}
 
+	func->print(errs());
+	errs() << "Param\n";
+	if(args.size())
+		args[0]->print(errs());
 	builder.SetCurrentDebugLocation(
 		DebugLoc::get(pos.line, pos.pos, helper.cur_llvm_func->getSubprogram()));
 	return DoGenerateCall(func, args);
@@ -1558,6 +1562,13 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 	}
 	else if (kind == member_imported_function)
 	{
+		//function template instance will be "imported function" too.
+		if (Obj && !llvm_obj) //if there is a object reference and we only have a RValue of struct
+		{
+			llvm_obj = builder.CreateAlloca(Obj->resolved_type.class_ast->llvm_type); //alloca temp memory for the value
+			builder.CreateStore(Obj->Generate(), llvm_obj); //store the obj to the alloca
+		}
+
 		return import_func->llvm_func;
 	}
 	else if (kind == member_package)

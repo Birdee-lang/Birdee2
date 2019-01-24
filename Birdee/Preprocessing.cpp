@@ -1136,7 +1136,6 @@ namespace Birdee
 			if (rtype.type != tok_error)
 			{
 				*this = rtype;
-				this->index_level = type.index_level;
 				return;
 			}
 			scope_mgr.isInTemplateOfOtherModuleAndDoImport();

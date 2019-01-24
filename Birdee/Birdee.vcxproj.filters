@@ -142,6 +142,9 @@
     <Text Include="..\tests\exception_test.txt">
       <Filter>资源文件\tests</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\src\functional.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">
@@ -157,6 +160,9 @@
       <Filter>资源文件\pylib</Filter>
     </None>
     <None Include="..\BirdeeHome\pylib\getset.py">
+      <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\pylib\traits.py">
       <Filter>资源文件\pylib</Filter>
     </None>
   </ItemGroup>

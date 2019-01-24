@@ -1,0 +1,40 @@
+
+@init_script
+{@
+from traits import *
+def check_optional(cls):
+	targ = cls.template_instance_args[0]
+	assert(targ.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE)
+	type = targ.resolved_type
+	if type.index_level==0 and (type.base!=BasicType.CLASS or type.get_detail().is_struct):
+		raise RuntimeError("Optional can only hold references. However, T is {}".format(type))
+@}
+
+@check_optional
+struct optional[T]
+	private obj as T
+	
+	public function set(o as T) => obj = o
+	public function get() as T => obj
+
+	public function map[FT](map_func as FT) as {@
+func_type = return_type_of(get_parameter(0))
+ret_type = resolve_type("optional[{}]".format(str(func_type)))
+set_type(ret_type)@}
+		dim ret as {@set_type(get_cur_func().proto.return_type)@}
+		if obj!==null then
+			ret.set(map_func(obj))
+		end
+		return ret
+	end
+end
+
+function optional_of[T](v as T) as optional[T]
+	dim ret as optional[T]
+	ret.set(v)
+	return ret
+end
+
+
+#dim a as int[]
+#dim result as string  = optional_of(a).map(func (a as int[]) as string => int2str(a[0]) ).map(func (str as string) as string => "hello"+str ).get()

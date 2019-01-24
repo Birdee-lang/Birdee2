@@ -192,6 +192,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <Text Include="..\BirdeeHome\src\functional.txt" />
     <Text Include="..\BirdeeHome\src\vector.txt" />
     <Text Include="..\BirdeeHome\src\birdee.txt" />
     <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt" />
@@ -214,6 +215,7 @@
   <ItemGroup>
     <None Include="..\BirdeeHome\pylib\bbuild.py" />
     <None Include="..\BirdeeHome\pylib\getset.py" />
+    <None Include="..\BirdeeHome\pylib\traits.py" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\getset_test.py" />
     <None Include="..\tests\scripttest.py" />
