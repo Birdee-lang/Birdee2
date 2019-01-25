@@ -1,5 +1,11 @@
 from birdeec import *
 
+def get_boolean_type():
+	a = ResolvedType()
+	a.set_detail(BasicType.BOOLEAN,None)
+	return a
+
+
 '''
 Check if "type" is a prototype. Throw if not.
  - type: The ResolvedType to check
@@ -7,6 +13,9 @@ Check if "type" is a prototype. Throw if not.
 def check_is_prototype(ctype):
 	if ctype.base!=BasicType.FUNC or ctype.index_level!=0:
 		raise RuntimeError("The type {} is not a function prototype".format(str(ctype)))
+
+def is_prototype(ctype):
+	return ctype.base==BasicType.FUNC and ctype.index_level==0
 
 '''
 Get return type of an expression or single variable definition.
@@ -49,7 +58,7 @@ def check_prototype(proto, returns, *args):
 	if len(parg)!=len(args):
 		return False
 	for i in range(len(args)):
-		if parg[i]!=args[i]:
+		if parg[i].resolved_type!=args[i]:
 			return False
 	return True
 

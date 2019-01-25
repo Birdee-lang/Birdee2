@@ -46,6 +46,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("pos", &SourcePos::pos)
 		.def("__str__", &SourcePos::ToString);
 	py::class_<ResolvedType>(m, "ResolvedType")
+		.def(py::init<>())
 		.def("__str__", &ResolvedType::GetString)
 		.def_readonly("base",&ResolvedType::type)
 		.def_readwrite("index_level", &ResolvedType::index_level)

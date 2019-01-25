@@ -52,6 +52,11 @@ namespace Birdee
 				out += '_';
 				out += '4';
 			}
+			else if (name[i] == ' ')
+			{
+				out += '_';
+				out += '5';
+			}
 			else if (isalnum(name[i])) //is number of [a-z][A-Z]
 			{
 				out += name[i];
