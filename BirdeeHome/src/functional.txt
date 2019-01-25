@@ -58,13 +58,7 @@ set_type(func_type)@}
 		return ret
 	end
 
-	public function filter[FT](predicate as FT) as optional[T]
-{@
-ty=get_parameter(0).resolved_type
-ty_T = get_cur_func().proto.cls.template_instance_args[0].resolved_type
-if not is_prototype(ty) or not check_prototype(ty.get_detail(),get_boolean_type(),ty_T):
-	raise RuntimeError("Expecting the predicate with type - func (x as {}) as boolean, however its type is {}".format(ty_T,ty))	
-@}
+	public function filter(predicate as closure (obj as T) as boolean) as optional[T]
 		if obj!==null && predicate(obj) then
 			return this 
 		end

@@ -208,6 +208,15 @@ namespace Birdee
 	std::unique_ptr<PrototypeAST> Birdee::PrototypeAST::Copy()
 	{
 		std::unique_ptr<PrototypeAST> ret;
+		ClassAST* cls_new;
+		if (!cls) //if old proto is not a class member function
+			cls_new = nullptr; //new proto remain the same
+		else
+		{
+			//else, check if we are copying a class. If so, set the cls of new proto with cur_cls
+			//If not copying a class, set ret->cls=cls
+			cls_new = cur_cls ? cur_cls : cls;
+		}
 		if (resolved_type.isResolved())
 		{
 			vector<unique_ptr<VariableSingleDefAST>> args;
@@ -217,13 +226,14 @@ namespace Birdee
 				value->Phase1InFunctionType(false);
 				args.emplace_back(std::move(value));
 			}
+
 			ret= make_unique<PrototypeAST>(Name, std::move(args),
-				resolved_type, cur_cls ? cur_cls : cls,  prefix_idx, is_closure);
+				resolved_type, cls_new,  prefix_idx, is_closure);
 		}
 		else
 		{
 			ret = make_unique<PrototypeAST>(Name, Args == nullptr ? nullptr : unique_ptr_cast<VariableDefAST>(Args->Copy()),
-				RetType->Copy(), cur_cls ? cur_cls : cls, pos, is_closure);
+				RetType->Copy(), cls_new, pos, is_closure);
 			ret->prefix_idx = prefix_idx;
 		}
 		return std::move(ret);
