@@ -6,7 +6,7 @@ BLIB_DIR=$(PARENT_DIR)/blib
 BIN=$(PARENT_DIR)/bin
 LIB=$(PARENT_DIR)/lib
 
-all: ${BLIB_DIR}/birdee.o ${BLIB_DIR}/list.o ${BLIB_DIR}/hash_map.o ${LIB} ${BLIB_DIR}/tuple.o ${BLIB_DIR}/fmt.o ${BLIB_DIR}/vector.o
+all: ${BLIB_DIR}/birdee.o ${BLIB_DIR}/list.o ${BLIB_DIR}/hash_map.o ${BLIB_DIR}/hash_set.o ${LIB} ${BLIB_DIR}/tuple.o ${BLIB_DIR}/fmt.o ${BLIB_DIR}/vector.o ${BLIB_DIR}/quqeue.o ${BLIB_DIR}/stack.o
 
 print-%  : ; @echo $* = $($*)
 
@@ -30,6 +30,9 @@ ${BLIB_DIR}/list.o: list.txt ${BLIB_DIR}/birdee.o
 ${BLIB_DIR}/hash_map.o: hash_map.txt ${BLIB_DIR}/birdee.o
 	$(BIN)/birdeec -i hash_map.txt -o $(BLIB_DIR)/hash_map.o
 
+${BLIB_DIR}/hash_set.o: hash_set.txt ${BLIB_DIR}/birdee.o
+	$(BIN)/birdeec -i hash_set.txt -o $(BLIB_DIR)/hash_set.o
+
 ${BLIB_DIR}/tuple.o: tuple.txt ${BLIB_DIR}/birdee.o
 	$(BIN)/birdeec -i tuple.txt -o $(BLIB_DIR)/tuple.o
 
@@ -38,6 +41,12 @@ ${BLIB_DIR}/fmt.o: fmt.txt ${BLIB_DIR}/birdee.o
 
 ${BLIB_DIR}/vector.o: vector.txt ${BLIB_DIR}/birdee.o
 	$(BIN)/birdeec -i vector.txt -o $(BLIB_DIR)/vector.o
+
+${BLIB_DIR}/queue.o: queue.txt ${BLIB_DIR}/birdee.o
+	$(BIN)/birdeec -i queue.txt -o $(BLIB_DIR)/queue.o
+
+${BLIB_DIR}/stack.o: stack.txt ${BLIB_DIR}/birdee.o
+	$(BIN)/birdeec -i stack.txt -o $(BLIB_DIR)/stack.o
 
 clean:
 	rm -rf ${BLIB_DIR}

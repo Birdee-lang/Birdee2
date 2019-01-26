@@ -1,4 +1,4 @@
-all: birdee list hash_map vector tuple fmt
+all: birdee list hash_map hash_set vector queue stack tuple fmt
 BLIB_DIR=$(BIRDEE_HOME)\blib
 
 $(BLIB_DIR):
@@ -12,8 +12,17 @@ list: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\list.txt
 hash_map: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\hash_map.txt
 	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\hash_map.txt -o $(BIRDEE_HOME)\blib\hash_map.obj
 
+hash_set: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\hash_set.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\hash_set.txt -o $(BIRDEE_HOME)\blib\hash_set.obj
+
 vector: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\vector.txt
 	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\vector.txt -o $(BIRDEE_HOME)\blib\vector.obj
+
+queue: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\queue.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\queue.txt -o $(BIRDEE_HOME)\blib\queue.obj
+
+stack: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\stack.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\stack.txt -o $(BIRDEE_HOME)\blib\stack.obj
 
 tuple: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\tuple.txt
 	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\tuple.txt -o $(BIRDEE_HOME)\blib\tuple.obj
