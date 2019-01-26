@@ -6,6 +6,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
@@ -180,6 +181,9 @@ struct GeneratorContext
 	}
 	Function* malloc_obj_func = nullptr;
 	Function* malloc_arr_func = nullptr;
+	Function* personality_func = nullptr;
+	Function* begin_catch_func = nullptr;
+	Function* throw_func = nullptr;
 	StructType* cls_string = nullptr;
 	ClassAST* cls_typeinfo = nullptr;
 	DebugInfo dinfo;
@@ -188,6 +192,9 @@ struct GeneratorContext
 	ClassAST* array_cls = nullptr;
 	LLVMHelper helper;
 	FunctionAST* cur_func = nullptr;
+	//if landingpad!=null, we are in a try-block
+	llvm::BasicBlock* landingpad = nullptr;
+	StructType* landingpadtype = nullptr;
 	unordered_map<ClassAST*, GlobalVariable*> rtti_map;
 
 	//the wrappers for raw functions, useful for conversion from functype to closure
@@ -1017,6 +1024,19 @@ llvm::Function* GetMallocArr()
 	return gen_context.malloc_arr_func;
 }
 
+Value* DoGenerateCall(Value* func,const vector<Value*>& args)
+{
+	if (gen_context.landingpad) //if we are in try
+	{
+		BasicBlock *BB = BasicBlock::Create(context, "normal", helper.cur_llvm_func);
+		auto ret = builder.CreateInvoke(func, BB, gen_context.landingpad, args);
+		builder.SetInsertPoint(BB);
+		return ret;
+	}
+	else
+		return builder.CreateCall(func, args);
+}
+
 Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args,SourcePos pos)
 {
 	vector<Value*> args;
@@ -1033,9 +1053,14 @@ Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<u
 	{
 		args.push_back(vargs->Generate());
 	}
+
+	func->print(errs());
+	errs() << "Param\n";
+	if(args.size())
+		args[0]->print(errs());
 	builder.SetCurrentDebugLocation(
 		DebugLoc::get(pos.line, pos.pos, helper.cur_llvm_func->getSubprogram()));
-	return builder.CreateCall(func, args);
+	return DoGenerateCall(func, args);
 }
 
 
@@ -1092,7 +1117,7 @@ bool Birdee::ASTBasicBlock::Generate()
 	{
 		stmt->Generate();
 	}
-	if (!body.empty() && dyncast_resolve_anno<ReturnAST>(body.back().get()))
+	if (!builder.GetInsertBlock()->getInstList().empty() && builder.GetInsertBlock()->getInstList().back().isTerminator())
 	{
 		return true;
 	}
@@ -1142,6 +1167,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 	{
 		assert(llvm_func->getBasicBlockList().empty());
 		auto curfunc_backup = gen_context.cur_func;
+		auto landingpad_backup = gen_context.landingpad;
 		gen_context.cur_func = this;
 		dinfo.LexicalBlocks.push_back(dbginfo);
 		auto IP = builder.saveIP();
@@ -1259,6 +1285,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		builder.restoreIP(IP);
 		helper.cur_llvm_func = func_backup;
 		gen_context.cur_func = curfunc_backup;
+		gen_context.landingpad = landingpad_backup;
 	}
 	else if (!isImported) //if is declaration and is a c-style extern function
 	{
@@ -1535,6 +1562,13 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 	}
 	else if (kind == member_imported_function)
 	{
+		//function template instance will be "imported function" too.
+		if (Obj && !llvm_obj) //if there is a object reference and we only have a RValue of struct
+		{
+			llvm_obj = builder.CreateAlloca(Obj->resolved_type.class_ast->llvm_type); //alloca temp memory for the value
+			builder.CreateStore(Obj->Generate(), llvm_obj); //store the obj to the alloca
+		}
+
 		return import_func->llvm_func;
 	}
 	else if (kind == member_package)
@@ -2084,4 +2118,101 @@ llvm::Value * Birdee::TypeofExprAST::Generate()
 	dinfo.emitLocation(this);
 	auto val = arg->Generate();
 	return builder.CreateLoad(builder.CreateGEP(val, {builder.getInt32(0),builder.getInt32(0)}));
+}
+
+llvm::Value * Birdee::TryBlockAST::Generate()
+{
+	dinfo.emitLocation(this);
+	if (!gen_context.personality_func)
+	{
+		gen_context.personality_func = Function::Create(
+			FunctionType::get(builder.getInt32Ty(), true), 
+			llvm::GlobalValue::ExternalLinkage, "__Birdee_Personality", module);
+		gen_context.begin_catch_func = Function::Create(
+			FunctionType::get(builder.getInt8PtrTy(), { builder.getInt8PtrTy() }, false),
+			llvm::GlobalValue::ExternalLinkage, "__Birdee_BeginCatch", module);
+	}
+	helper.cur_llvm_func->setPersonalityFn(gen_context.personality_func);
+	helper.cur_llvm_func->addFnAttr(llvm::Attribute::UWTable);
+	auto old_landing = gen_context.landingpad;
+	BasicBlock* landing = BasicBlock::Create(context, "landingpad", helper.cur_llvm_func);
+	BasicBlock* cont = BasicBlock::Create(context, "trycont", helper.cur_llvm_func);
+	gen_context.landingpad = landing;
+	bool has_return = try_block.Generate();
+	if (!has_return)
+	{
+		builder.CreateBr(cont);
+	}
+	gen_context.landingpad = old_landing;
+	builder.SetInsertPoint(landing);
+	if (!gen_context.landingpadtype)
+		gen_context.landingpadtype = llvm::StructType::get(context,
+			{ builder.getInt8PtrTy(),builder.getInt32Ty() });
+	auto pad = builder.CreateLandingPad(gen_context.landingpadtype, catch_variables.size());
+	auto expobj = builder.CreateExtractValue(pad, 0 , "expobj");
+	auto switchnum = builder.CreateExtractValue(pad, 1, "expswitch");
+	vector<BasicBlock*> catches;
+	assert(catch_variables.size());
+	catches.reserve(catch_variables.size());
+	for (int i = 0; i < catch_variables.size(); i++)
+	{
+		string catch_block_name = "catch.";
+		auto& var = catch_variables[i];
+		assert(var->resolved_type.type == tok_class && var->resolved_type.class_ast->needs_rtti);
+		catch_block_name += var->resolved_type.class_ast->GetUniqueName();
+		catches.push_back(BasicBlock::Create(context, catch_block_name, helper.cur_llvm_func, cont));
+		auto rtti_itr = gen_context.rtti_map.find(var->resolved_type.class_ast);
+		assert(rtti_itr != gen_context.rtti_map.end());
+		pad->addClause(rtti_itr->second);
+	}
+
+	//still in landingpad, jump to the first catch block
+	builder.CreateBr(catches[0]);
+
+	for (int i = 0; i < catch_variables.size(); i++)
+	{
+		auto cur_bb = catches[i];
+		auto& var = catch_variables[i];
+		builder.SetInsertPoint(cur_bb);
+		auto func = llvm::Intrinsic::getDeclaration(module, llvm::Intrinsic::eh_typeid_for);
+		auto catch_ty_id = builder.CreateCall(func, builder.CreatePointerCast(pad->getClause(i), builder.getInt8PtrTy()));
+		auto should_catch = builder.CreateICmpEQ(switchnum, catch_ty_id);
+		BasicBlock* not_caught_block, *caught_block;
+		if (i != catch_variables.size() - 1) //if current catch block is not the last one
+			not_caught_block = catches[i + 1];//jump to the next block if not caught
+		else
+			not_caught_block = BasicBlock::Create(context, "try.resume", helper.cur_llvm_func, cont);
+		caught_block = BasicBlock::Create(context, cur_bb->getName() + ".caught", helper.cur_llvm_func, not_caught_block);
+		builder.CreateCondBr(should_catch, caught_block, not_caught_block);
+
+		builder.SetInsertPoint(caught_block);
+		var->Generate();
+		Value* obj = builder.CreateCall(gen_context.begin_catch_func, expobj);
+		obj = builder.CreatePointerCast(obj, var->resolved_type.class_ast->llvm_type->getPointerTo());
+		builder.CreateStore(obj,var->llvm_value);
+		bool isterminator = catch_blocks[i].Generate();
+		if (!isterminator)
+			builder.CreateBr(cont);
+
+		if (i == catch_variables.size() - 1) //if current catch block is the last one, generate "resume" instruction
+		{
+			builder.SetInsertPoint(not_caught_block);
+			builder.CreateResume(pad);
+		}
+	}
+
+	builder.SetInsertPoint(cont);
+	return nullptr;
+}
+
+llvm::Value* Birdee::ThrowAST::Generate()
+{
+	auto v = expr->Generate();
+	if(!gen_context.throw_func)
+		gen_context.throw_func = Function::Create(
+			FunctionType::get(builder.getVoidTy(), { builder.getInt8PtrTy() }, false),
+			llvm::GlobalValue::ExternalLinkage, "__Birdee_Throw", module);
+	DoGenerateCall(gen_context.throw_func, {builder.CreatePointerCast(v,builder.getInt8PtrTy())});
+	builder.CreateUnreachable();
+	return nullptr;
 }

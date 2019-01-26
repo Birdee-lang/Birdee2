@@ -5,6 +5,7 @@ BirdeeHome/blib/*
 BirdeeHome/bin
 dependency/*
 *.bmm
+tests/linuxbin/*
 
 # User-specific files
 *.suo

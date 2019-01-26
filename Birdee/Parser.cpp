@@ -204,6 +204,35 @@ void ParseTemplateArgsForType(GeneralIdentifierType* type)
 	}
 }
 
+static void BasicBlockCheckUnknownToken(std::initializer_list<Token> expect)
+{
+	for (Token t : expect)
+	{
+		if (t == tokenizer.CurTok)
+		{
+			tokenizer.GetNextToken();
+			return;
+		}
+	}
+	auto tok = tokenizer.CurTok;
+	string msg;
+	switch (tok)
+	{
+	case tok_catch:
+		msg = "The catch clause does not match any try clause";
+		break;
+	case tok_else:
+		msg = "The else clause does not match any if clause";
+		break;
+	case tok_end:
+		msg = "Unmatched \'end\'";
+		break;
+	default:
+		msg = "Encountered unknown token. Expecting a new line after an expression";
+	}
+	throw CompileError(msg);
+}
+
 static std::unordered_set<Token> basic_types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
 //parse basic type, may get the array type if there is a [ after GeneralIdentifierType (QualifiedIdentifierType/IdentifierType)
 std::unique_ptr<Type> ParseBasicType()
@@ -728,9 +757,16 @@ BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 		CompileExpectNotNull(ParsePrimaryExpression(), "Expected an expression"));
 }
 
+unique_ptr<TryBlockAST> ParseTry();
 std::unique_ptr<ForBlockAST> ParseFor();
 std::unique_ptr<WhileBlockAST> ParseWhile();
-void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
+
+/*
+Parse a basic block, with an optional ending token.
+	delimiter - the token that marks the end of the BB other than tok_end
+	allow_end - whether the basic block is allowed to end with tok_end
+*/
+void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=tok_error ,bool allow_end=true)
 {
 	std::unique_ptr<ExprAST> firstexpr;
 	SourcePos pos(tokenizer.source_idx,0, 0);
@@ -795,6 +831,7 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after while block");
 			break;
 		case tok_end:
+			CompileAssert(allow_end, "\'end\' is not allowed here. A try-block must be followed by a catch-block");
 			tokenizer.GetNextToken(); //eat end
 			if (optional_tok >= 0 && tokenizer.CurTok == optional_tok) //optional: end function/if/for...
 				tokenizer.GetNextToken(); //eat it
@@ -802,6 +839,12 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			break;
 		case tok_else:
 			//don't eat else here
+			CompileAssert(delimiter == tok_else, "Encountered an unmatched else");
+			goto done;
+			break;
+		case tok_catch:
+			//don't eat catch here
+			CompileAssert(delimiter == tok_catch, "Encountered an unmatched catch");
 			goto done;
 			break;
 		case tok_eof:
@@ -812,9 +855,22 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok)
 			push_expr(std::move(ParseIf()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
+		case tok_try:
+			tokenizer.GetNextToken(); //eat try
+			push_expr(std::move(ParseTry()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
+			break;
+		case tok_throw:
+		{
+			auto pos = tokenizer.GetSourcePos();
+			tokenizer.GetNextToken();
+			push_expr(make_unique<ThrowAST>(ParseExpressionUnknown(),pos));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after throw");
+			break;
+		}
 		default:
 			firstexpr = ParseExpressionUnknown();
-			CompileExpect({ tok_eof,tok_newline }, "Expect a new line after expression");
+			BasicBlockCheckUnknownToken({tok_eof,tok_newline });
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");
 			push_expr(std::move(firstexpr));
 		}
@@ -823,6 +879,26 @@ done:
 	return;
 }
 
+unique_ptr<TryBlockAST> ParseTry()
+{
+	SourcePos pos = tokenizer.GetSourcePos();
+	CompileAssert(tok_new, "Expecting a newline after try");
+	ASTBasicBlock bb;
+	ParseBasicBlock(bb, /*optional_tok*/tok_error, /*delimiter*/tok_catch, /*allow_end*/false);
+	vector<ASTBasicBlock> catches;
+	vector<unique_ptr<VariableSingleDefAST>> catch_vars;
+	assert(tokenizer.CurTok == tok_catch);
+	while (tokenizer.CurTok == tok_catch)
+	{
+		tokenizer.GetNextToken(); //eat catch
+		catch_vars.emplace_back(ParseSingleDim());
+		CompileAssert(catch_vars.back()->val == nullptr, "The exception variable of catch clause must not have initializer");
+		CompileExpect(tok_newline, "Expecting a newline after catch clause");
+		catches.emplace_back(ASTBasicBlock());
+		ParseBasicBlock(catches.back(), /*optional_tok*/tok_try, /*delimiter*/tok_catch,/*allow_end*/true);
+	}
+	return make_unique<TryBlockAST>(std::move(bb), std::move(catch_vars), std::move(catches), pos);
+}
 
 std::unique_ptr<WhileBlockAST> ParseWhile()
 {
@@ -879,7 +955,7 @@ std::unique_ptr<IfBlockAST> ParseIf()
 	CompileExpect(tok_newline, "Expected a newline after \"then\"");
 	ASTBasicBlock true_block;
 	ASTBasicBlock false_block;
-	ParseBasicBlock(true_block, tok_if);
+	ParseBasicBlock(true_block, tok_if, tok_else); //allow "else" to mark the end of BB
 	if (tokenizer.CurTok == tok_else)
 	{
 		tokenizer.GetNextToken(); //eat else
@@ -1601,9 +1677,22 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement()
 		ret = ParseIf();
 		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 		break;
+	case tok_try:
+		tokenizer.GetNextToken(); //eat try
+		ret = ParseTry();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
+		break;
+	case tok_throw:
+	{
+		auto pos = tokenizer.GetSourcePos();
+		tokenizer.GetNextToken();
+		ret = make_unique<ThrowAST>(ParseExpressionUnknown(), pos);
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after throw");
+		break;
+	}
 	default:
 		ret = ParseExpressionUnknown();
-		CompileExpect({ tok_eof,tok_newline }, "Expect a new line after expression");
+		BasicBlockCheckUnknownToken({ tok_eof,tok_newline });
 		CompileAssert(ret != nullptr, "Compiler internal error: firstexpr=null");
 	}
 	return std::move(ret);
@@ -1715,6 +1804,19 @@ BD_CORE_API int ParseTopLevel()
 			push_expr(std::move(ParseIf()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after if-block");
 			break;
+		case tok_try:
+			tokenizer.GetNextToken(); //eat try
+			push_expr(std::move(ParseTry()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
+			break;
+		case tok_throw:
+		{
+			auto pos = tokenizer.GetSourcePos();
+			tokenizer.GetNextToken();
+			push_expr(make_unique<ThrowAST>(ParseExpressionUnknown(), pos));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after throw");
+			break;
+		}
 		case tok_class:
 		case tok_struct:
 		{
@@ -1732,7 +1834,7 @@ BD_CORE_API int ParseTopLevel()
 
 		default:
 			firstexpr = ParseExpressionUnknown();
-			CompileExpect({ tok_eof,tok_newline }, "Expect a new line after expression");
+			BasicBlockCheckUnknownToken({ tok_eof,tok_newline });
 			//if (!firstexpr)
 			//	break;
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");

@@ -89,6 +89,9 @@ namespace Birdee
 	{"functype",tok_functype},
 	{"closure",tok_closure},
 	{"...",tok_ellipsis},
+	{"try",tok_try},
+	{"catch",tok_catch},
+	{"throw",tok_throw},
 	};
 }
 

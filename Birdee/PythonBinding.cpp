@@ -46,6 +46,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("pos", &SourcePos::pos)
 		.def("__str__", &SourcePos::ToString);
 	py::class_<ResolvedType>(m, "ResolvedType")
+		.def(py::init<>())
 		.def("__str__", &ResolvedType::GetString)
 		.def_readonly("base",&ResolvedType::type)
 		.def_readwrite("index_level", &ResolvedType::index_level)
@@ -187,7 +188,7 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](ForBlockAST& ths, UniquePtrStatementAST& v) {ths.till = v.move_expr(); })
 		.def_readwrite("inclusive", &ForBlockAST::including)
 		.def_readwrite("is_dim", &ForBlockAST::isdim)
-		.def_property_readonly("block", [](ForBlockAST& ths) {return &ths.block.body; })
+		.def_property_readonly("block", [](ForBlockAST& ths) {return GetRef(ths.block.body); })
 		.def("run", [](ForBlockAST& ths, py::object& func) {
 			func(GetRef(ths.init));
 			func(GetRef(ths.till));
@@ -332,4 +333,26 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](FunctionToClosureAST& ths, UniquePtrStatementAST& v) {ths.func = v.move_expr(); })
 		.def("run", [](FunctionToClosureAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.func)); });
 
+	py::class_<TypeofExprAST, ExprAST>(m, "TypeofExprAST")
+		.def_property("arg", [](TypeofExprAST& ths) {return GetRef(ths.arg); },
+			[](TypeofExprAST& ths, UniquePtrStatementAST& v) {ths.arg = v.move_expr(); })
+		.def("run", [](TypeofExprAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.arg)); });
+
+	py::class_<TryBlockAST, StatementAST>(m, "TryBlockAST")
+		.def_property_readonly("try_block", [](TryBlockAST& ths) {return GetRef(ths.try_block.body); })
+		.def_property_readonly("catch_variables", [](TryBlockAST& ths) {return GetRef(ths.catch_variables); })
+		.def("get_catch_block", [](TryBlockAST& ths,int idx) {return GetRef(ths.catch_blocks[idx].body); })
+		.def("run", [](TryBlockAST& ths, py::object& pyfunc) {
+			for(auto& b: ths.try_block.body)
+				pyfunc(GetRef(b)); 
+			for (auto& b : ths.catch_variables)
+				pyfunc(GetRef(b.get()));
+			for (auto& b : ths.catch_blocks)
+				for(auto& itm: b.body)
+					pyfunc(GetRef(itm));
+		});
+	py::class_<ThrowAST, StatementAST>(m, "ThrowAST")
+		.def_property("expr", [](ThrowAST& ths) {return GetRef(ths.expr); },
+			[](ThrowAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
+		.def("run", [](ThrowAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.expr)); });
 }
