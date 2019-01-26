@@ -1136,6 +1136,8 @@ namespace Birdee
 			if (rtype.type != tok_error)
 			{
 				*this = rtype;
+				this->index_level += ty->index_level; //the new index level is the sum of the old levels
+				//e.g. T = int[], then T[] should be int[][]
 				return;
 			}
 			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
@@ -1773,7 +1775,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		if (!Expr->resolved_type.isResolved())
 			Expr->Phase1();
-		return 	Expr->resolved_type.type == tok_class;
+		return 	Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class;
 	}
 
 	bool IndexExprAST::isTemplateInstance()
@@ -1806,7 +1808,7 @@ If usage vararg name is "", match the closest vararg
 			resolved_type = instance->resolved_type;
 			return;
 		}
-		if (Expr->resolved_type.type == tok_class)
+		if (Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class)
 		{
 			string str = "__getitem__";
 			auto itr = Expr->resolved_type.class_ast->funcmap.find(str);
