@@ -1136,7 +1136,8 @@ namespace Birdee
 			if (rtype.type != tok_error)
 			{
 				*this = rtype;
-				this->index_level = type.index_level;
+				this->index_level += ty->index_level; //the new index level is the sum of the old levels
+				//e.g. T = int[], then T[] should be int[][]
 				return;
 			}
 			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
@@ -1774,7 +1775,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		if (!Expr->resolved_type.isResolved())
 			Expr->Phase1();
-		return 	Expr->resolved_type.type == tok_class;
+		return 	Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class;
 	}
 
 	bool IndexExprAST::isTemplateInstance()
@@ -1807,7 +1808,7 @@ If usage vararg name is "", match the closest vararg
 			resolved_type = instance->resolved_type;
 			return;
 		}
-		if (Expr->resolved_type.type == tok_class)
+		if (Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class)
 		{
 			string str = "__getitem__";
 			auto itr = Expr->resolved_type.class_ast->funcmap.find(str);
@@ -2052,8 +2053,19 @@ If usage vararg name is "", match the closest vararg
 		CompileAssert(arg->resolved_type.type == tok_class
 			&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
 			Pos ,"typeof must be appiled on class references with runtime type info");
-		type = arg->resolved_type.class_ast;
 		resolved_type = ResolvedType(GetTypeInfoClass());
+	}
+
+	ThrowAST::ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos) :expr(std::move(expr))
+	{
+		Pos = pos;
+	}
+
+	void ThrowAST::Phase1()
+	{
+		expr->Phase1();
+		CompileAssert(expr->resolved_type.type == tok_class && expr->resolved_type.class_ast->needs_rtti,
+			Pos, "The object to be thrown must be a class object reference with runtime type info");
 	}
 
 	void ClassAST::Phase1()
@@ -2552,5 +2564,28 @@ If usage vararg name is "", match the closest vararg
 		auto expr = static_cast<ExprAST*>(stmt.get());
 		assert(expr->resolved_type.isResolved());
 		return expr->GetLValue(checkHas);
+	}
+
+	TryBlockAST::TryBlockAST(ASTBasicBlock&& try_block,
+		vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
+		vector<ASTBasicBlock>&& catch_blocks, SourcePos pos)
+		: try_block(std::move(try_block)), catch_variables(std::move(catch_variables)), catch_blocks(std::move(catch_blocks))
+	{
+		Pos = pos;
+	}
+
+	void TryBlockAST::Phase1()
+	{
+		try_block.Phase1();
+		for (int i = 0; i < catch_variables.size(); i++)
+		{
+			scope_mgr.PushBasicBlock();
+			auto& var = catch_variables[i];
+			var->Phase1();
+			CompileAssert(var->resolved_type.type == tok_class && var->resolved_type.class_ast->needs_rtti,
+				var->Pos, "The exception variable defined in the catch clause must be a class object with rtti enabled");
+			catch_blocks[i].Phase1();
+			scope_mgr.PopBasicBlock();
+		}
 	}
 }

@@ -525,6 +525,7 @@ namespace Birdee {
 		BD_CORE_API ASTBasicBlock Copy();
 		BD_CORE_API void Phase1();
 		BD_CORE_API void Phase1(PrototypeAST* proto);
+		//returns true if the last instruction is terminator
 		BD_CORE_API bool Generate();
 		void print(int level)
 		{
@@ -1165,7 +1166,6 @@ namespace Birdee {
 	class BD_CORE_API TypeofExprAST : public ExprAST {
 	public:
 		unique_ptr<ExprAST> arg;
-		ClassAST* type=nullptr;
 		std::unique_ptr<StatementAST> Copy();
 		//first resolve variables then resolve class names
 		void Phase1();
@@ -1176,7 +1176,8 @@ namespace Birdee {
 		}
 		void print(int level) {
 			ExprAST::print(level);
-			std::cout << "typeof "<<arg<<"\n";
+			std::cout << "typeof \n";
+			arg->print(level+1);
 		}
 	};
 
@@ -1342,6 +1343,47 @@ namespace Birdee {
 		{
 			return nullptr;
 		};
+	};
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class TryBlockAST : public StatementAST 
+#else
+	class BD_CORE_API TryBlockAST : public StatementAST
+#endif
+	{
+	public:
+		ASTBasicBlock try_block;
+		vector<unique_ptr<VariableSingleDefAST>> catch_variables;
+		vector<ASTBasicBlock> catch_blocks;
+
+		BD_CORE_API virtual Value* Generate();
+		BD_CORE_API virtual void Phase1();
+		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
+		BD_CORE_API virtual void print(int level) {
+			StatementAST::print(level);
+			std::cout << "TryBlockAST \n";
+			try_block.print(level + 1);
+			StatementAST::print(level);
+		}
+		BD_CORE_API TryBlockAST(ASTBasicBlock&& try_block,
+			vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
+			vector<ASTBasicBlock>&& catch_blocks, SourcePos pos);
+	};
+
+	class BD_CORE_API ThrowAST : public StatementAST
+	{
+	public:
+		unique_ptr<ExprAST> expr;
+
+		virtual Value* Generate();
+		virtual void Phase1();
+		virtual unique_ptr<StatementAST> Copy();
+		virtual void print(int level) {
+			StatementAST::print(level);
+			std::cout << "ThrowAST \n";
+			expr->print(level + 1);
+		}
+		ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos);
 	};
 
 }

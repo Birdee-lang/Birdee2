@@ -57,6 +57,9 @@ namespace Birdee
 		tok_script,
 		tok_annotation,
 		tok_while,
+		tok_try,
+		tok_catch,
+		tok_throw,
 
 		//type
 		tok_int,

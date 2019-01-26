@@ -166,6 +166,13 @@ def search_bin(modu):
 		raw_path=os.path.join(path,*modu)
 		p = raw_path +".bmm"
 		if os.path.exists(p) and os.path.isfile(p) :
+			#we have found the binary file, but if it need updating?
+			src=search_src(modu)
+			if src: #if it is in the source, check if source is newer than binary
+				mtime_src=os.path.getmtime(src)
+				mtime_bin=os.path.getmtime(p)
+				if mtime_src > mtime_bin:
+					return #act as if we do not find the binary file
 			return raw_path
 	raw_path=os.path.join(outpath,*modu)
 	p = raw_path +".bmm"

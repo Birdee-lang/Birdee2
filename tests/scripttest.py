@@ -19,6 +19,24 @@ def assert_ok(istr):
 	clear_compile_unit()
 
 assert_ok('''
+class a[T]
+end
+dim aaa as a[int][] = new a[int] * 10
+aaa[0]=new a[int]
+dim ab = aaa[0]
+
+class Cb[T]
+	public bb as T[]
+	public cc as T
+end
+
+dim bbbb as Cb[int[]]
+dim ccccc as int[][]=bbbb.bb
+dim ddddd as int[]=bbbb.cc
+'''
+)
+
+assert_ok('''
 dim a as string
 println(a)
 {@
@@ -294,5 +312,7 @@ dim a as someclass = new someclass
 println(typeof(a).get_name())
 '''
 )
+
+
 
 print("All tests done!")

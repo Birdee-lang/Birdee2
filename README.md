@@ -83,8 +83,8 @@ clear_compile_unit()
 - [x] array
 - [ ] array boundary checking
 - [ ] array initializer
-- [x] lambda expressions, functor
-- [ ] exceptions
+- [x] lambda expressions
+- [x] exceptions
 - [ ] threading
 - [x] operator overloading
 - [x] calling C/C++ code
@@ -103,7 +103,7 @@ Please view our [wiki](https://github.com/Birdee-lang/Birdee2/wiki).
 
 ## Building Birdee on Ubuntu
 
-Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11, bdwgc and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
+Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11, bdwgc, libunwind (already installed with gcc) and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
 
 Then, install LLVM. You may refer to [LLVM's apt site](https://apt.llvm.org/) for instructions. Here we provide commands for installing LLVM on Ubuntu 14.04. You need first add the following lines to /etc/apt/sources.list:
 
@@ -200,7 +200,7 @@ If you have downloaded pre-compiled LLVM,
 
 Create a directory "Birdee\\dependency\\include" and "Birdee\\dependency\\include\\nlohmann". Download [header](https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp) and [header](https://raw.githubusercontent.com/nlohmann/fifo_map/master/src/fifo_map.hpp) to "Birdee\\dependency\\include\\nlohmann".
 
-### Step 4 for VS (Install bdwgc)
+### Step 4 for VS (Install bdwgc and libunwind from libgcc)
 
 bdwgc is a library for conservative GC, which is used for Birdee's runtime. Like LLVM, you can either download a pre-built binary ([BaiduYun](https://pan.baidu.com/s/1T39OUmZBZcw5T5I9LEuiyg),[GoogleDrive](https://drive.google.com/open?id=1wA9ctJvcopfGAYxZVfEhacBzY9APw_S6)), or build the library by yourself. Here is some notes for building bdwgc.
 
@@ -215,6 +215,7 @@ The above sources and generated files are included in the pre-built binary. Then
  * Link/copy XXXXX\gc-7.6.8\include to Birdee\dependency\gc_include
  * Link/copy XXXXX\gc-7.6.8\gc64.dll to Birdee\x64\debug\gc64.dll
 
+Then install libunwind which is part of libgcc. It is available at [BaiduYun](https://pan.baidu.com/s/1vfMaAmNmDphXml41qkygWA) or [GoogleDrive](https://drive.google.com/open?id=1vK1Y4cR4UlS035T8EJ6YAYBG4MLBAYG_). Extract all the files in the zip file to "Birdee\dependency\bin"
 
 ### Build Birdee with VS!
 
@@ -223,3 +224,10 @@ Add an environment variable "BIRDEE_HOME" and set its value to the absolute path
 Open "Birdee\\Birdee.sln" and build the project "Birdee" and "CoreLibs".
 
 Make a link at "X:\\XXXX\\Birdee\\BirdeeHome\\bin" to the Birdee compiler binary directory "X:\\XXXX\\Birdee\\x64\\Debug\\".
+
+### Run Birdee programs on Windows!
+
+To run Birdee programs that are compiled with Birdee compiler on Windows, make sure "gc_64.dll" is in DLL search path (e.g. where the ".exe" file is). If you use exceptions in your Birdee program, make sure "libgcc_s_seh-1.dll" and "libwinpthread-1.dll" are also in DLL search path.
+
+These DLL files can be downloaded via the following links. [BaiduYun](https://pan.baidu.com/s/1FWnHpQkxj5PC4DP1PEMRlg) or [GoogleDrive](https://drive.google.com/open?id=1GIH-YDe2IFMnaYE91uOXAJlnXJjX3PvT). Note that "libgcc_s_seh-1.dll" and "libwinpthread-1.dll" are extracted from mingw64.
+
