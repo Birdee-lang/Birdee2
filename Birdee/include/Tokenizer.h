@@ -90,6 +90,7 @@ namespace Birdee
 		int GetChar();
 		void ParseString();
 	public:
+		void SetLine(int ln) { line = ln; }
 		void StartRecording(const std::string& s);
 		int GetTemplateSourcePosition()
 		{

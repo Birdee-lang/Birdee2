@@ -39,9 +39,10 @@ import template class instance
 */
 
 
-static Tokenizer StartParseTemplate(string&& str, Token& first_tok)
+static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
 {
 	Tokenizer toknzr(std::make_unique<StringStream>(std::move(str)), source_paths.size() - 1);
+	toknzr.SetLine(line);
 	toknzr.GetNextToken();
 	first_tok = toknzr.CurTok;
 	toknzr.GetNextToken();
@@ -189,6 +190,16 @@ void BuildAnnotationsOnTemplate(const json& json_cls, AnnotationStatementAST*& a
 	}
 }
 
+static int GetTemplateLineNumber(const json& json_cls)
+{
+	auto itr = json_cls.find("source_line");
+	if (itr != json_cls.end())
+	{
+		return itr->get<int>();
+	}
+	return 1;
+}
+
 void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 {
 	BirdeeAssert(globals.is_array(), "Expected a JSON array");
@@ -196,7 +207,7 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 	{
 		auto strsrc = itr["template"];
 		Token first_tok;
-		auto var = StartParseTemplate(strsrc.get<string>(), first_tok);
+		auto var = StartParseTemplate(strsrc.get<string>(), first_tok, GetTemplateLineNumber(itr));
 		BirdeeAssert(tok_func == first_tok , "The first token of template should be function");
 		auto func = ParseFunction(nullptr);
 		BirdeeAssert(func->template_param.get(), "func->template_param");
@@ -210,10 +221,10 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 	}
 }
 
-void BuildTemplateClassFromJson(const json& itr, ClassAST* cls, int module_idx, ImportedModule& mod)
+void BuildTemplateClassFromJson(const json& itr, ClassAST* cls, int module_idx, int linenumber, ImportedModule& mod)
 {
 	Token first_tok;
-	auto var = StartParseTemplate(itr.get<string>(), first_tok);
+	auto var = StartParseTemplate(itr.get<string>(), first_tok, linenumber);
 	BirdeeAssert(tok_class == first_tok || tok_struct == first_tok, "The first token of template should be class/struct");
 	ParseClassInPlace(cls, tok_struct == first_tok);
 	BirdeeAssert(cls->template_param.get(), "cls->template_param");
@@ -268,7 +279,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	auto temp_itr = json_cls.find("template");
 	if (temp_itr != json_cls.end()) //if it's a template
 	{
-		BuildTemplateClassFromJson(*temp_itr, ret, module_idx, mod);
+		BuildTemplateClassFromJson(*temp_itr, ret, module_idx, GetTemplateLineNumber(json_cls), mod);
 		BirdeeAssert(ret->isTemplate(), "The class with \'template\' json field should be a template");
 		BuildAnnotationsOnTemplate(json_cls,ret->template_param->annotation , mod);
 
@@ -315,7 +326,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 		if (templ != func.end())
 		{
 			Token first_tok;
-			Tokenizer old = StartParseTemplate(templ->get<string>(), first_tok);
+			Tokenizer old = StartParseTemplate(templ->get<string>(), first_tok, GetTemplateLineNumber(func));
 			BirdeeAssert(tok_func == first_tok, "The first token of template should be function");
 			funcdef = ParseFunction(ret);
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");

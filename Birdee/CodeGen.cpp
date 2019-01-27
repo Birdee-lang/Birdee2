@@ -798,7 +798,6 @@ void Birdee::CompileUnit::Generate()
 
 	outs() << "Wrote " << Filename << "\n";
 	dest.flush();
-	//module->print(errs(), nullptr);
 }
 
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
@@ -1054,10 +1053,6 @@ Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<u
 		args.push_back(vargs->Generate());
 	}
 
-	func->print(errs());
-	errs() << "Param\n";
-	if(args.size())
-		args[0]->print(errs());
 	builder.SetCurrentDebugLocation(
 		DebugLoc::get(pos.line, pos.pos, helper.cur_llvm_func->getSubprogram()));
 	return DoGenerateCall(func, args);
@@ -1380,13 +1375,12 @@ static llvm::GlobalVariable* GenerateStr(const StringRefOrHolder& Val)
 
 	GlobalVariable* vstr = new GlobalVariable(*module, strarr->getType(), true, GlobalValue::PrivateLinkage, nullptr);
 	vstr->setInitializer(strarr);
-	//vstr->print(errs(), true);
+
 	std::vector<Constant*> const_ptr_5_indices;
 	ConstantInt* const_int64_6 = ConstantInt::get(context, APInt(64, 0));
 	const_ptr_5_indices.push_back(const_int64_6);
 	Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, const_ptr_5_indices);
 	const_ptr_5 = ConstantExpr::getPointerCast(const_ptr_5, gen_context.byte_arr_ty);
-	//const_ptr_5->print(errs(), true);
 
 	Constant * obj = llvm::ConstantStruct::get(GetStringType(), {
 		const_ptr_5,
@@ -1937,6 +1931,12 @@ llvm::Value * BinaryGenerateBool(Token op, ExprAST* lvexpr, ExprAST* rvexpr)
 		return builder.CreateOr(lv, rvexpr->Generate());
 	case tok_xor:
 		return builder.CreateXor(lv, rvexpr->Generate());
+	case tok_equal:
+	case tok_cmp_equal:
+		return builder.CreateICmpEQ(lv, rvexpr->Generate());
+	case tok_ne:
+	case tok_cmp_ne:
+		return builder.CreateICmpNE(lv, rvexpr->Generate());
 	default:
 		assert(0 && "Operator not supported");
 	}
@@ -1975,7 +1975,7 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
 		}
 	}
-	if (isLogicToken(Op)) //boolean
+	if (isLogicToken(Op) || (LHS->resolved_type.type==tok_boolean && LHS->resolved_type.index_level==0) ) //boolean
 	{
 		return BinaryGenerateBool(Op, LHS.get(), RHS.get());
 	}
