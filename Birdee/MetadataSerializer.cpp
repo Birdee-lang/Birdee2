@@ -318,6 +318,7 @@ json BuildGlobalFuncJson(json& func_template)
 			template_obj["template"] = ptr->source.get();
 			if (ptr->annotation)
 				template_obj["annotations"] = ptr->annotation->anno;
+			template_obj["source_line"] = itr.second.get().Pos.line;
 			func_template.push_back(std::move(template_obj));
 		}
 		else
@@ -335,6 +336,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	{
 		assert(!cls.template_param->source.empty());
 		json_cls["template"] = cls.template_param->source.get();
+		json_cls["source_line"] = cls.Pos.line;
 		if (cls.template_param->annotation)
 			json_cls["annotations"] = cls.template_param->annotation->anno;
 	}
@@ -379,6 +381,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 					json_func["template"] = source.get();
 				if (func.decl->template_param->annotation)
 					json_func["annotations"] = func.decl->template_param->annotation->anno;
+				json_func["source_line"] = func.decl->Pos.line;
 			}
 			else
 			{
