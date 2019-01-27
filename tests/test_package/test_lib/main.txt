@@ -1,0 +1,143 @@
+import fmt
+import list:list
+import hash_set:hash_set
+import hash_map:hash_map
+import stack:stack
+import queue:queue
+
+declare function getchar() as int
+
+# test list
+dim lst = new list[uint]
+
+println(int2str(lst.get_size()))
+if lst.empty() then
+	println("list is empty")
+end
+
+lst.insert_back(123)
+lst.insert_back(234)
+lst.insert_back(345)
+
+dim cur = lst.head.next
+while (cur !== lst.tail)
+	println(int2str(cur.v))
+	cur = cur.next
+end
+
+println(int2str(lst.get_size()))
+if lst.empty() then
+	println("list is empty")
+end
+
+getchar()
+
+# test queue
+dim q = new queue[uint]
+
+println(int2str(q.get_size()))
+q.push(10)
+println(int2str(q.get_size()))
+q.push(20)
+println(int2str(q.get_size()))
+q.push(30)
+println(int2str(q.get_size()))
+q.push(40)
+println(int2str(q.get_size()))
+q.push(50)
+println(int2str(q.get_size()))
+
+println(int2str(q.front()))
+q.pop()
+println(int2str(q.front()))
+q.pop()
+println(int2str(q.front()))
+q.pop()
+println(int2str(q.front()))
+q.pop()
+println(int2str(q.front()))
+q.pop()
+
+println(int2str(q.get_size()))
+
+getchar()
+
+# test stack
+dim s = new stack[uint]
+
+println(int2str(s.get_size()))
+s.push(10)
+println(int2str(s.get_size()))
+s.push(20)
+println(int2str(s.get_size()))
+s.push(30)
+println(int2str(s.get_size()))
+s.push(40)
+println(int2str(s.get_size()))
+s.push(50)
+println(int2str(s.get_size()))
+
+println(int2str(s.top()))
+s.pop()
+println(int2str(s.top()))
+s.pop()
+println(int2str(s.top()))
+s.pop()
+println(int2str(s.top()))
+s.pop()
+println(int2str(s.top()))
+s.pop()
+
+println(int2str(s.get_size()))
+
+getchar()
+
+# test hash_set
+dim hs = new hash_set[string]
+
+println(int2str(s.get_size()))
+hs.insert("1")
+hs.insert("999")
+hs.insert("999")
+hs.insert("999")
+hs.insert("7567")
+hs.insert("7567")
+hs.insert("7567")
+hs.insert("7")
+hs.insert("8")
+hs.insert("9")
+hs.insert("10")
+hs.insert("11")
+hs.insert("12")
+hs.insert("13")
+hs.insert("14")
+
+if hs.has("1") then
+	println("hs has 1: good")
+end
+
+if hs.has("2") then
+	println("hs has 2: bad")
+end
+
+if hs.has("999") then
+	println("hs has 999: good")
+end
+
+hs.remove("999")
+
+if hs.has("999") then
+	println("hs has 999: bad")
+end
+
+hs.clear()
+
+if hs.has("2") then
+	println("hs has 2: bad")
+end
+if hs.has("7567") then
+	println("hs has 7567: bad")
+end
+println(int2str(s.get_size()))
+
+getchar()

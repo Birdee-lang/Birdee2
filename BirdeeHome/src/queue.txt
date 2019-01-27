@@ -1,0 +1,44 @@
+import list:list
+
+class queue[T]
+	private buf as list[T]
+	private size as uint
+
+	public func __init__()
+		size = 0
+		buf = new list[T]
+	end
+
+	public func empty() as boolean
+		return size == 0
+	end
+
+	public func get_size() as uint
+		return size
+	end
+
+	public func push(element as T)
+		size = size + 1
+		buf.insert_back(element)
+	end
+
+	public func pop()
+		if buf.empty() then
+			breakpoint()
+		end
+		size = size - 1
+		buf.remove(buf.head.next)
+	end
+
+	public func front() as T
+		if size == 0 then
+			breakpoint()
+		end
+		return buf.head.next.v
+	end
+
+	public func clear()
+		buf.clear()
+		size = 0
+	end
+end

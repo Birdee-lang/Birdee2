@@ -33,7 +33,7 @@ class hash_map[K,V]
 		buckets_num=100
 		buckets=new list[pair[K,V]] * 100
 		for dim i = 0 till buckets_num
-			buckets[i]= new list[pair[K,V]]:create()
+			buckets[i]= new list[pair[K,V]]
 		end
 	end
 
@@ -56,8 +56,8 @@ class hash_map[K,V]
 
 
 	function get_pair_from_list(k as K, lst as list[pair[K,V]]) as pair[K,V]
-		dim cur=lst.head
-		while cur!==null
+		dim cur=lst.head.next
+		while cur!==lst.tail
 			if cur.v.key == k then
 				return cur.v
 			end
