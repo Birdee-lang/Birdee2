@@ -138,7 +138,7 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 	}
 	catch (py::error_already_set& e)
 	{
-		throw CompileError(ths->Pos.line, ths->Pos.pos, string("\nScript exception:\n") + e.what());
+		throw CompileError(ths->Pos, string("\nScript exception:\n") + e.what());
 	}
 	ths->stmt = std::move(outexpr);
 	outexpr = nullptr;
@@ -262,11 +262,11 @@ BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType*
 	}
 	catch (py::error_already_set& e)
 	{
-		throw CompileError(pos.line, pos.pos, string("\nScript exception:\n") + e.what());
+		throw CompileError(pos, string("\nScript exception:\n") + e.what());
 	}
 	if (!outtype.isResolved())
 	{
-		throw CompileError(pos.line, pos.pos, "The returned type is invalid");
+		throw CompileError(pos, "The returned type is invalid");
 	}
 	*out = outtype;
 	outtype.type = tok_error;
@@ -284,13 +284,13 @@ BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,S
 			auto pfunc = PyDict_GetItemString(g_dict.ptr(), func_name.c_str());
 			auto func = py::cast<py::object>(pfunc);
 			if (!func)
-				throw CompileError(pos.line, pos.pos, string("\nCannot find function for annotation: ") + func_name);
+				throw CompileError(pos, string("\nCannot find function for annotation: ") + func_name);
 			func(GetRef(impl));
 		}
 	}
 	catch (py::error_already_set& e)
 	{
-		throw CompileError(pos.line, pos.pos, string("\nScript exception:\n") + e.what());
+		throw CompileError(pos, string("\nScript exception:\n") + e.what());
 	}
 }
 
@@ -369,8 +369,8 @@ void RegisiterClassForBinding(py::module& m)
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
 	py::class_ < CompileError>(m, "CompileError")
-		.def_readwrite("linenumber", &CompileError::linenumber)
-		.def_readwrite("pos", &CompileError::pos)
+		.def_property_readonly("linenumber", [](CompileError& ths) {return ths.pos.line; })
+		.def_property_readonly("pos", [](CompileError& ths) {return ths.pos.pos; })
 		.def_readwrite("msg", &CompileError::msg);
 	py::class_ < TokenizerError>(m, "TokenizerError")
 		.def_readwrite("linenumber", &TokenizerError::linenumber)

@@ -108,6 +108,8 @@ namespace Birdee {
 		vector<vector<string>> user_imports;
 		vector<unique_ptr<AnnotationStatementAST>> annotations;
 		PyHandle py_scope;
+		string source_dir;
+		string source_file;
 		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};

@@ -702,4 +702,14 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 			Birdee::PopPyScope();
 		}
 	}
+	{
+		auto itr = json.find("SourceFile");
+		if (itr != json.end())
+		{
+			auto& arr = *itr;
+			BirdeeAssert(arr.is_array() && arr.size()==2, "SourceFile field in bmm file should be an array of 2 elements");
+			source_dir = arr[0].get<string>();
+			source_file = arr[1].get<string>();
+		}
+	}
 }

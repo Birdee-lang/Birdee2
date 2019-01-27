@@ -10,19 +10,18 @@ namespace Birdee
 	class CompileError {
 	public:
 		static BD_CORE_API CompileError last_error;
-		int linenumber;
-		int pos;
+		SourcePos pos;
 		std::string msg;
-		CompileError() :linenumber(0), pos(0) {}
-		CompileError(int _linenumber, int _pos, const std::string& _msg) : linenumber(_linenumber), pos(_pos), msg(_msg) {
+		CompileError() :pos(-1,1,1){}
+		CompileError(SourcePos pos, const std::string& _msg) : pos(pos), msg(_msg) {
 			last_error = *this;
 		}
-		CompileError(const std::string& _msg) : linenumber(GetCurrentSourcePos().line), pos(GetCurrentSourcePos().pos), msg(_msg) {
+		CompileError(const std::string& _msg) : pos(GetCurrentSourcePos()), msg(_msg) {
 			last_error = *this;
 		}
 		void print()
 		{
-			printf("Compile Error at line %d, postion %d : %s", linenumber, pos, msg.c_str());
+			printf("Compile Error at %s : %s", pos.ToString().c_str(), msg.c_str());
 			auto ret = GetTemplateStackTrace();
 			if (!ret.empty())
 				printf("\nTemplate stack trace:\n%s", ret.c_str());
@@ -33,7 +32,7 @@ namespace Birdee
 	{
 		SourcePos pos = GetCurrentSourcePos();
 		if (!p)
-			throw CompileError(pos.line, pos.pos, msg);
+			throw CompileError(pos, msg);
 		return std::move(p);
 	}
 }

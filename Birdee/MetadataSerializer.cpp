@@ -464,5 +464,6 @@ BD_CORE_API void SeralizeMetadata(std::ostream& out)
 	outjson["ImportedClasses"] = imported_class;
 	outjson["FunctionTypes"] = exported_functype;
 	outjson["InitScripts"] = BuildInitScript(cu.init_scripts);
+	outjson["SourceFile"] = { cu.directory , cu.filename };
 	out << std::setw(4)<< outjson;
 }

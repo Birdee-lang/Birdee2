@@ -202,6 +202,7 @@ struct GeneratorContext
 
 	//the wrappers for raw functions pointers, useful for conversion from functype to closure
 	unordered_map<std::reference_wrapper<PrototypeAST>, Function*> function_ptr_wrapper_cache;
+
 };
 static GeneratorContext gen_context;
 IRBuilder<> builder(gen_context.context); //a bug? cannot put this into GeneratorContext
@@ -426,9 +427,18 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 			string name;
 			MangleNameAndAppend(name, type.class_ast->GetUniqueName());
 			base = StructType::create(context, name);
-			DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
-				dinfo.cu->getDirectory());
-			dtype = DBuilder->createReplaceableCompositeType(llvm::dwarf::DW_TAG_structure_type, name, dinfo.cu,Unit, type.class_ast->Pos.line);
+
+			DIFile *Unit;
+			if (type.class_ast->isTemplateInstance() && type.class_ast->template_source_class->template_param->mod) //if is templ instance and is imported
+			{
+				auto mod = type.class_ast->template_source_class->template_param->mod;
+				Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
+			}		
+			else
+			{
+				Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
+			}
+			dtype = DBuilder->createReplaceableCompositeType(llvm::dwarf::DW_TAG_structure_type, name, dinfo.cu ,Unit, type.class_ast->Pos.line);
 			type.class_ast->llvm_dtype = dtype;
 		}
 		else
@@ -569,17 +579,15 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 	}
 }
 
-DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* type,SourcePos pos)
+DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* type,SourcePos pos, ImportedModule* mod)
 {
 
 	// Create a subprogram DIE for this function.
-	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
-		dinfo.cu->getDirectory());
-	DIScope *FContext = Unit;
+	DIFile *Unit = mod? DBuilder->createFile(mod->source_file,mod->source_dir) : dinfo.cu->getFile();
 	unsigned LineNo = pos.line;
 	unsigned ScopeLine = LineNo;
 	DISubprogram *SP = DBuilder->createFunction(
-		FContext, TheFunction->getName(), StringRef(), Unit, LineNo,
+		Unit, TheFunction->getName(), StringRef(), Unit, LineNo,
 		type,
 		false /* external linkage */, true /* definition */, ScopeLine,
 		DINode::FlagPrototyped, false);
@@ -704,7 +712,7 @@ void Birdee::CompileUnit::Generate()
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
 	DISubroutineType* functy = DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
-	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(0,1, 1));
+	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(0,1, 1),nullptr);
 	dinfo.LexicalBlocks.push_back(dbginfo);
 
 	helper.cur_llvm_func = F;
@@ -875,8 +883,14 @@ void Birdee::ClassAST::PreGenerate()
 			DBuilder->createPointerType(type_info_ty->llvm_dtype, 64) };
 	}
 
-	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
-		dinfo.cu->getDirectory());
+	DIFile *Unit;
+	if (isTemplateInstance() && template_source_class->template_param->mod) //if is templ instance and is imported
+	{
+		auto mod = template_source_class->template_param->mod;
+		Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
+	}
+	else
+		Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
 	vector<LLVMHelper::TypePair*> ty_nodes;
 	ty_nodes.reserve(fields.size()+ field_offset);
 	if (needs_rtti)
@@ -1156,7 +1170,15 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		return nullptr;
 	}
 
-	auto dbginfo = PrepareFunctionDebugInfo(llvm_func, functy, Pos);
+	
+	
+	ImportedModule* mod = nullptr;
+	if (isTemplateInstance && template_source_func->template_param->mod)
+		mod = template_source_func->template_param->mod;
+	else if (Proto->cls && Proto->cls->isTemplateInstance()
+		&& Proto->cls->template_source_class->template_param->mod)
+		mod = Proto->cls->template_source_class->template_param->mod;
+	DISubprogram* dbginfo = PrepareFunctionDebugInfo(llvm_func, functy, Pos, mod);
 
 	if (!isDeclare)
 	{
@@ -1324,7 +1346,7 @@ llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
 llvm::Value * Birdee::LoopControlAST::Generate()
 {
 	if (!helper.cur_loop.isNotNull())
-		throw CompileError(Pos.line, Pos.pos, "continue or break cannot be used outside of a loop");
+		throw CompileError(Pos, "continue or break cannot be used outside of a loop");
 	if (tok == tok_break)
 		builder.CreateBr(helper.cur_loop.cont);
 	else if (tok == tok_continue)
@@ -2036,7 +2058,7 @@ Value * Birdee::FunctionToClosureAST::Generate()
 				//warpper function specially for the function
 				outfunc = Function::Create(proto->GenerateFunctionType(), GlobalValue::InternalLinkage, target->getName() + "_0_1wrapper", module);
 				outfunc_value = outfunc;
-				auto dbginfo = PrepareFunctionDebugInfo(outfunc, static_cast<DISubroutineType*>(proto->GenerateDebugType()), func->Pos);
+				auto dbginfo = PrepareFunctionDebugInfo(outfunc, static_cast<DISubroutineType*>(proto->GenerateDebugType()), func->Pos, nullptr);
 
 				dinfo.LexicalBlocks.push_back(dbginfo);
 				auto IP = builder.saveIP();
@@ -2077,7 +2099,7 @@ Value * Birdee::FunctionToClosureAST::Generate()
 				auto functype = proto->GenerateFunctionType();
 				outfunc = Function::Create(functype, GlobalValue::InternalLinkage, "func_ptr_wrapper", module);
 				outfunc_value = outfunc;
-				auto dbginfo = PrepareFunctionDebugInfo(outfunc, static_cast<DISubroutineType*>(proto->GenerateDebugType()), func->Pos);
+				auto dbginfo = PrepareFunctionDebugInfo(outfunc, static_cast<DISubroutineType*>(proto->GenerateDebugType()), func->Pos, nullptr);
 
 				dinfo.LexicalBlocks.push_back(dbginfo);
 				auto IP = builder.saveIP();

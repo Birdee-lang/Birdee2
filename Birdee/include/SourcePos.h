@@ -11,12 +11,7 @@ namespace Birdee
 		int source_idx;
 		int line;
 		int pos;
-		std::string ToString()
-		{
-			std::stringstream buf;
-			buf << "File: "<< source_paths[source_idx] <<" Line: " << line << " Pos: " << pos;
-			return buf.str();
-		}
+		BD_CORE_API std::string ToString();
 		SourcePos(int source_idx,int line, int pos) :source_idx(source_idx),line(line), pos(pos) {}
 	};
 }

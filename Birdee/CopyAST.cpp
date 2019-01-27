@@ -264,7 +264,7 @@ namespace Birdee
 	std::unique_ptr<FunctionAST> Birdee::FunctionAST::CopyNoTemplate()
 	{
 		if (isDeclare)
-			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declared function");
+			throw CompileError(Pos, "Cannot copy a declared function");
 		string vararg_n =  vararg_name;
 		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, is_vararg,std::move(vararg_n), Pos);
 		ret->isTemplateInstance = isTemplateInstance;

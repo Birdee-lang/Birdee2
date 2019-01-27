@@ -46,7 +46,7 @@ namespace Birdee
 
 		TemplateArgumentNumberError(SourcePos pos, const std::string& _msg,
 			FunctionAST* src_template, unique_ptr<vector<TemplateArgument>>&& args) :
-			src_template(src_template), args(std::move(args)), CompileError(pos.line,pos.pos,_msg)
+			src_template(src_template), args(std::move(args)), CompileError(pos,_msg)
 		{}
 	};
 }
@@ -599,7 +599,7 @@ public:
 	{
 		unique_ptr<ResolvedIdentifierExprAST> ret = ResolveNameNoThrow(name, pos, out_import);
 		if(!ret && !out_import)
-			throw CompileError(pos.line, pos.pos, "Cannot resolve name: " + name);
+			throw CompileError(pos, "Cannot resolve name: " + name);
 		return ret;
 	}
 	BasicBlock& GetCurrentBasicBlock()
@@ -674,7 +674,7 @@ const T& GetItemByName(const unordered_map<T2, T>& M,
 {
 	auto itr = M.find(name);
 	if (itr == M.end())
-		throw CompileError(pos.line, pos.pos, "Cannot find the name: " + name);
+		throw CompileError(pos, "Cannot find the name: " + name);
 	return itr->second;
 }
 
@@ -693,7 +693,7 @@ do\
 {\
 	if (!(a))\
 	{\
-		throw CompileError(p.line, p.pos, msg);\
+		throw CompileError(p, msg);\
 	}\
 }while(0)\
 
@@ -743,7 +743,7 @@ void ThrowCastError(ResolvedType& target, ResolvedType& fromtype, SourcePos pos)
 	msg += fromtype.GetString();
 	msg += " to type ";
 	msg += target.GetString();
-	throw CompileError(pos.line, pos.pos, msg);
+	throw CompileError(pos, msg);
 }
 
 template <Token typeto>
@@ -911,7 +911,7 @@ namespace Birdee
 				}
 				else if (isa<AnnotationStatementAST>(ex->expr.get()))
 				{
-					throw CompileError(ex->expr->Pos.line, ex->expr->Pos.pos, "The template argument cannot be annotated");
+					throw CompileError(ex->expr->Pos, "The template argument cannot be annotated");
 				}
 				else
 					assert(0 && "Not implemented");
@@ -935,7 +935,7 @@ namespace Birdee
 				}
 				else if (isa<AnnotationStatementAST>(ex->Expr.get()))
 				{
-					throw CompileError(ex->Expr->Pos.line, ex->Expr->Pos.pos, "The template argument cannot be annotated");
+					throw CompileError(ex->Expr->Pos, "The template argument cannot be annotated");
 				}
 				else
 					assert(0 && "Not implemented");
@@ -948,7 +948,7 @@ namespace Birdee
 				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
 			},
 				[&template_arg]() {
-				throw CompileError(template_arg->Pos.line, template_arg->Pos.pos,  "Invalid template argument expression type");
+				throw CompileError(template_arg->Pos,  "Invalid template argument expression type");
 			}
 			);
 		}
@@ -1222,7 +1222,7 @@ namespace Birdee
 			auto node = cu.imported_packages.Contains(ty->name);
 			if (!node || (node && !node->mod))
 			{
-				throw CompileError(pos.line,pos.pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
+				throw CompileError(pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
 			}
 			auto& functypemap2 = node->mod->functypemap;
 			auto fitr2 = functypemap2.find(clsname);
@@ -1235,7 +1235,7 @@ namespace Birdee
 			{
 				auto itr = node->mod->classmap.find(clsname);
 				if (itr == node->mod->classmap.end())
-					throw CompileError(pos.line, pos.pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
+					throw CompileError(pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
 				this->type = tok_class;
 				this->class_ast = itr->second.get();
 			}
@@ -1509,7 +1509,7 @@ namespace Birdee
 				return true;
 			if (n2)
 				return n1->Val < n2->Val;
-			throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
+			throw CompileError(expr->Pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
 		else if(s1)
 		{
@@ -1517,9 +1517,9 @@ namespace Birdee
 				return s1->Val < s2->Val;
 			if (n2)
 				return false; 
-			throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
+			throw CompileError(expr->Pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		}
-		throw CompileError(expr->Pos.line, expr->Pos.pos, "The expression is neither NumberExprAST nor StringLiteralAST");
+		throw CompileError(expr->Pos, "The expression is neither NumberExprAST nor StringLiteralAST");
 		return false;
 	}
 
@@ -1957,13 +1957,13 @@ If usage vararg name is "", match the closest vararg
 		Phase0();
 		if (resolved_type.type == tok_auto)
 		{
-			throw CompileError(Pos.line, Pos.pos, "Member field of class must be defined with a type");
+			throw CompileError(Pos, "Member field of class must be defined with a type");
 		}
 		else
 		{
 			if (val.get())
 			{
-				throw CompileError(Pos.line, Pos.pos, "Member field of class cannot have initializer");
+				throw CompileError(Pos, "Member field of class cannot have initializer");
 				//val->Phase1();
 				//val = FixTypeForAssignment(resolved_type, std::move(val), Pos);
 			}
@@ -2121,7 +2121,7 @@ If usage vararg name is "", match the closest vararg
 						resolved_type.type = tok_func; //set resolved_type to avoid entering this function multiple times
 					return;
 				}
-				throw CompileError(Pos.line,Pos.pos,"Cannot resolve name "+ member);
+				throw CompileError(Pos,"Cannot resolve name "+ member);
 			}
 			else
 			{
@@ -2129,7 +2129,7 @@ If usage vararg name is "", match the closest vararg
 				resolved_type.type = tok_package;
 				resolved_type.import_node = node->FindName(member);
 				if(!resolved_type.import_node)
-					throw CompileError(Pos.line, Pos.pos, "Cannot resolve name " + member);
+					throw CompileError(Pos, "Cannot resolve name " + member);
 				Obj = nullptr;
 				return;
 			}
@@ -2149,11 +2149,11 @@ If usage vararg name is "", match the closest vararg
 				kind = member_function;
 				this->func = &(array_cls->funcs[func->second]);
 				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(array_cls)) // if is private and we are not in the class
-					throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
+					throw CompileError(Pos, "Accessing a private member outside of a class");
 				resolved_type = this->func->decl->resolved_type;
 				return;
 			}
-			throw CompileError(Pos.line, Pos.pos, "Cannot find member " + member);
+			throw CompileError(Pos, "Cannot find member " + member);
 			return;
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
@@ -2162,7 +2162,7 @@ If usage vararg name is "", match the closest vararg
 		if (field != cls->fieldmap.end())
 		{
 			if (cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
-				throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
+				throw CompileError(Pos, "Accessing a private member outside of a class");
 			kind = member_field;
 			this->field = &(cls->fields[field->second]);
 			resolved_type = this->field->decl->resolved_type;
@@ -2174,11 +2174,11 @@ If usage vararg name is "", match the closest vararg
 			kind = member_function;
 			this->func = &(cls->funcs[func->second]);
 			if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
-				throw CompileError(Pos.line, Pos.pos, "Accessing a private member outside of a class");
+				throw CompileError(Pos, "Accessing a private member outside of a class");
 			resolved_type = this->func->decl->resolved_type;
 			return;
 		}
-		throw CompileError(Pos.line, Pos.pos, "Cannot find member "+member);
+		throw CompileError(Pos, "Cannot find member "+member);
 	}
 	string TemplateArgument::GetString() const
 	{
@@ -2415,7 +2415,7 @@ If usage vararg name is "", match the closest vararg
 				else if (MemberExprAST* memexpr = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
 					CompileAssert(memexpr->isMutable(), Pos, "Cannot assign to an immutable value");
 				else
-					throw CompileError(Pos.line, Pos.pos, "The left vaule of the assignment is not an variable");
+					throw CompileError(Pos, "The left vaule of the assignment is not an variable");
 			}
 			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
