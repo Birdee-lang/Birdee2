@@ -20,10 +20,11 @@ class hash_set[T]
 		dim h = hash[T](t)
 		dim lst = buckets[h % buckets_num]
 		dim cur = lst.head.next
-		while cur !== lst.tail
+		while cur !== lst.head
 			if cur.v == t then
 				return cur
 			end
+			cur = cur.next
 		end
 
 		return null
@@ -38,7 +39,7 @@ class hash_set[T]
 	end
 
 	public function insert(t as T)
-		if has(t) != true then
+		if find(t) === null then
 			dim h = hash[T](t)
 			dim lst = buckets[h % buckets_num]
 			size = size + 1

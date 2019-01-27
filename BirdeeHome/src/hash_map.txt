@@ -57,7 +57,7 @@ class hash_map[K,V]
 
 	function get_pair_from_list(k as K, lst as list[pair[K,V]]) as pair[K,V]
 		dim cur=lst.head.next
-		while cur!==lst.tail
+		while cur!==lst.head
 			if cur.v.key == k then
 				return cur.v
 			end
