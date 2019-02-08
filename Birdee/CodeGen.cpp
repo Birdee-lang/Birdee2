@@ -221,6 +221,19 @@ DIBuilder* GetDBuilder()
 #define dinfo  (gen_context.dinfo)
 
 
+namespace Birdee
+{
+	llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty)
+	{
+		return helper.GetType(ty);
+	}
+
+	int GetLLVMTypeSizeInBit(llvm::Type* ty)
+	{
+		return module->getDataLayout().getTypeAllocSizeInBits(ty);
+	}
+}
+
 static ClassAST* GetTypeInfoType()
 {
 	if (gen_context.cls_typeinfo)
@@ -968,6 +981,14 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	}
 	if (llvm_func)
 		return helper.typemap[resolved_type].dty;
+	if (intrinsic_function) //if it is an intrinsic function, generate a null ptr
+	{
+		llvm_func = Constant::getNullValue(Proto->GenerateFunctionType()->getPointerTo());
+		DIType* ret = Proto->GenerateDebugType();
+		helper.typemap[resolved_type].dty = ret;
+		helper.typemap[resolved_type].llvm_ty = llvm_func->getType();
+		return ret;
+	}
 	string prefix;
 	if (Proto->cls)
 	{
@@ -1004,17 +1025,17 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	else
 		linkage = Function::ExternalLinkage;
 	MangleNameAndAppend(prefix, Proto->GetName());
-	llvm_func = Function::Create(Proto->GenerateFunctionType(), linkage, prefix, module);
+	auto myfunc = Function::Create(Proto->GenerateFunctionType(), linkage, prefix, module);
+	llvm_func = myfunc;
 	if (strHasEnding(cu.targetpath,".obj") && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
 	{
-		llvm_func->setComdat(module->getOrInsertComdat(llvm_func->getName()));
-		llvm_func->setDSOLocal(true);
+		myfunc->setComdat(module->getOrInsertComdat(llvm_func->getName()));
+		myfunc->setDSOLocal(true);
 	}
 	DIType* ret = Proto->GenerateDebugType();
 	helper.typemap[resolved_type].dty = ret;
 	return ret;
 }
-
 
 llvm::Function* GetMallocObj()
 {
@@ -1170,7 +1191,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		return nullptr;
 	}
 
-	
+	if (intrinsic_function)
+	{
+		return nullptr;
+	}
 	
 	ImportedModule* mod = nullptr;
 	if (isTemplateInstance && template_source_func->template_param->mod)
@@ -1178,23 +1202,26 @@ llvm::Value * Birdee::FunctionAST::Generate()
 	else if (Proto->cls && Proto->cls->isTemplateInstance()
 		&& Proto->cls->template_source_class->template_param->mod)
 		mod = Proto->cls->template_source_class->template_param->mod;
-	DISubprogram* dbginfo = PrepareFunctionDebugInfo(llvm_func, functy, Pos, mod);
+
+	assert(llvm::isa<llvm::Function>(*llvm_func));
+	Function* myfunc = static_cast<Function*>(llvm_func);
+	DISubprogram* dbginfo = PrepareFunctionDebugInfo(myfunc, functy, Pos, mod);
 
 	if (!isDeclare)
 	{
-		assert(llvm_func->getBasicBlockList().empty());
+		assert(myfunc->getBasicBlockList().empty());
 		auto curfunc_backup = gen_context.cur_func;
 		auto landingpad_backup = gen_context.landingpad;
 		gen_context.cur_func = this;
 		dinfo.LexicalBlocks.push_back(dbginfo);
 		auto IP = builder.saveIP();
 		auto func_backup = helper.cur_llvm_func;
-		helper.cur_llvm_func = llvm_func;
-		BasicBlock *BB = BasicBlock::Create(context, "entry", llvm_func);
+		helper.cur_llvm_func = myfunc;
+		BasicBlock *BB = BasicBlock::Create(context, "entry", myfunc);
 		builder.SetInsertPoint(BB);
 
 		dinfo.emitLocation(this);
-		auto itr = llvm_func->args().begin();
+		auto itr = myfunc->args().begin();
 		int param_offset = 0;
 		if (Proto->cls)
 		{
@@ -1269,7 +1296,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				if(Proto->is_closure)
 					builder.CreateStore(captured_parent_this, target);
 				else
-					builder.CreateStore(llvm_func->args().begin(), target);
+					builder.CreateStore(myfunc->args().begin(), target);
 			}
 			for (auto v : captured_var)
 			{
@@ -1284,7 +1311,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			//the exported variables will be generated in variable definition statements
 		}
 		
-		for (int i = 0;itr != llvm_func->args().end(); itr++,i++)
+		for (int i = 0;itr != myfunc->args().end(); itr++,i++)
 		{
 			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1 + param_offset);
 		}
@@ -1296,7 +1323,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			if (resolved_type.proto_ast->resolved_type.type == tok_void)
 				builder.CreateRetVoid();
 			else
-				builder.CreateRet(Constant::getNullValue(llvm_func->getReturnType()));
+				builder.CreateRet(Constant::getNullValue(myfunc->getReturnType()));
 		}
 		dinfo.LexicalBlocks.pop_back();
 		builder.restoreIP(IP);
@@ -1313,7 +1340,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 	}
 	if (Proto->is_closure)
 	{
-		llvm_func->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
+		myfunc->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
 		dinfo.emitLocation(this);
 		auto type = helper.GetType(resolved_type);
 		assert(llvm::isa<StructType>(*type));
@@ -1516,6 +1543,11 @@ llvm::Value * Birdee::IndexExprAST::Generate()
 llvm::Value * Birdee::CallExprAST::Generate()
 {
 	dinfo.emitLocation(this);
+	if (func_callee && func_callee->intrinsic_function) // if we can find the FunctionAST* from callee & it's an intrinsic function
+	{
+		Value* obj = GetObjOfMemberFunc(Callee.get());
+		return func_callee->intrinsic_function->Generate(func_callee, obj, Args);
+	}
 	auto func=Callee->Generate();
 	assert(Callee->resolved_type.type == tok_func);
 	auto proto = Callee->resolved_type.proto_ast;
@@ -2238,3 +2270,5 @@ llvm::Value* Birdee::ThrowAST::Generate()
 	builder.CreateUnreachable();
 	return nullptr;
 }
+
+

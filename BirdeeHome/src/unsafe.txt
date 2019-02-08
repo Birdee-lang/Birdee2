@@ -1,0 +1,11 @@
+function ptr_cast[T1,T2](a as T2) as T1
+end
+
+function ptr_load[T1](a as pointer) as T1
+end
+
+function ptr_store[T1](a as pointer, v as T1)
+end
+
+function bit_cast[T1,T2](a as T2) as T1
+end

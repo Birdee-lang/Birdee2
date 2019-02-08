@@ -155,6 +155,7 @@
     <ClCompile Include="..\Birdee\BirdeeShared.cpp" />
     <ClCompile Include="..\Birdee\CodeGen.cpp" />
     <ClCompile Include="..\Birdee\CopyAST.cpp" />
+    <ClCompile Include="..\Birdee\Intrinsics.cpp" />
     <ClCompile Include="..\Birdee\MetadataDeserializer.cpp" />
     <ClCompile Include="..\Birdee\MetadataSerializer.cpp" />
     <ClCompile Include="..\Birdee\NumberCast.cpp" />

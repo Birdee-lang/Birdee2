@@ -10,7 +10,7 @@
 using std::unordered_map;
 using std::string;
 using std::reference_wrapper;
-
+using std::unordered_set;
 
 using namespace Birdee;
 
@@ -1283,6 +1283,16 @@ namespace Birdee
 		}
 		//scope_mgr.PopBasicBlock();
 	}
+
+	bool ResolvedType::isReference() const
+	{
+		if (index_level > 0 || type == tok_null)
+			return true;
+		if (type == tok_class)
+			return !class_ast->is_struct;
+		return false;
+	}
+
 	string ResolvedType::GetString() const
 	{
 		if (type == tok_null)
@@ -1927,10 +1937,24 @@ If usage vararg name is "", match the closest vararg
 		scope_mgr.GetCurrentBasicBlock()[name] = this;
 	}
 
+	extern IntrisicFunction* FindIntrinsic(FunctionAST* func);
+
 	void FunctionAST::Phase1()
 	{
 		if (isTemplate())
 			return;
+		//check if the function is intrinsic
+		if (!Proto->cls)
+		{
+			intrinsic_function = FindIntrinsic(this);
+			if (intrinsic_function)
+			{
+				Phase0();
+				intrinsic_function->Phase1(this);
+				return;
+			}
+		}
+
 		if (scope_mgr.function_scopes.size() > 0)
 			parent = scope_mgr.function_scopes.back().func;
 		scope_mgr.function_scopes.emplace_back(ScopeManager::FunctionScope(this));
@@ -2197,10 +2221,13 @@ If usage vararg name is "", match the closest vararg
 			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
 			{
 				indexexpr->Phase1(true);
+				if (isa<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
+					func = static_cast<FunctionTemplateInstanceExprAST*>(indexexpr->instance.get())->instance;				
 			}
 			else if(auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
 			{
 				templexpr->Phase1(true);
+				func = templexpr->instance;
 			}
 			else
 			{
@@ -2296,8 +2323,10 @@ If usage vararg name is "", match the closest vararg
 				Callee = make_unique<ResolvedFuncExprAST>(instance, Callee->Pos);
 				Callee->Phase1();
 			}
+			func = instance;
 			// do phase1 again
 		}
+		func_callee = func;
 		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
 		// TODO: do not arg->Phase1 again
 		auto proto = Callee->resolved_type.proto_ast;

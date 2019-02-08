@@ -1339,6 +1339,11 @@ vector<string> ParsePackageName()
 	return ret;;
 }
 
+namespace Birdee
+{
+	extern bool IsIntrinsicModule(const string& name);
+}
+
 void ParsePackage()
 {
 	if (tokenizer.CurTok == tok_package)
@@ -1363,6 +1368,7 @@ void ParsePackage()
 	{
 		cu.symbol_prefix += cu.filename.substr(0, found);
 	}
+	cu.is_intrinsic = IsIntrinsicModule(cu.symbol_prefix);
 	cu.symbol_prefix += '.';
 
 }

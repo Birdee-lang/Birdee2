@@ -173,7 +173,9 @@ namespace Birdee
 		{
 			args.push_back(ToExpr(arg->Copy()));
 		}
-		return SetPos(make_unique<CallExprAST>(ToExpr(Callee->Copy()), std::move(args)),Pos);
+		auto ret = make_unique<CallExprAST>(ToExpr(Callee->Copy()), std::move(args));
+		ret->func_callee = func_callee;
+		return SetPos(std::move(ret),Pos);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::VariableSingleDefAST::Copy()
