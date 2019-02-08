@@ -14,6 +14,7 @@ extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel();
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
+BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
 extern unique_ptr<StatementAST> ParseStatement();
 
@@ -297,6 +298,8 @@ BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,S
 BD_CORE_API bool ParseClassBody(ClassAST* cls);
 BD_CORE_API void PushClass(ClassAST* cls);
 BD_CORE_API void PopClass();
+BD_CORE_API int GetTypeSize(ResolvedType ty);
+
 static void CompileClassBody(ClassAST* cls, const char* src)
 {
 	PushClass(cls);
@@ -366,8 +369,21 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("set_print_ir", [](bool printir) {cu.is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
+	m.def("get_os_name", []()->std::string {
+#ifdef _WIN32
+		return "windows";
+#elif defined(__linux__)
+		return "linux";
+#else
+		#error "unknown target name"
+#endif
+	});
+	m.def("get_target_bits", []()->int {
+		return 64;
+	});
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
+	m.def("size_of", GetTypeSize);
 	py::class_ < CompileError>(m, "CompileError")
 		.def_property_readonly("linenumber", [](CompileError& ths) {return ths.pos.line; })
 		.def_property_readonly("pos", [](CompileError& ths) {return ths.pos.pos; })
@@ -396,6 +412,7 @@ void RegisiterClassForBinding(py::module& m)
 	m.def("set_ast", [](UniquePtrStatementAST& ptr) {outexpr = ptr.move(); });
 	m.def("set_type", [](ResolvedType& ty) {outtype = ty; });
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
+	m.def("get_cur_class", GetCurrentPreprocessedClass);
 	m.def("get_func", [](const std::string& name) {
 		auto itr = cu.funcmap.find(name);
 		if (itr == cu.funcmap.end())

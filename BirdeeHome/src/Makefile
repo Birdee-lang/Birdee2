@@ -6,7 +6,7 @@ BLIB_DIR=$(PARENT_DIR)/blib
 BIN=$(PARENT_DIR)/bin
 LIB=$(PARENT_DIR)/lib
 
-all: ${BLIB_DIR}/birdee.o ${BLIB_DIR}/list.o ${BLIB_DIR}/hash_map.o ${BLIB_DIR}/hash_set.o ${LIB} ${BLIB_DIR}/tuple.o ${BLIB_DIR}/fmt.o ${BLIB_DIR}/vector.o ${BLIB_DIR}/queue.o ${BLIB_DIR}/stack.o ${BLIB_DIR}/unsafe.o
+all: ${BLIB_DIR}/birdee.o ${BLIB_DIR}/variant.o ${BLIB_DIR}/list.o ${BLIB_DIR}/hash_map.o ${BLIB_DIR}/hash_set.o ${LIB} ${BLIB_DIR}/tuple.o ${BLIB_DIR}/fmt.o ${BLIB_DIR}/vector.o ${BLIB_DIR}/queue.o ${BLIB_DIR}/stack.o ${BLIB_DIR}/unsafe.o
 
 print-%  : ; @echo $* = $($*)
 
@@ -50,6 +50,9 @@ ${BLIB_DIR}/stack.o: stack.txt ${BLIB_DIR}/birdee.o
 
 ${BLIB_DIR}/unsafe.o: unsafe.txt ${BLIB_DIR}/birdee.o
 	$(BIN)/birdeec -i unsafe.txt -o $(BLIB_DIR)/unsafe.o
+
+${BLIB_DIR}/variant.o: variant.txt ${BLIB_DIR}/birdee.o
+	$(BIN)/birdeec -i variant.txt -o $(BLIB_DIR)/variant.o
 
 clean:
 	rm -rf ${BLIB_DIR}

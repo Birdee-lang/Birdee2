@@ -234,6 +234,15 @@ namespace Birdee
 	}
 }
 
+BD_CORE_API int GetTypeSize(ResolvedType ty)
+{
+	if (ty.type == tok_class && ty.class_ast->is_struct)
+	{
+		throw CompileError("Cannot get size of a struct");
+	}
+	return GetLLVMTypeSizeInBit(GetLLVMTypeFromResolvedType(ty)) / 8;
+}
+
 static ClassAST* GetTypeInfoType()
 {
 	if (gen_context.cls_typeinfo)
@@ -291,11 +300,20 @@ Value* GetObjOfMemberFunc(ExprAST* Callee)
 		}
 		else if (auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee))
 		{
-			assert(isa<FunctionTemplateInstanceExprAST>(pidx->instance.get()));
-			auto ptr = static_cast<FunctionTemplateInstanceExprAST*> (pidx->instance.get());
-			pobj = dyncast_resolve_anno<MemberExprAST>(ptr->expr.get());
-			assert(pobj);
-			obj = pobj->llvm_obj;
+			if (isa<FunctionTemplateInstanceExprAST>(pidx->instance.get()))
+			{
+				auto ptr = static_cast<FunctionTemplateInstanceExprAST*> (pidx->instance.get());
+				pobj = dyncast_resolve_anno<MemberExprAST>(ptr->expr.get());
+				assert(pobj);
+				obj = pobj->llvm_obj;
+			}
+			else
+			{
+				assert(isa<MemberExprAST>(pidx->instance.get()));
+				auto ptr = static_cast<MemberExprAST*> (pidx->instance.get());
+				obj = ptr->llvm_obj;
+			}
+
 		}
 		else 
 		{
@@ -1516,8 +1534,9 @@ llvm::Value * Birdee::NullExprAST::Generate()
 
 llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 {
+	unique_ptr<ExprAST>*dummy;
 	if (checkHas)//if expr is moved, it is either a template instance or a overloaded call to __getitem__
-		return (Expr==nullptr || isTemplateInstance()) ? nullptr: (llvm::Value *)1 ;
+		return (Expr==nullptr || isTemplateInstance(dummy)) ? nullptr: (llvm::Value *)1 ;
 	assert(Expr);
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();

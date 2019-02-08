@@ -585,6 +585,7 @@ public:
 		if (ret2)
 			return make_unique<ResolvedFuncExprAST>(ret2, pos);
 		
+
 		auto package = cu.imported_packages.FindName(name);
 		if (package)
 		{
@@ -634,6 +635,13 @@ static PreprocessingState preprocessing_state;
 BD_CORE_API std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction()
 {
 	return std::reference_wrapper<FunctionAST>(*cur_func);
+}
+
+BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass()
+{
+	if (scope_mgr.class_stack.empty())
+		return std::reference_wrapper<ClassAST>(*(ClassAST*)nullptr);
+	return std::reference_wrapper<ClassAST>(*scope_mgr.class_stack.back());
 }
 
 BD_CORE_API void PushClass(ClassAST* cls)
@@ -709,7 +717,8 @@ Derived* dyncast_resolve_anno(StatementAST* p)
 	return nullptr;
 }
 
-static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
+//will set need_preserve_member if this expression is an identifier with implied this
+static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos, unique_ptr<ExprAST>* & need_preserve_member)
 {
 	FunctionAST* func = nullptr;
 	IdentifierExprAST*  iden = dyncast_resolve_anno<IdentifierExprAST>(expr);
@@ -718,6 +727,11 @@ static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos)
 		auto resolvedfunc = dyncast_resolve_anno<ResolvedFuncExprAST>(iden->impl.get());
 		if(resolvedfunc)
 			func = resolvedfunc->def;
+		else if (auto resolvedfunc = dyncast_resolve_anno<MemberExprAST>(iden->impl.get()))
+		{
+			func = GetFunctionFromExpression(resolvedfunc, Pos, need_preserve_member);
+			need_preserve_member = &resolvedfunc->Obj;
+		}
 	}
 	else
 	{
@@ -1533,7 +1547,32 @@ namespace Birdee
 		return false;
 	}
 
-
+	void ClassAST::Phase0()
+	{
+		scope_mgr.class_stack.push_back(this);
+		if (isTemplate())
+			return;
+		if (isTemplateInstance())
+		{//if is template instance, set member template func's mod
+			if (template_source_class->template_param->mod)
+			{
+				for (auto& funcdef : funcs)
+				{
+					if(funcdef.decl->template_param)
+						funcdef.decl->template_param->mod = template_source_class->template_param->mod;
+				}
+			}
+		}
+		for (auto& funcdef : funcs)
+		{
+			funcdef.decl->Phase0();
+		}
+		for (auto& fielddef : fields)
+		{
+			fielddef.decl->Phase0();
+		}
+		scope_mgr.class_stack.pop_back();
+	}
 
 	vector<string> Birdee::MemberExprAST::ToStringArray()
 	{
@@ -1632,7 +1671,8 @@ If usage vararg name is "", match the closest vararg
 	{
 		FunctionAST* func = nullptr;
 		expr->Phase1();
-		func = GetFunctionFromExpression(expr.get(),Pos);
+		unique_ptr<ExprAST>* dummy;
+		func = GetFunctionFromExpression(expr.get(),Pos, dummy);
 		CompileAssert(func, Pos, "Expected a function name or a member function for template");
 		CompileAssert(func->isTemplate(), Pos, "The function is not a template");
 		auto template_args = make_unique<vector<TemplateArgument>>();
@@ -1788,11 +1828,11 @@ If usage vararg name is "", match the closest vararg
 		return 	Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class;
 	}
 
-	bool IndexExprAST::isTemplateInstance()
+	bool IndexExprAST::isTemplateInstance(unique_ptr<ExprAST>*& member)
 	{
 		if (!Expr)//if the expr is moved, check if "instance"  is callexpr. If so, it is an overloaded call to __getitem__
 			return !(isa<CallExprAST>(instance.get()));
-		auto func = GetFunctionFromExpression(Expr.get(), Pos);
+		auto func = GetFunctionFromExpression(Expr.get(), Pos, member);
 		if (func && func->isTemplate())
 		{
 			return true;
@@ -1807,14 +1847,29 @@ If usage vararg name is "", match the closest vararg
 	{
 		if(!Expr->resolved_type.isResolved())
 			Expr->Phase1();
-		if(isTemplateInstance())
+		unique_ptr<ExprAST>* member=nullptr;
+		if(isTemplateInstance(member))
 		{
+			unique_ptr<ExprAST> ths_ptr;
+			if (member) //if the expression is an identifier with implied "this", build a memberexpr
+			{
+				ths_ptr = std::move(*member);
+			}
 			vector<unique_ptr<ExprAST>> arg;
 			arg.push_back(std::move(Index));
 			auto inst = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
 			Expr = nullptr;
 			inst->Phase1(is_in_call);
-			instance = std::move(inst);
+			if (member) //if the expression is an identifier with implied "this", build a memberexpr
+			{
+				auto minst = make_unique<MemberExprAST>(std::move(ths_ptr), "");
+				minst->kind = MemberExprAST::member_imported_function;
+				minst->import_func = inst->instance;
+				minst->resolved_type = inst->instance->resolved_type;
+				instance = std::move(minst);
+			}
+			else
+				instance = std::move(inst);
 			resolved_type = instance->resolved_type;
 			return;
 		}
@@ -2215,6 +2270,7 @@ If usage vararg name is "", match the closest vararg
 	void CallExprAST::Phase1()
 	{
 		FunctionAST* func = nullptr;
+		unique_ptr<ExprAST>* preserved_member_obj = nullptr;
 		unordered_map<string, TemplateArgument> name2type;
 		try
 		{
@@ -2232,7 +2288,7 @@ If usage vararg name is "", match the closest vararg
 			else
 			{
 				Callee->Phase1();
-				func = GetFunctionFromExpression(Callee.get(), Pos);
+				func = GetFunctionFromExpression(Callee.get(), Pos, preserved_member_obj);
 			}
 		}
 		catch (TemplateArgumentNumberError& e)
@@ -2317,6 +2373,14 @@ If usage vararg name is "", match the closest vararg
 				memb->kind = MemberExprAST::member_imported_function;
 				memb->import_func = instance;
 				memb->resolved_type = instance->resolved_type;
+			}
+			else if (preserved_member_obj)
+			{
+				auto minst = make_unique<MemberExprAST>(std::move(*preserved_member_obj), "");
+				minst->kind = MemberExprAST::member_imported_function;
+				minst->import_func = instance;
+				minst->resolved_type = instance->resolved_type;
+				Callee = std::move(minst);
 			}
 			else
 			{

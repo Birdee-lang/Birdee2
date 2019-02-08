@@ -40,6 +40,23 @@ def assert_generate_fail(istr):
 
 set_print_ir(False)
 
+print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
+
+assert_ok('''
+import variant:variant
+dim v as variant[byte,int,long,string]
+v.set(1)
+v.set(2L)
+v.set("1234")
+println(v.get[string]())
+''')
+
+assert_ok('''
+{@assert(size_of(resolve_type("string"))==get_target_bits()/8)@}
+{@assert(size_of(resolve_type("long"))==8)@}
+''')
+
+
 assert_generate_ok('''
 import unsafe:*
 dim a as pointer

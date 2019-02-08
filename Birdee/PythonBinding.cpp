@@ -269,7 +269,10 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](IndexExprAST& ths, UniquePtrStatementAST& v) {ths.Index = v.move_expr(); })
 		.def_property("template_inst", [](IndexExprAST& ths) {return GetRef(ths.instance); },
 			[](IndexExprAST& ths, UniquePtrStatementAST& v) {ths.instance = move_cast_or_throw< FunctionTemplateInstanceExprAST>(v.ptr); })
-		.def("is_template_instance",&IndexExprAST::isTemplateInstance)
+		.def("is_template_instance", [](IndexExprAST& ths) {
+			unique_ptr<ExprAST>* dumy;
+			return ths.isTemplateInstance(dumy);
+		})
 		.def("run", [](IndexExprAST& ths, py::object& func) {
 			if (ths.Expr)
 				func(GetRef(ths.Expr));

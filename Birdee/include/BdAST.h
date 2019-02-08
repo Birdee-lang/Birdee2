@@ -665,7 +665,8 @@ namespace Birdee {
 		//resolve expr, and check if expr is a class object
 		bool isOverloaded();
 		std::unique_ptr<StatementAST> Copy();
-		bool isTemplateInstance();
+		//if expr is identifier with implied this, will set "member" parameter
+		bool isTemplateInstance(unique_ptr<ExprAST>*& member);
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
@@ -1224,19 +1225,7 @@ namespace Birdee {
 		void PreGenerateFuncs();
 
 		//run phase0 in all members
-		void Phase0()
-		{
-			if (isTemplate())
-				return;
-			for (auto& funcdef : funcs)
-			{
-				funcdef.decl->Phase0();
-			}
-			for (auto& fielddef : fields)
-			{
-				fielddef.decl->Phase0();
-			}
-		}
+		void Phase0();
 		void Phase1();
 
 		void print(int level)

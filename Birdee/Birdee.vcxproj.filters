@@ -148,6 +148,9 @@
     <Text Include="..\BirdeeHome\src\unsafe.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\src\variant.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">

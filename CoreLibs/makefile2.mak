@@ -1,4 +1,4 @@
-all: birdee list hash_map hash_set vector queue stack tuple fmt unsafe
+all: birdee list hash_map hash_set vector queue stack tuple fmt unsafe variant
 BLIB_DIR=$(BIRDEE_HOME)\blib
 
 $(BLIB_DIR):
@@ -32,6 +32,9 @@ fmt: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\fmt.txt
 
 unsafe: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\unsafe.txt
 	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\unsafe.txt -o $(BIRDEE_HOME)\blib\unsafe.obj
+
+variant: $(BLIB_DIR) birdee $(BIRDEE_HOME)\src\variant.txt
+	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\variant.txt -o $(BIRDEE_HOME)\blib\variant.obj
 
 clean:
 	del $(BLIB_DIR)\*.obj

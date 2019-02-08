@@ -194,6 +194,7 @@
   <ItemGroup>
     <Text Include="..\BirdeeHome\src\functional.txt" />
     <Text Include="..\BirdeeHome\src\unsafe.txt" />
+    <Text Include="..\BirdeeHome\src\variant.txt" />
     <Text Include="..\BirdeeHome\src\vector.txt" />
     <Text Include="..\BirdeeHome\src\birdee.txt" />
     <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt" />
