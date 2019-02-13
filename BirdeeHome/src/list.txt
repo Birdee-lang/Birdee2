@@ -1,6 +1,6 @@
 class list[T]
 	public head as list_node[T]
-	public tail as list_node[T]
+	# public tail as list_node[T]
 	public size as uint
 
 	public function insert_front(v as T)
@@ -16,10 +16,10 @@ class list[T]
 	public function insert_back(v as T)
 		dim node = new list_node[T]
 		node.v = v
-		node.next = tail
-		node.prev = tail.prev
-		tail.prev.next = node
-		tail.prev = node
+		node.next = head
+		node.prev = head.prev
+		head.prev.next = node
+		head.prev = node
 		size = size + 1
 	end
 
@@ -35,16 +35,16 @@ class list[T]
 
 	public function __init__()
 		head = new list_node[T]
-		tail = new list_node[T]
-		head.next = tail
-		head.prev = tail
-		tail.next = head
-		tail.prev = head
+		# tail = new list_node[T]
+		head.next = head
+		head.prev = head
+		# tail.next = head
+		# tail.prev = head
 		size = 0
 	end
 
 	public function remove(node as list_node[T])
-		if node !== head && node !== tail then
+		if node !== head then
 			node.prev.next = node.next
 			node.next.prev = node.prev
 			size = size - 1
@@ -52,10 +52,10 @@ class list[T]
 	end
 
 	public function clear()
-		head.next = tail
-		head.prev = tail
-		tail.next = head
-		tail.prev = head
+		head.next = head
+		head.prev = head
+		# tail.next = head
+		# tail.prev = head
 		size = 0
 	end
 

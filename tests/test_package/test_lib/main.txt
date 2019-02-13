@@ -20,7 +20,7 @@ lst.insert_back(234)
 lst.insert_back(345)
 
 dim cur = lst.head.next
-while (cur !== lst.tail)
+while (cur !== lst.head)
 	println(int2str(cur.v))
 	cur = cur.next
 end
@@ -95,7 +95,7 @@ getchar()
 # test hash_set
 dim hs = new hash_set[string]
 
-println(int2str(s.get_size()))
+println(int2str(hs.get_size()))
 hs.insert("1")
 hs.insert("999")
 hs.insert("999")
@@ -103,14 +103,22 @@ hs.insert("999")
 hs.insert("7567")
 hs.insert("7567")
 hs.insert("7567")
+
+println(int2str(hs.get_size()))
+
 hs.insert("7")
 hs.insert("8")
 hs.insert("9")
+
+println(int2str(hs.get_size()))
+
 hs.insert("10")
 hs.insert("11")
 hs.insert("12")
 hs.insert("13")
 hs.insert("14")
+
+println(int2str(hs.get_size()))
 
 if hs.has("1") then
 	println("hs has 1: good")
@@ -138,6 +146,6 @@ end
 if hs.has("7567") then
 	println("hs has 7567: bad")
 end
-println(int2str(s.get_size()))
+println(int2str(hs.get_size()))
 
 getchar()
