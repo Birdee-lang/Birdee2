@@ -18,6 +18,76 @@ def assert_ok(istr):
 	process_top_level()
 	clear_compile_unit()
 
+def assert_generate_ok(istr):
+	top_level(istr)
+	process_top_level()
+	generate()
+	clear_compile_unit()
+
+def assert_generate_fail(istr):
+	try:
+		top_level(istr)
+		process_top_level()
+		generate()
+		assert(False)
+	except TokenizerException:
+		e=get_tokenizer_error()
+		print(e.linenumber,e.pos,e.msg)
+	except CompileException:
+		e=get_compile_error()
+		print(e.linenumber,e.pos,e.msg)		
+	clear_compile_unit()
+
+set_print_ir(False)
+
+print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
+
+assert_ok('''
+import variant:variant
+dim v as variant[byte,int,long,string]
+v.set(1)
+v.set(2L)
+v.set("1234")
+println(v.get[string]())
+''')
+
+assert_ok('''
+{@assert(size_of(resolve_type("string"))==get_target_bits()/8)@}
+{@assert(size_of(resolve_type("long"))==8)@}
+''')
+
+
+assert_generate_ok('''
+import unsafe:*
+dim a as pointer
+dim b as string = ptr_cast[string](a)
+dim c as int[] = ptr_cast[int[]](b)
+dim d as ulong = ptr_cast[ulong](c)
+dim e as uint = d
+c = ptr_cast[int[]](e)
+a = ptr_cast[pointer](c)
+d = ptr_cast[ulong](e)
+
+d = ptr_load[ulong](a)
+b = ptr_load[string](a)
+
+ptr_store(a,d)
+ptr_store(a,b)
+
+b = bit_cast[string](a)
+b = bit_cast[string](d)
+
+dim k = ptr_load[ulong]
+'''
+)
+
+assert_generate_fail('''
+import unsafe:*
+dim b as string
+dim e as uint
+b = bit_cast[string](e)
+''')
+
 assert_ok('''
 class a[T]
 end

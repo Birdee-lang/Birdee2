@@ -75,12 +75,12 @@ inline int DoWarn(const string& str)
 	return 0;
 }
 #define WarnAssert(_b,_msg) ( (_b) ? 0 : DoWarn(_msg));
-#define CompileAssert(_b,_msg) ( (_b) ? 0 : (throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), _msg),0) )
+#define CompileAssert(_b,_msg) ( (_b) ? 0 : (throw CompileError(tokenizer.GetSourcePos(), _msg),0) )
 inline void CompileExpect(Token expected_tok, const std::string& msg)
 {
 	if (tokenizer.CurTok != expected_tok)
 	{
-		throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), msg);
+		throw CompileError(tokenizer.GetSourcePos(), msg);
 	}
 
 	tokenizer.GetNextToken();
@@ -98,7 +98,7 @@ inline void CompileExpect(std::initializer_list<Token> expected_tok, const std::
 			return;
 		}
 	}
-	throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), msg);
+	throw CompileError(tokenizer.GetSourcePos(), msg);
 }
 
 
@@ -109,17 +109,17 @@ inline void CompileCheckGlobalConflict(SourcePos pos, const std::string& name)
 	auto prv_cls = cu.classmap.find(name);
 	if (prv_cls != cu.classmap.end())
 	{
-		throw CompileError(pos.line, pos.pos, string("The global name ") + name + " is already defined in " + prv_cls->second.get().Pos.ToString());
+		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_cls->second.get().Pos.ToString());
 	}
 	auto prv_func = cu.funcmap.find(name);
 	if (prv_func != cu.funcmap.end())
 	{
-		throw CompileError(pos.line, pos.pos, string("The global name ") + name + " is already defined in " + prv_func->second.get().Pos.ToString());
+		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_func->second.get().Pos.ToString());
 	}
 	auto prv_dim = cu.dimmap.find(name);
 	if (prv_dim != cu.dimmap.end())
 	{
-		throw CompileError(pos.line, pos.pos, string("The global name ") + name + " is already defined in " + prv_dim->second.get().Pos.ToString());
+		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_dim->second.get().Pos.ToString());
 	}
 }
 
@@ -265,7 +265,7 @@ std::unique_ptr<Type> ParseBasicType()
 		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
 			type = make_unique<Type>(tokenizer.CurTok);
 		else
-			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an identifier or basic type name");
+			throw CompileError(tokenizer.GetSourcePos(), "Expected an identifier or basic type name");
 		tokenizer.GetNextToken();
 	}
 	return std::move(type);
@@ -364,7 +364,7 @@ std::unique_ptr<VariableDefAST> ParseDim(bool isglobal = false,bool* pout_vararg
 				goto done;
 				break;
 			default:
-				throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected a new line after variable definition");
+				throw CompileError(tokenizer.GetSourcePos(), "Expected a new line after variable definition");
 			}
 		}
 	}
@@ -623,7 +623,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 			tokenizer.GetNextToken();
 		}
 		else
-			throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Expected an expression");
+			throw CompileError(tokenizer.GetSourcePos(), "Expected an expression");
 	}
 	//tokenizer.GetNextToken(); //eat token
 	auto parse_tail_token = [&firstexpr]()
@@ -703,7 +703,7 @@ int GetTokPrecedence()
 		{
 			return f->second;
 		}
-		throw CompileError(tokenizer.GetLine(), tokenizer.GetPos(), "Unknown Token");
+		throw CompileError(tokenizer.GetSourcePos(), "Unknown Token");
 	}
 	return -1;
 }
@@ -1172,12 +1172,12 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		auto prv1 = fieldmap.find(name);
 		if (prv1 != fieldmap.end())
 		{
-			throw CompileError(pos.line, pos.pos, string("The name ") + name + " is already used in " + fields[prv1->second].decl->Pos.ToString());
+			throw CompileError(pos, string("The name ") + name + " is already used in " + fields[prv1->second].decl->Pos.ToString());
 		}
 		auto prv2 = funcmap.find(name);
 		if (prv2 != funcmap.end())
 		{
-			throw CompileError(pos.line, pos.pos, string("The name ") + name + " is already used in " + funcs[prv2->second].decl->Pos.ToString());
+			throw CompileError(pos, string("The name ") + name + " is already used in " + funcs[prv2->second].decl->Pos.ToString());
 		}
 	};
 	AccessModifier access;
@@ -1339,6 +1339,11 @@ vector<string> ParsePackageName()
 	return ret;;
 }
 
+namespace Birdee
+{
+	extern bool IsIntrinsicModule(const string& name);
+}
+
 void ParsePackage()
 {
 	if (tokenizer.CurTok == tok_package)
@@ -1363,6 +1368,7 @@ void ParsePackage()
 	{
 		cu.symbol_prefix += cu.filename.substr(0, found);
 	}
+	cu.is_intrinsic = IsIntrinsicModule(cu.symbol_prefix);
 	cu.symbol_prefix += '.';
 
 }

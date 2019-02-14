@@ -108,6 +108,8 @@ namespace Birdee {
 		vector<vector<string>> user_imports;
 		vector<unique_ptr<AnnotationStatementAST>> annotations;
 		PyHandle py_scope;
+		string source_dir;
+		string source_file;
 		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};
@@ -227,10 +229,7 @@ namespace Birdee {
 		}
 		ResolvedType(ClassAST* cls) :type(tok_class), index_level(0), class_ast(cls)
 		{	}
-		bool isReference()
-		{
-			return 	index_level >0 || type == tok_class || type==tok_null;
-		}
+		bool isReference() const;
 
 		std::size_t rawhash() const;
 
@@ -337,6 +336,7 @@ namespace Birdee {
 		bool expose_main = false;
 		bool is_script_mode = false;
 		bool is_compiler_mode = false; //if the Birdee Compiler Core is called by birdeec, it should be set true; if called & loaded by python, remain false
+		bool is_intrinsic = false; //if the current module is an intrinsic module
 		vector<string> search_path; //the search paths, with "/" at the end
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
@@ -378,6 +378,12 @@ namespace Birdee {
 		void AbortGenerate();
 	};
 	BD_CORE_API extern  CompileUnit cu;
+
+	struct IntrisicFunction
+	{
+		llvm::Value* (*Generate)(FunctionAST* func, llvm::Value* obj, vector<unique_ptr<ExprAST>>& args);
+		void(*Phase1)(FunctionAST* func);
+	};
 
 	class BD_CORE_API ResolvedIdentifierExprAST : public ExprAST {
 	public:
@@ -659,7 +665,8 @@ namespace Birdee {
 		//resolve expr, and check if expr is a class object
 		bool isOverloaded();
 		std::unique_ptr<StatementAST> Copy();
-		bool isTemplateInstance();
+		//if expr is identifier with implied this, will set "member" parameter
+		bool isTemplateInstance(unique_ptr<ExprAST>*& member);
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
 		IndexExprAST(std::unique_ptr<ExprAST>&& Expr,
@@ -744,6 +751,7 @@ namespace Birdee {
 	public:
 		std::unique_ptr<ExprAST> Callee;
 		std::vector<std::unique_ptr<ExprAST>> Args;
+		FunctionAST* func_callee = nullptr;
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
@@ -1022,6 +1030,8 @@ namespace Birdee {
 		bool isTemplateInstance = false;
 		bool isImported=false;
 		bool is_vararg = false;
+		//if this function is an intrinsic function. This field will only be valid after phase1
+		IntrisicFunction* intrinsic_function = nullptr;
 		string vararg_name;
 		string link_name;
 		std::unique_ptr<PrototypeAST> Proto;
@@ -1037,7 +1047,7 @@ namespace Birdee {
 
 		llvm::Value* exported_capture_pointer;
 		llvm::Value* imported_capture_pointer;
-		llvm::Function* llvm_func = nullptr;
+		llvm::Value* llvm_func = nullptr;
 		llvm::StructType* exported_capture_type = nullptr;
 		llvm::StructType* imported_capture_type = nullptr;
 
@@ -1215,19 +1225,7 @@ namespace Birdee {
 		void PreGenerateFuncs();
 
 		//run phase0 in all members
-		void Phase0()
-		{
-			if (isTemplate())
-				return;
-			for (auto& funcdef : funcs)
-			{
-				funcdef.decl->Phase0();
-			}
-			for (auto& fielddef : fields)
-			{
-				fielddef.decl->Phase0();
-			}
-		}
+		void Phase0();
 		void Phase1();
 
 		void print(int level)

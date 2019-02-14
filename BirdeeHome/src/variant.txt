@@ -1,0 +1,53 @@
+import unsafe
+
+@enable_rtti
+class bad_variant_access
+
+end
+
+@init_script
+{@
+def get_variant_idx():
+	func = get_cur_func()
+	target_type = func.template_instance_args[0].resolved_type
+	idx=0
+	cls=get_cur_class()
+	for arg in cls.template_instance_args:
+		if target_type == arg.resolved_type:
+			return idx
+		idx+=1
+	raise RuntimeError("The type "+ str(target_type) + " is not defined in the variant")
+@}
+
+struct variant[...]
+	private index as int
+	private data as {@
+cls=get_cur_class()
+rty=0
+max_sz=0
+if len(cls.template_instance_args)==0:
+	raise RuntimeError("Variants must have more than 0 template arguments")
+for arg in cls.template_instance_args:
+	cur_sz=size_of(arg.resolved_type)
+	if cur_sz>max_sz:
+		max_sz=cur_sz
+		rty=arg.resolved_type
+set_type(rty)
+@}
+	
+	public function is_type[T]() as boolean
+		return index == {@set_ast(NumberExprAST.new(BasicType.INT,get_variant_idx()))@}
+	end
+	public function set[T](a as T)
+		index = {@set_ast(NumberExprAST.new(BasicType.INT,get_variant_idx()))@}
+		dim ptr = addressof(data)
+		unsafe.ptr_store(ptr,a)
+	end
+	public function get[T]() as T
+		if is_type[T]()!=true then
+			throw new bad_variant_access
+		end
+		dim ptr = addressof(data)
+		return unsafe.ptr_load[T](ptr)
+	end
+end

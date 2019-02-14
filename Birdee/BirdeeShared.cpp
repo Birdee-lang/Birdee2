@@ -247,6 +247,13 @@ int Birdee::Tokenizer::GetChar()
 	return c;
 }
 
+string Birdee::SourcePos::ToString()
+{
+	std::stringstream buf;
+	buf << "File: " << (source_idx == -1 ? cu.directory+"/"+cu.filename : source_paths[source_idx]) << " Line: " << line << " Pos: " << pos;
+	return buf.str();
+}
+
 Birdee::Tokenizer& Birdee::Tokenizer::operator =(Tokenizer&& old_t)
 {
 	f = std::move(old_t.f);

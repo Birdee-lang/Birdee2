@@ -173,7 +173,9 @@ namespace Birdee
 		{
 			args.push_back(ToExpr(arg->Copy()));
 		}
-		return SetPos(make_unique<CallExprAST>(ToExpr(Callee->Copy()), std::move(args)),Pos);
+		auto ret = make_unique<CallExprAST>(ToExpr(Callee->Copy()), std::move(args));
+		ret->func_callee = func_callee;
+		return SetPos(std::move(ret),Pos);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::VariableSingleDefAST::Copy()
@@ -264,7 +266,7 @@ namespace Birdee
 	std::unique_ptr<FunctionAST> Birdee::FunctionAST::CopyNoTemplate()
 	{
 		if (isDeclare)
-			throw CompileError(Pos.line, Pos.pos, "Cannot copy a declared function");
+			throw CompileError(Pos, "Cannot copy a declared function");
 		string vararg_n =  vararg_name;
 		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, is_vararg,std::move(vararg_n), Pos);
 		ret->isTemplateInstance = isTemplateInstance;
