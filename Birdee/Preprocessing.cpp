@@ -2123,7 +2123,9 @@ If usage vararg name is "", match the closest vararg
 		if (cu.is_corelib)
 			return &(cu.classmap.find(name)->second.get());
 		else
-			return cu.imported_classmap.find(name)->second;
+		{
+			return cu.imported_packages.FindName("birdee")->mod->classmap.find(name)->second.get();
+		}
 	}
 
 	void TypeofExprAST::Phase1()

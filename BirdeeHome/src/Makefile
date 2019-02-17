@@ -51,7 +51,7 @@ ${BLIB_DIR}/stack.o: stack.txt ${BLIB_DIR}/birdee.o
 ${BLIB_DIR}/unsafe.o: unsafe.txt ${BLIB_DIR}/birdee.o
 	$(BIN)/birdeec -i unsafe.txt -o $(BLIB_DIR)/unsafe.o
 
-${BLIB_DIR}/variant.o: variant.txt ${BLIB_DIR}/birdee.o
+${BLIB_DIR}/variant.o: variant.txt ${BLIB_DIR}/birdee.o ${BLIB_DIR}/unsafe.o
 	$(BIN)/birdeec -i variant.txt -o $(BLIB_DIR)/variant.o
 
 clean:

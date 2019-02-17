@@ -208,6 +208,7 @@
     <Text Include="..\BirdeeHome\src\template_test.txt" />
     <Text Include="..\BirdeeHome\src\tuple.txt" />
     <Text Include="..\tests\exception_test.txt" />
+    <Text Include="..\tests\hardware_exception_test.txt" />
     <Text Include="..\tests\hash_map_test.txt" />
     <Text Include="..\tests\logic_obj_cmp.txt" />
     <Text Include="..\tests\operators.txt" />

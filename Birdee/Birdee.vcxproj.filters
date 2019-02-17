@@ -91,9 +91,6 @@
     <Text Include="llvm.txt">
       <Filter>资源文件</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\birdee.txt">
-      <Filter>资源文件</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\test.txt">
       <Filter>资源文件</Filter>
     </Text>
@@ -149,6 +146,12 @@
       <Filter>资源文件\blib</Filter>
     </Text>
     <Text Include="..\BirdeeHome\src\variant.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\tests\hardware_exception_test.txt">
+      <Filter>资源文件\tests</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\birdee.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
   </ItemGroup>

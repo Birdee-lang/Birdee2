@@ -258,9 +258,12 @@ static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	{
 		return itr->second;
 	}
+	string name;
+	MangleNameAndAppend(name, cls->GetUniqueName());
+	name += "0_typeinfo";
 	auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
 		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
-		cls->GetUniqueName() + "0_typeinfo", nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
 	gen_context.rtti_map[cls] = newv;
 	return newv;
 }
@@ -697,6 +700,12 @@ void Birdee::CompileUnit::Generate()
 		module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
 	}
 
+	//if is core lib, first generate type_info
+	if (cu.is_corelib)
+	{
+		string str = "type_info";
+		classmap.find(str)->second.get().PreGenerate();
+	}
 
 	//first generate the classes, as the functions may reference them
 	//this will generate the LLVM types for the classes
