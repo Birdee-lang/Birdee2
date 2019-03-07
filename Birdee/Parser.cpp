@@ -581,6 +581,10 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		push_expr(make_unique<ThisExprAST>());
 		tokenizer.GetNextToken();
 		break;
+	case tok_super:
+		push_expr(make_unique<SuperExprAST>());
+		tokenizer.GetNextToken();
+		break;
 	case tok_null:
 		push_expr(make_unique<NullExprAST>());
 		tokenizer.GetNextToken();
@@ -1266,8 +1270,18 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
 		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg, ret->template_param->vararg_name));
 	}
+	// class inherit
+	if (!is_struct) {
+		if (tokenizer.CurTok == tok_colon) {
+			tokenizer.GetNextToken(); // eat colon
+			CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
+			// tokenizer.GetNextToken(); 
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
+			ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
+		}
+	}
 	CompileExpect(tok_newline, "Expected an newline after class name");
-	
+
 	while (true)
 	{
 		if (ParseClassBody(ret)) //if a member is recoginzed, continue to find next one

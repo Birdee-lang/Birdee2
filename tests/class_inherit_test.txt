@@ -1,0 +1,142 @@
+println("Hello world")
+
+declare function getchar() as int
+
+class TestBase[a]
+	public base1 as a
+	public base2 as int
+	public basestr as string
+	public function create()
+		base1 = 555
+		base2 = 987
+		basestr = "truly base str"
+	end
+	public function getbase1() as a
+		return base1
+	end
+	public function getbase2() as int
+		return base2
+	end
+	public function get() as a
+		return base2
+	end
+end
+
+class TestSon[T1, T2, ...] : class TestBase[T1]
+	private a as T1
+	private b as double
+	public pa as T1
+	public c as T2
+	public str as string
+	public function create()
+		super.create()
+		a = 50
+		b = 11.2
+		pa = 99
+		c = true
+		str = "test_string_base"
+	end
+	private function get() as T1
+		dim func_var = function (a as T1) as T1 => super.get() + a
+		return func_var(10)
+	end
+	public function pubget() as T1
+		dim func_var = function () as T1
+			return get() + super.get() + a
+		end
+		return func_var()
+	end
+	public function add(aa as T1) as T1
+		return a + aa
+	end
+	public function add2(aa as T1) as T1
+		return a + aa + get()
+	end
+end
+
+class TestFather[A, B, C, ...] : class TestSon[A, C]
+	private aa as A
+	private bb as B
+	public paa as A
+	public cc as C
+	public sstr as string
+	public function create()
+		super.create()
+		aa = 100
+		bb = 21.2
+		paa = 999
+		cc = false
+		sstr = "test_string_son"
+	end
+	private function get2() as A
+		return 7
+	end
+	public function pubget() as A
+		return super.pubget() + aa
+	end
+	public function add12(aaa as A) as A
+		return aaa + aa
+	end
+	public function add22(aaa as A) as A
+		return aaa + aa + get2()
+	end
+end
+
+dim ts = new TestFather[int, double, boolean]:create()
+
+println(int2str(ts.base1))
+println(int2str(ts.base2))
+println(ts.basestr)
+
+println("=============")
+
+println(int2str(ts.getbase1()))
+println(int2str(ts.getbase2()))
+
+
+if ts.c then
+	println("test AA")
+else
+	println("test BB")
+end
+println(ts.str)
+if ts.cc then
+	println("test AAAAA")
+else
+	println("test BBBBB")
+end
+println(ts.sstr)
+
+println(int2str(ts.add(10)))
+println(int2str(ts.add2(10)))
+println(int2str(ts.add12(10)))
+println(int2str(ts.add22(10)))
+
+println(int2str(ts.pubget()))
+
+getchar()
+println("=============")
+
+println(int2str(ts.pa))
+println(int2str(ts.paa))
+println(ts.str)
+println(ts.sstr)
+
+ts.pa = 88
+ts.paa = 888
+ts.str = "son str after modified"
+ts.sstr = "base str after modified"
+
+ts.base1 = 1999
+ts.basestr = "truly base str after modified"
+
+println(int2str(ts.pa))
+println(int2str(ts.paa))
+println(ts.str)
+println(ts.sstr)
+println(int2str(ts.base1))
+println(ts.basestr)
+
+println(int2str(ts.pubget()))
+
+getchar()

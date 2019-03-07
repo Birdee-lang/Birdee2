@@ -255,10 +255,15 @@ public:
 		if (class_stack.size() > 0)
 		{
 			ClassAST* cls = class_stack.back();
-			auto cls_field = cls->fieldmap.find(name);
-			if (cls_field != cls->fieldmap.end())
+			ClassAST* cur_cls = cls;
+			while (cur_cls)
 			{
-				return &(cls->fields[cls_field->second]);
+				auto cls_field = cur_cls->fieldmap.find(name);
+				if (cls_field != cur_cls->fieldmap.end())
+				{
+					return &(cur_cls->fields[cls_field->second]);
+				}
+				cur_cls = cur_cls->parent_class;
 			}
 		}
 		return nullptr;
@@ -309,10 +314,15 @@ public:
 		if (class_stack.size() > 0)
 		{
 			ClassAST* cls = class_stack.back();
-			auto func_field = cls ->funcmap.find(name);
-			if (func_field != cls->funcmap.end())
+			ClassAST* cur_cls = cls;
+			while (cur_cls)
 			{
-				return &(cls->funcs[func_field->second]);
+				auto func_field = cur_cls->funcmap.find(name);
+				if (func_field != cur_cls->funcmap.end())
+				{
+					return &(cur_cls->funcs[func_field->second]);
+				}
+				cur_cls = cur_cls->parent_class;
 			}
 		}
 		return nullptr;
@@ -512,14 +522,17 @@ public:
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
 		{
-			auto ret = make_unique<ThisExprAST>(class_stack.back(), pos);
+			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
 			ret->Phase1();
-			return make_unique<MemberExprAST>(std::move(ret), cls_field, pos);
+			return ret;
 		}
 		auto func_field = FindFuncInClass(name);
 		if (func_field)
 		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
+			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
+			ret->Phase1();
+			return ret;
+			// return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
 		}
 
 		bool isInOtherModule = isInTemplateOfOtherModuleAndDoImport();
@@ -1563,6 +1576,11 @@ namespace Birdee
 				}
 			}
 		}
+		if (this->parent) {
+			parent->Phase0();
+			CompileAssert(parent->resolved_type.type == tok_class, parent->Pos, "Expecting a class as parent");
+			parent_class = parent->resolved_type.class_ast;
+		}
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
@@ -2025,7 +2043,12 @@ If usage vararg name is "", match the closest vararg
 			for (int i = 0; i <= scope_mgr.function_scopes.size() - 2; i++)
 				scope_mgr.function_scopes[i].func->capture_this = true;
 		}
-		if (!imported_captured_var.empty() || captured_parent_this) //if captured any parent var, set the function type: is_closure=true
+		if (captured_parent_super)
+		{
+			for (int i = 0; i <= scope_mgr.function_scopes.size() - 2; i++)
+				scope_mgr.function_scopes[i].func->capture_super = true;
+		}
+		if (!imported_captured_var.empty() || captured_parent_this || captured_parent_super) //if captured any parent var, set the function type: is_closure=true
 			Proto->is_closure = true;
 		cur_func = prv_func;
 		scope_mgr.function_scopes.pop_back();
@@ -2080,7 +2103,10 @@ If usage vararg name is "", match the closest vararg
 
 	void NewExprAST::Phase1()
 	{
-		resolved_type = ResolvedType(*ty, Pos);
+		if (!resolved_type.isResolved())
+		{
+			resolved_type = ResolvedType(*ty, Pos);
+		}
 		for (auto& expr : args)
 		{
 			expr->Phase1();
@@ -2094,6 +2120,13 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
 			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
+			// new a parent instance
+			if (cls->parent)
+			{
+				auto casade_ty = cls->parent->type->Copy();
+				inherit_cascade = make_unique<NewExprAST>(std::move(casade_ty), cls->parent->resolved_type, cls->parent->Pos);
+				inherit_cascade->Phase1();
+			}
 			if (!method.empty())
 			{
 				auto itr = cls->funcmap.find(method);
@@ -2153,6 +2186,10 @@ If usage vararg name is "", match the closest vararg
 			return;
 		Phase0();
 		scope_mgr.PushClass(this);
+		if (parent)
+		{
+			parent->Phase1InClass();
+		}
 		for (auto& fielddef : fields)
 		{
 			fielddef.decl->Phase1InClass();
@@ -2170,6 +2207,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		scope_mgr.PopClass();
 	}
+
 	void MemberExprAST::Phase1()
 	{
 		if (resolved_type.isResolved())
@@ -2236,26 +2274,43 @@ If usage vararg name is "", match the closest vararg
 			return;
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
+		int parent_offset;
 		ClassAST* cls = Obj->resolved_type.class_ast;
-		auto field = cls->fieldmap.find(member);
-		if (field != cls->fieldmap.end())
-		{
-			if (cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
-				throw CompileError(Pos, "Accessing a private member outside of a class");
-			kind = member_field;
-			this->field = &(cls->fields[field->second]);
-			resolved_type = this->field->decl->resolved_type;
-			return;
-		}
-		auto func = cls->funcmap.find(member);
-		if (func != cls->funcmap.end())
-		{
-			kind = member_function;
-			this->func = &(cls->funcs[func->second]);
-			if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
-				throw CompileError(Pos, "Accessing a private member outside of a class");
-			resolved_type = this->func->decl->resolved_type;
-			return;
+		ClassAST* cur_cls = cls;
+		while (cur_cls) {
+			parent_offset = 0;
+			target_offset = 0;
+			if (cur_cls->needs_rtti)
+			{
+				parent_offset++;
+				target_offset++;
+			}
+			if (cur_cls->parent)
+			{
+				target_offset++;
+			}
+			auto field = cur_cls->fieldmap.find(member);
+			if (field != cur_cls->fieldmap.end())
+			{
+				if (cur_cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
+					throw CompileError(Pos, "Accessing a private member outside of a class");
+				kind = member_field;
+				this->field = &(cur_cls->fields[field->second]);
+				resolved_type = this->field->decl->resolved_type;
+				return;
+			}
+			auto func = cur_cls->funcmap.find(member);
+			if (func != cur_cls->funcmap.end())
+			{
+				kind = member_function;
+				this->func = &(cur_cls->funcs[func->second]);
+				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
+					throw CompileError(Pos, "Accessing a private member outside of a class");
+				resolved_type = this->func->decl->resolved_type;
+				return;
+			}
+			casade_offset.emplace_back(parent_offset);
+			cur_cls = cur_cls->parent_class;
 		}
 		throw CompileError(Pos, "Cannot find member "+member);
 	}
@@ -2407,6 +2462,19 @@ If usage vararg name is "", match the closest vararg
 		}
 		resolved_type.type = tok_class;
 		resolved_type.class_ast = scope_mgr.class_stack.back();
+	}
+
+	void SuperExprAST::Phase1()
+	{
+		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"super\" outside of a class");
+		CompileAssert(!scope_mgr.class_stack.back()->is_struct, Pos, "Cannot reference \"super\" inside of a struct");
+		CompileAssert(scope_mgr.class_stack.back()->parent, Pos, "Class does not have a parent to reference");
+		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
+		{
+			scope_mgr.function_scopes.back().func->captured_parent_super = (llvm::Value*)1;
+		}
+		resolved_type.type = tok_class;
+		resolved_type.class_ast = scope_mgr.class_stack.back()->parent_class;
 	}
 
 	void ResolvedFuncExprAST::Phase1()

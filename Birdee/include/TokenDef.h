@@ -42,6 +42,7 @@ namespace Birdee
 		tok_return,
 		tok_for,
 		tok_this,
+		tok_super,
 		tok_null,
 		tok_address_of,
 		tok_pointer_of,

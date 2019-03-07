@@ -497,7 +497,7 @@ namespace Birdee {
 	class BD_CORE_API ThisExprAST : public ExprAST {
 	public:
 		void Phase1();
-		//this mothod will always generate a pointer for "this"
+		//this method will always generate a pointer for "this"
 		llvm::Value* GeneratePtr();
 		//for struct types, this will generate a value rather than a pointer
 		llvm::Value* Generate();
@@ -506,6 +506,17 @@ namespace Birdee {
 		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
 		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
 	};
+
+	class BD_CORE_API SuperExprAST : public ExprAST {
+	public:
+		void Phase1();
+		llvm::Value* Generate();
+		SuperExprAST() {}
+		std::unique_ptr<StatementAST> Copy();
+		SuperExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
+		void print(int level) { ExprAST::print(level); std::cout << "this" << "\n"; }
+	};
+
 	class BD_CORE_API BoolLiteralExprAST : public ExprAST {
 	public:
 		bool v;
@@ -823,6 +834,10 @@ namespace Birdee {
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val, SourcePos Pos) : name(_name), type(std::move(_type)), val(std::move(_val)) {
 			this->Pos = Pos;
 		}
+		// constructor for class inherit
+		VariableSingleDefAST(std::unique_ptr<Type>&& _type, SourcePos pos) : type(std::move(_type)) {
+			this->Pos = pos;
+		}
 		void print(int level) {
 			VariableDefAST::print(level);
 			std::cout << "Variable:" << name << " Type: "<< resolved_type.GetString()<< "\n";
@@ -1041,6 +1056,7 @@ namespace Birdee {
 		
 		vector<VariableSingleDefAST*> captured_var;
 		bool capture_this = false;
+		bool capture_super = false;
 		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
 		FunctionAST* parent = nullptr;
 		bool capture_on_stack = false;
@@ -1054,6 +1070,7 @@ namespace Birdee {
 		//the "this" pointer imported from parent function
 		//we reuse this variable in Phase1, captured_parent_this = 1 when this function uses "this"
 		llvm::Value* captured_parent_this = nullptr; 
+		llvm::Value* captured_parent_super = nullptr;
 
 		//capture the variable (defined in this function)
 		//in "context" object instead of on stack.
@@ -1154,6 +1171,7 @@ namespace Birdee {
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
+		std::unique_ptr<NewExprAST> inherit_cascade;
 		std::unique_ptr<Type> ty;
 		string method;
 	public:
@@ -1162,6 +1180,11 @@ namespace Birdee {
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
+		// constructor for class inherit
+		NewExprAST(std::unique_ptr<Type>&& ty, ResolvedType & resolved_type, SourcePos pos) : ty(std::move(ty)) {
+			this->Pos = Pos;
+			this->resolved_type = resolved_type;
+		}
 		NewExprAST(std::unique_ptr<Type>&& ty, vector<std::unique_ptr<ExprAST>>&& args, const string& method, SourcePos Pos)
 			: ty(std::move(ty)), args(std::move(args)), method(method) {
 			this->Pos = Pos;
@@ -1206,6 +1229,10 @@ namespace Birdee {
 		unique_ptr<TemplateParameters<ClassAST>> template_param;
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
+
+		ClassAST* parent_class = nullptr;
+		std::unique_ptr<VariableSingleDefAST> parent;
+		//std::unique_ptr<Type> parent_type;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
 		//if the class is defined in the current package, this field will be -1
 		//if the class is an orphan class, this field will be -2
@@ -1248,6 +1275,8 @@ namespace Birdee {
 	class BD_CORE_API MemberExprAST : public ResolvedIdentifierExprAST {
 		std::string member;
 	public:
+		int target_offset;
+		vector<int> casade_offset;
 		std::unique_ptr<ExprAST> Obj;
 		vector<string> ToStringArray();
 		std::unique_ptr<StatementAST> Copy();

@@ -47,6 +47,11 @@ namespace Birdee
 		return SetPos(make_unique<ThisExprAST>(),Pos);
 	}
 
+	std::unique_ptr<StatementAST> Birdee::SuperExprAST::Copy()
+	{
+		return SetPos(make_unique<SuperExprAST>(), Pos);
+	}
+
 	std::unique_ptr<StatementAST> Birdee::BoolLiteralExprAST::Copy()
 	{
 		return SetPos(make_unique<BoolLiteralExprAST>(v),Pos);
@@ -301,6 +306,10 @@ namespace Birdee
 		}
 		clsdef->is_struct = is_struct;
 		clsdef->needs_rtti = needs_rtti;
+		if (parent) {
+			clsdef->parent = unique_ptr_cast<VariableSingleDefAST>(parent->Copy());
+			clsdef->parent_class = parent_class;
+		}
 		clsdef->template_source_class = template_source_class;
 		assert(clsdef->template_instance_args==nullptr);
 		cur_cls = old_cls;

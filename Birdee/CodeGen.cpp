@@ -905,13 +905,17 @@ void Birdee::ClassAST::PreGenerate()
 	LLVMHelper::TypePair type_info_llvm_pair;
 	if (needs_rtti)
 	{
-		field_offset = 1;
+		field_offset++;
 		ClassAST* type_info_ty = nullptr;
 		type_info_ty = GetTypeInfoType();
 		assert(type_info_ty->llvm_dtype);
 		assert(type_info_ty->llvm_type);
 		type_info_llvm_pair = LLVMHelper::TypePair{ type_info_ty->llvm_type->getPointerTo(),
 			DBuilder->createPointerType(type_info_ty->llvm_dtype, 64) };
+	}
+	if (parent)
+	{
+		field_offset++;
 	}
 
 	DIFile *Unit;
@@ -923,11 +927,17 @@ void Birdee::ClassAST::PreGenerate()
 	else
 		Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
 	vector<LLVMHelper::TypePair*> ty_nodes;
-	ty_nodes.reserve(fields.size()+ field_offset);
+	ty_nodes.reserve(fields.size() + field_offset);
 	if (needs_rtti)
 	{
 		types.push_back(type_info_llvm_pair.llvm_ty);
 		ty_nodes.push_back(&type_info_llvm_pair);
+	}
+	if (parent)
+	{
+		auto& node2 = helper.GetTypeNode(parent->resolved_type);
+		types.push_back(node2.llvm_ty);
+		ty_nodes.push_back(&node2);
 	}
 	for (auto& field : fields)
 	{
@@ -946,7 +956,16 @@ void Birdee::ClassAST::PreGenerate()
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
 	auto align = module->getDataLayout().getPrefTypeAlignment(llvm_type);
 
-	int _idx = 0;
+	if (parent)
+	{
+		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[field_offset-1]->llvm_ty);
+		auto memb = DBuilder->createMemberType(dinfo.cu, "__class_parent__", Unit, parent->Pos.line, fsize, align,
+			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(field_offset - 1), DINode::DIFlags::FlagZero,
+			ty_nodes[field_offset - 1]->dty);
+		dtypes.push_back(memb);
+	}
+
+	int _idx = field_offset;
 	for (auto& field : fields)
 	{
 		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[_idx]->llvm_ty);
@@ -1149,10 +1168,17 @@ llvm::Value * Birdee::NewExprAST::Generate()
 		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
+	int offset = 0;
 	if (resolved_type.class_ast->needs_rtti)
 	{
 		builder.CreateStore(GetOrCreateTypeInfoGlobal(resolved_type.class_ast),
-			builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(0) }));
+			builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(offset++) }));
+	}
+	if (inherit_cascade)
+	{
+		auto casade_ret = inherit_cascade->Generate();
+		builder.CreateStore(casade_ret,
+			builder.CreateGEP(ret, { builder.getInt32(0), builder.getInt32(offset++) }));
 	}
 	if(func)
 		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args,this->Pos);
@@ -1196,6 +1222,23 @@ llvm::Value * Birdee::ThisExprAST::GeneratePtr()
 	}
 }
 
+llvm::Value * Birdee::SuperExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	if (gen_context.cur_func && gen_context.cur_func->parent)
+	{
+		// if we are in a function & the function is a lambda & the parent function has captured super
+	 	assert(gen_context.cur_func->Proto->is_closure);
+	 	return gen_context.cur_func->captured_parent_super;
+	}
+	else
+	{
+		assert(gen_context.cur_func->Proto->cls);
+		int offset = gen_context.cur_func->Proto->cls->needs_rtti ? 1 : 0;
+		auto this_llvm_obj = helper.cur_llvm_func->args().begin();
+		return builder.CreateLoad(builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(offset) }));
+	}
+}
 
 llvm::Value * Birdee::FunctionAST::Generate()
 {
@@ -1256,10 +1299,28 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		if (Proto->is_closure)
 		{//if is closure, generate the imported captured var
 			imported_capture_pointer = builder.CreatePointerCast(itr,parent->exported_capture_type->getPointerTo());
-			size_t idx = parent->capture_this ? 1 : 0;
+			size_t idx = (parent->capture_this || parent->capture_super) ? 1 : 0;
 			if (captured_parent_this) //if "this" is referenced in the function
 			{//get the real "this" in the imported captured context
 				captured_parent_this = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
+			}
+			if (captured_parent_super)
+			{
+				ClassAST * cls = nullptr;
+				FunctionAST * func = this;
+				// find the original class it belongs to
+				do {
+					if (func->Proto->cls)
+					{
+						cls = func->Proto->cls;
+						break;
+					}
+					func = func->parent;
+				} while (func);
+				assert(cls);
+				auto this_llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
+				int offset = cls->needs_rtti ? 1 : 0;
+				captured_parent_super = builder.CreateLoad(builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(offset) }), "super");
 			}
 			for (auto& v : imported_captured_var)
 			{
@@ -1281,10 +1342,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			}
 			itr++;
 		}
-		if (captured_var.size() || capture_this)
+		if (captured_var.size() || capture_this || capture_super)
 		{ //if my own variables are captured by children functions
 			vector<llvm::Type*> captype;
-			if (capture_this)
+			if (capture_this || capture_super)
 			{
 				assert(Proto->cls);
 				captype.push_back(Proto->cls->llvm_type->getPointerTo());
@@ -1308,7 +1369,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 					builder.CreateCall(GetMallocObj(), { builder.getInt32(sz),Constant::getNullValue(builder.getInt8PtrTy()) }),
 					exported_capture_type->getPointerTo(), ".export_capture_pointer");
 			}
-			if (capture_this)
+			if (capture_this || capture_super)
 			{
 				auto target = builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) });
 				if(Proto->is_closure)
@@ -1592,6 +1653,15 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 					llvm_obj = thisexpr->GeneratePtr();
 			}
 		}
+		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
+		{
+			auto casade_llvm_obj = Obj->Generate();
+			for (auto offset : casade_offset)
+			{
+				casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
+			}
+			llvm_obj = casade_llvm_obj;
+		}
 		else
 		{
 			llvm_obj = Obj->Generate();
@@ -1599,15 +1669,25 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 		}
 		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti)
 		{
-			field_offset = 1;
+			field_offset++;
+		}
+		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->parent)
+		{
+			field_offset++;
 		}
 	}
 	dinfo.emitLocation(this);
 	if (kind == member_field)
 	{
 		if (llvm_obj)//if we have a pointer to the object
-			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
-		else //else, we only have a RValue of struct
+		{
+			// auto casade_llvm_obj = llvm_obj;
+			// for (auto offset : casade_offset)
+			// {
+			// 	casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
+			// }
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) }));
+		} else //else, we only have a RValue of struct
 			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
 	}
 	else if (kind == member_function)
@@ -1865,7 +1945,13 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 
 	if (kind == member_field)
 	{
-		return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
+		auto casade_llvm_obj = llvm_obj;
+		for (auto offset : casade_offset)
+		{
+			casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
+		}
+		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) });
+		// return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
 	}
 		
 	return nullptr;
