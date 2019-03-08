@@ -23,8 +23,11 @@ namespace Birdee
 
 	ptrStatementAST ReturnAST::Copy()
 	{
-		auto that = make_unique<ReturnAST>(nullptr, Pos);
-		that->Val = unique_ptr_cast<ExprAST>(Val->Copy());
+		auto that = make_unique<ReturnAST>(Pos);
+		if (Val)
+		{
+			that->Val = unique_ptr_cast<ExprAST>(Val->Copy());
+		}
 		return std::move(that);
 	}
 

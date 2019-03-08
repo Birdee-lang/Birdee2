@@ -452,6 +452,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> Val;
 		Value* Generate();
 		virtual void Phase1();
+		ReturnAST(SourcePos pos) { Pos = pos; };
 		ReturnAST(std::unique_ptr<ExprAST>&& val, SourcePos pos) : Val(std::move(val)){ Pos = pos; };
 		void print(int level) {
 			StatementAST::print(level); std::cout << "Return\n";

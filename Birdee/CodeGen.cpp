@@ -1584,8 +1584,15 @@ Value * Birdee::NumberExprAST::Generate()
 Value * Birdee::ReturnAST::Generate()
 {
 	dinfo.emitLocation(this);
-	Value* ret = Val->Generate();
-	return builder.CreateRet(ret);
+	if (Val)
+	{
+		Value* ret = Val->Generate();
+		return builder.CreateRet(ret);
+	}
+	else
+	{
+		return builder.CreateRet(nullptr);
+	}
 }
 
 llvm::Value * Birdee::NullExprAST::Generate()

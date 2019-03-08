@@ -812,7 +812,14 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=to
 			tokenizer.GetNextToken(); //eat return
 			pos = tokenizer.GetSourcePos();
 			assert(current_func_proto && "Current func proto is empty!");
-			push_expr(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
+			if (tokenizer.CurTok == tok_newline)
+			{
+				push_expr(make_unique<ReturnAST>(pos));
+			} 
+			else 
+			{
+				push_expr(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
+			}
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
 			break;
 		case tok_func:

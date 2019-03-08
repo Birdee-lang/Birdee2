@@ -2496,9 +2496,12 @@ If usage vararg name is "", match the closest vararg
 
 	void ReturnAST::Phase1()
 	{
-		Val->Phase1();
 		assert(cur_func->Proto->resolved_type.type != tok_error && "The prototype should be resolved first");
-		Val = FixTypeForAssignment(cur_func->Proto->resolved_type, std::move(Val),Pos);
+		if (Val)
+		{
+			Val->Phase1();
+			Val = FixTypeForAssignment(cur_func->Proto->resolved_type, std::move(Val), Pos);
+		}
 	}
 
 	ClassAST* GetStringClass()
