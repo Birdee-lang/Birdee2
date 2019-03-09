@@ -1531,15 +1531,15 @@ llvm::Value * Birdee::LocalVarExprAST::Generate()
 	return builder.CreateLoad(def->llvm_value);
 }
 
-llvm::Value * Birdee::AddressOfExprAST::Generate()
-{
-	dinfo.emitLocation(this);
-	if(!is_address_of)
-		return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
-	auto ret=expr->GetLValue(false);
-	assert(ret);
-	return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
-}
+// llvm::Value * Birdee::AddressOfExprAST::Generate()
+// {
+// 	dinfo.emitLocation(this);
+// 	if(!is_address_of)
+// 		return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
+// 	auto ret=expr->GetLValue(false);
+// 	assert(ret);
+// 	return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
+// }
 
 llvm::Value * Birdee::VariableMultiDefAST::Generate()
 {
@@ -2109,8 +2109,6 @@ llvm::Value * BinaryGenerateBool(Token op, ExprAST* lvexpr, ExprAST* rvexpr)
 	return nullptr;
 }
 
-
-
 llvm::Value * Birdee::BinaryExprAST::Generate()
 {
 	dinfo.emitLocation(this);
@@ -2154,6 +2152,38 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 	{
 		return BinaryGenerateFloat(Op, LHS->Generate(), RHS->Generate());
 	}
+	return nullptr;
+}
+
+llvm::Value * Birdee::UnaryExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+
+	if (Op == tok_not)
+	{
+		if (func)
+		{
+			//if it is an overloaded operator, the call expr is in LHS
+			return arg->Generate();
+		}
+		return builder.CreateNot(arg->Generate());
+	}
+	else if (Op == tok_address_of)
+	{
+		auto ret = arg->GetLValue(false);
+		assert(ret);
+		return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
+	}
+	else if (Op == tok_pointer_of)
+	{
+		return builder.CreateBitOrPointerCast(arg->Generate(), llvm::Type::getInt8PtrTy(context));
+	}
+	else if (Op == tok_typeof)
+	{
+		auto val = arg->Generate();
+		return builder.CreateLoad(builder.CreateGEP(val, { builder.getInt32(0),builder.getInt32(0) }));
+	}
+
 	return nullptr;
 }
 
@@ -2279,12 +2309,12 @@ Value * Birdee::FunctionToClosureAST::Generate()
 	return ptr;
 }
 
-llvm::Value * Birdee::TypeofExprAST::Generate()
-{
-	dinfo.emitLocation(this);
-	auto val = arg->Generate();
-	return builder.CreateLoad(builder.CreateGEP(val, {builder.getInt32(0),builder.getInt32(0)}));
-}
+// llvm::Value * Birdee::TypeofExprAST::Generate()
+// {
+// 	dinfo.emitLocation(this);
+// 	auto val = arg->Generate();
+// 	return builder.CreateLoad(builder.CreateGEP(val, {builder.getInt32(0),builder.getInt32(0)}));
+// }
 
 llvm::Value * Birdee::TryBlockAST::Generate()
 {

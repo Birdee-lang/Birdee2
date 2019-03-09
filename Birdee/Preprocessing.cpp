@@ -1828,16 +1828,16 @@ If usage vararg name is "", match the closest vararg
 
 
 
-	void AddressOfExprAST::Phase1()
-	{
-		
-		expr->Phase1();
-		if (is_address_of)
-			CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
-		else
-			CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
-		resolved_type.type = tok_pointer;
-	}
+	// void AddressOfExprAST::Phase1()
+	// {
+	// 	
+	// 	expr->Phase1();
+	// 	if (is_address_of)
+	// 		CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
+	// 	else
+	// 		CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
+	// 	resolved_type.type = tok_pointer;
+	// }
 
 	bool IndexExprAST::isOverloaded()
 	{
@@ -2159,14 +2159,14 @@ If usage vararg name is "", match the closest vararg
 			return cu.imported_classmap.find(name)->second;
 	}
 
-	void TypeofExprAST::Phase1()
-	{
-		arg->Phase1();
-		CompileAssert(arg->resolved_type.type == tok_class
-			&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
-			Pos ,"typeof must be appiled on class references with runtime type info");
-		resolved_type = ResolvedType(GetTypeInfoClass());
-	}
+	// void TypeofExprAST::Phase1()
+	// {
+	// 	arg->Phase1();
+	// 	CompileAssert(arg->resolved_type.type == tok_class
+	// 		&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+	// 		Pos ,"typeof must be appiled on class references with runtime type info");
+	// 	resolved_type = ResolvedType(GetTypeInfoClass());
+	// }
 
 	ThrowAST::ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos) :expr(std::move(expr))
 	{
@@ -2681,6 +2681,57 @@ If usage vararg name is "", match the closest vararg
 			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
 		}
 
+	}
+
+	void UnaryExprAST::Phase1()
+	{
+		auto& arg = this->arg;
+
+		arg->Phase1();
+
+		if (Op == tok_not)
+		{
+			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
+			{
+				const string name = "__not__";
+				auto itr = arg->resolved_type.class_ast->funcmap.find(name);
+				CompileAssert(itr != arg->resolved_type.class_ast->funcmap.end(), Pos,
+					string("Cannot find function ") + name + " in class " + arg->resolved_type.class_ast->GetUniqueName());
+				auto member_def = &arg->resolved_type.class_ast->funcs[itr->second];
+				func = arg->resolved_type.class_ast->funcs[itr->second].decl.get();
+				auto memberexpr = make_unique<MemberExprAST>(std::move(arg), member_def, Pos);
+				vector<unique_ptr<ExprAST>> args;
+				arg = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+				arg->Pos = Pos;
+				arg->Phase1();
+				resolved_type = arg->resolved_type;
+			}
+			else
+			{
+				resolved_type.type = tok_boolean;
+				arg = FixTypeForAssignment(resolved_type, std::move(arg), Pos);
+			}
+		}
+		else if (Op == tok_pointer_of)
+		{
+			arg->Phase1();
+			CompileAssert(arg->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
+			resolved_type.type = tok_pointer;
+		}
+		else if (Op == tok_address_of)
+		{
+			arg->Phase1();
+			CompileAssert(arg->GetLValue(true), Pos, "The expression in addressof should be a LValue");
+			resolved_type.type = tok_pointer;
+		}
+		else if (Op == tok_typeof)
+		{
+			arg->Phase1();
+			CompileAssert(arg->resolved_type.type == tok_class
+				&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+				Pos, "typeof must be appiled on class references with runtime type info");
+			resolved_type = ResolvedType(GetTypeInfoClass());
+		}
 	}
 
 	void ForBlockAST::Phase1()

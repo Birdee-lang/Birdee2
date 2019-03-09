@@ -95,6 +95,11 @@ namespace Birdee
 		return make_unique<BinaryExprAST>(Op, unique_ptr_cast<ExprAST>(LHS->Copy()), unique_ptr_cast<ExprAST>(RHS->Copy()), Pos);
 	}
 
+	std::unique_ptr<StatementAST> Birdee::UnaryExprAST::Copy()
+	{
+		return make_unique<UnaryExprAST>(Op, unique_ptr_cast<ExprAST>(arg->Copy()), Pos);
+	}
+
 	std::unique_ptr<StatementAST> Birdee::IndexExprAST::Copy()
 	{
 		return make_unique<IndexExprAST>(unique_ptr_cast<ExprAST>(Expr->Copy()), unique_ptr_cast<ExprAST>(Index->Copy()),Pos);
@@ -169,10 +174,10 @@ namespace Birdee
 		return make_unique<FunctionTemplateInstanceExprAST>(ToExpr(expr->Copy()),std::move(args),Pos);
 	}
 
-	std::unique_ptr<StatementAST> Birdee::AddressOfExprAST::Copy()
-	{
-		return make_unique<AddressOfExprAST>(ToExpr(expr->Copy()),is_address_of,Pos);
-	}
+	// std::unique_ptr<StatementAST> Birdee::AddressOfExprAST::Copy()
+	// {
+	// 	return make_unique<AddressOfExprAST>(ToExpr(expr->Copy()),is_address_of,Pos);
+	// }
 
 	std::unique_ptr<StatementAST> Birdee::CallExprAST::Copy()
 	{
@@ -334,15 +339,15 @@ namespace Birdee
 		return make_unique<TryBlockAST>(try_block.Copy(),std::move(vars),std::move(bbs),Pos);
 	}
 
-	std::unique_ptr<StatementAST> TypeofExprAST::Copy()
-	{
-		auto ret = make_unique<TypeofExprAST>(ToExpr(arg->Copy()), Pos);
-		return std::move(ret);
-	}
+	// std::unique_ptr<StatementAST> TypeofExprAST::Copy()
+	// {
+	// 	auto ret = make_unique<TypeofExprAST>(ToExpr(arg->Copy()), Pos);
+	// 	return std::move(ret);
+	// }
 
 	std::unique_ptr<StatementAST> ThrowAST::Copy()
 	{
-		auto ret = make_unique<TypeofExprAST>(ToExpr(expr->Copy()), Pos);
+		auto ret = make_unique<ThrowAST>(ToExpr(expr->Copy()), Pos);
 		return std::move(ret);
 	}
 

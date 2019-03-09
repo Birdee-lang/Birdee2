@@ -246,6 +246,16 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("op", (BinaryOp BinaryExprAST::*)&BinaryExprAST::Op)
 		.def("run", [](BinaryExprAST& ths, py::object& func) {func(GetRef(ths.LHS)); func(GetRef(ths.RHS)); });
 
+	py::class_< UnaryExprAST, ExprAST>(m, "UnaryExprAST")
+		.def_static("new", [](BinaryOp op, UniquePtrStatementAST& arg) {
+			return new UniquePtrStatementAST(std::make_unique<UnaryExprAST>((Token)op, arg.move_expr(), tokenizer.GetSourcePos()));
+		})
+		.def_readwrite("func", &UnaryExprAST::func)
+		.def_property("arg", [](UnaryExprAST& ths) {return GetRef(ths.arg); },
+			[](UnaryExprAST& ths, UniquePtrStatementAST& v) {ths.arg = v.move_expr(); })
+		.def_readwrite("op", (UnaryOp UnaryExprAST::*)&UnaryExprAST::Op)
+		.def("run", [](UnaryExprAST& ths, py::object& func) {func(GetRef(ths.arg)); });
+
 	auto templ_arg_cls = py::class_< TemplateArgument>(m, "TemplateArgument");
 	py::enum_ < TemplateArgument::TemplateArgumentType>(templ_arg_cls, "TemplateArgumentType")
 		.value("TEMPLATE_ARG_TYPE", TemplateArgument::TemplateArgumentType::TEMPLATE_ARG_TYPE)
@@ -282,14 +292,14 @@ void RegisiterClassForBinding2(py::module& m) {
 				func(GetRef(ths.instance));
 		});
 
-	py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
-		.def_static("new", [](UniquePtrStatementAST& v, bool is_address_of) {
-			return new UniquePtrStatementAST(std::make_unique<AddressOfExprAST>(v.move_expr(),is_address_of,tokenizer.GetSourcePos())); 
-		})
-		.def_property("expr", [](AddressOfExprAST& ths) {return GetRef(ths.expr); },
-			[](AddressOfExprAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
-		.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of)
-		.def("run", [](AddressOfExprAST& ths, py::object& func) {func(GetRef(ths.expr)); });
+	// py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
+	// 	.def_static("new", [](UniquePtrStatementAST& v, bool is_address_of) {
+	// 		return new UniquePtrStatementAST(std::make_unique<AddressOfExprAST>(v.move_expr(),is_address_of,tokenizer.GetSourcePos())); 
+	// 	})
+	// 	.def_property("expr", [](AddressOfExprAST& ths) {return GetRef(ths.expr); },
+	// 		[](AddressOfExprAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
+	// 	.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of)
+	// 	.def("run", [](AddressOfExprAST& ths, py::object& func) {func(GetRef(ths.expr)); });
 
 	py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
 		.def_property("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); },
@@ -336,10 +346,10 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](FunctionToClosureAST& ths, UniquePtrStatementAST& v) {ths.func = v.move_expr(); })
 		.def("run", [](FunctionToClosureAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.func)); });
 
-	py::class_<TypeofExprAST, ExprAST>(m, "TypeofExprAST")
-		.def_property("arg", [](TypeofExprAST& ths) {return GetRef(ths.arg); },
-			[](TypeofExprAST& ths, UniquePtrStatementAST& v) {ths.arg = v.move_expr(); })
-		.def("run", [](TypeofExprAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.arg)); });
+	// py::class_<TypeofExprAST, ExprAST>(m, "TypeofExprAST")
+	// 	.def_property("arg", [](TypeofExprAST& ths) {return GetRef(ths.arg); },
+	// 		[](TypeofExprAST& ths, UniquePtrStatementAST& v) {ths.arg = v.move_expr(); })
+	// 	.def("run", [](TypeofExprAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.arg)); });
 
 	py::class_<TryBlockAST, StatementAST>(m, "TryBlockAST")
 		.def_property_readonly("try_block", [](TryBlockAST& ths) {return GetRef(ths.try_block.body); })

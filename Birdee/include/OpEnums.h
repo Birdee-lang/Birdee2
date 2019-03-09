@@ -31,4 +31,12 @@ namespace Birdee
 		BIN_LOGIC_OR = tok_logic_or,
 		BIN_ASSIGN = tok_assign
 	};
+
+	enum UnaryOp
+	{
+		UNA_NOT = tok_not,
+		UNA_ADDRESSOF = tok_address_of,
+		UNA_POINTEROF = tok_pointer_of,
+		UNA_TYPEOF = tok_typeof
+	};
 }

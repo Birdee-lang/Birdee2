@@ -665,6 +665,27 @@ namespace Birdee {
 			RHS->print(level + 1);
 		}
 	};
+
+	class BD_CORE_API UnaryExprAST : public ExprAST {
+	public:
+		Token Op;
+		FunctionAST* func = nullptr;
+		unique_ptr<ExprAST> arg;
+		std::unique_ptr<StatementAST> Copy();
+		//first resolve variables then resolve class names
+		void Phase1();
+		llvm::Value* Generate();
+		UnaryExprAST(Token Op, unique_ptr<ExprAST>&& arg, SourcePos Pos)
+			: Op(Op), arg(std::move(arg)) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "typeof \n";
+			arg->print(level + 1);
+		}
+	};
+
 	/// BinaryExprAST - Expression class for a binary operator.
 	class FunctionTemplateInstanceExprAST;
 	class BD_CORE_API IndexExprAST : public ExprAST {
@@ -740,24 +761,24 @@ namespace Birdee {
 			ExprAST::print(level + 1); std::cout << "----------------\n";
 		}
 	};
-	class BD_CORE_API AddressOfExprAST : public ExprAST {
-	public:
-		std::unique_ptr<ExprAST> expr;
-		bool is_address_of; //true for addressof, false for pointerof
-		void Phase1();
-		std::unique_ptr<StatementAST> Copy();
-		llvm::Value* Generate();
-		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, bool is_address_of, SourcePos Pos)
-			: expr(std::move(Expr)), is_address_of(is_address_of){
-			this->Pos = Pos;
-		}
-		void print(int level) {
-			ExprAST::print(level);
-			std::cout << "AddressOf\n";
-			expr->print(level + 1);
-			
-		}
-	};
+// 	class BD_CORE_API AddressOfExprAST : public ExprAST {
+// 	public:
+// 		std::unique_ptr<ExprAST> expr;
+// 		bool is_address_of; //true for addressof, false for pointerof
+// 		void Phase1();
+// 		std::unique_ptr<StatementAST> Copy();
+// 		llvm::Value* Generate();
+// 		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, bool is_address_of, SourcePos Pos)
+// 			: expr(std::move(Expr)), is_address_of(is_address_of){
+// 			this->Pos = Pos;
+// 		}
+// 		void print(int level) {
+// 			ExprAST::print(level);
+// 			std::cout << "AddressOf\n";
+// 			expr->print(level + 1);
+//			
+// 		}
+// 	};
 	/// CallExprAST - Expression class for function calls.
 	class BD_CORE_API CallExprAST : public ExprAST {
 	public:
@@ -1197,23 +1218,23 @@ namespace Birdee {
 
 		}
 	};
-	class BD_CORE_API TypeofExprAST : public ExprAST {
-	public:
-		unique_ptr<ExprAST> arg;
-		std::unique_ptr<StatementAST> Copy();
-		//first resolve variables then resolve class names
-		void Phase1();
-		llvm::Value* Generate();
-		TypeofExprAST(unique_ptr<ExprAST>&& arg, SourcePos Pos)
-			: arg(std::move(arg)) {
-			this->Pos = Pos;
-		}
-		void print(int level) {
-			ExprAST::print(level);
-			std::cout << "typeof \n";
-			arg->print(level+1);
-		}
-	};
+// 	class BD_CORE_API TypeofExprAST : public ExprAST {
+// 	public:
+// 		unique_ptr<ExprAST> arg;
+// 		std::unique_ptr<StatementAST> Copy();
+// 		//first resolve variables then resolve class names
+// 		void Phase1();
+// 		llvm::Value* Generate();
+// 		TypeofExprAST(unique_ptr<ExprAST>&& arg, SourcePos Pos)
+// 			: arg(std::move(arg)) {
+// 			this->Pos = Pos;
+// 		}
+// 		void print(int level) {
+// 			ExprAST::print(level);
+// 			std::cout << "typeof \n";
+// 			arg->print(level+1);
+//			}
+//		};
 
 	class BD_CORE_API ClassAST : public StatementAST {
 	public:
