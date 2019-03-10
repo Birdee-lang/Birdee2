@@ -314,8 +314,9 @@ namespace Birdee
 		}
 		clsdef->is_struct = is_struct;
 		clsdef->needs_rtti = needs_rtti;
-		if (parent) {
-			clsdef->parent = unique_ptr_cast<VariableSingleDefAST>(parent->Copy());
+		if (parent_type) {
+			clsdef->parent_type = parent_type->Copy();
+			clsdef->parent_resolved_type = parent_resolved_type;
 			clsdef->parent_class = parent_class;
 		}
 		clsdef->template_source_class = template_source_class;

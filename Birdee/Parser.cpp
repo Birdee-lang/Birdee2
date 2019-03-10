@@ -1290,10 +1290,11 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 	if (!is_struct) {
 		if (tokenizer.CurTok == tok_colon) {
 			tokenizer.GetNextToken(); // eat colon
-			CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
+			// CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
 			// tokenizer.GetNextToken(); 
 			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
-			ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
+			// ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
+			ret->parent_type = ParseBasicType();
 		}
 	}
 	CompileExpect(tok_newline, "Expected an newline after class name");

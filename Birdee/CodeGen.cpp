@@ -913,7 +913,7 @@ void Birdee::ClassAST::PreGenerate()
 		type_info_llvm_pair = LLVMHelper::TypePair{ type_info_ty->llvm_type->getPointerTo(),
 			DBuilder->createPointerType(type_info_ty->llvm_dtype, 64) };
 	}
-	if (parent)
+	if (parent_type)
 	{
 		field_offset++;
 	}
@@ -933,9 +933,9 @@ void Birdee::ClassAST::PreGenerate()
 		types.push_back(type_info_llvm_pair.llvm_ty);
 		ty_nodes.push_back(&type_info_llvm_pair);
 	}
-	if (parent)
+	if (parent_type)
 	{
-		auto& node2 = helper.GetTypeNode(parent->resolved_type);
+		auto& node2 = helper.GetTypeNode(parent_resolved_type);
 		types.push_back(node2.llvm_ty);
 		ty_nodes.push_back(&node2);
 	}
@@ -956,10 +956,10 @@ void Birdee::ClassAST::PreGenerate()
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
 	auto align = module->getDataLayout().getPrefTypeAlignment(llvm_type);
 
-	if (parent)
+	if (parent_type)
 	{
 		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[field_offset-1]->llvm_ty);
-		auto memb = DBuilder->createMemberType(dinfo.cu, "__class_parent__", Unit, parent->Pos.line, fsize, align,
+		auto memb = DBuilder->createMemberType(dinfo.cu, "__class_parent__", Unit, Pos.line, fsize, align,
 			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(field_offset - 1), DINode::DIFlags::FlagZero,
 			ty_nodes[field_offset - 1]->dty);
 		dtypes.push_back(memb);
@@ -1678,7 +1678,7 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 		{
 			field_offset++;
 		}
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->parent)
+		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->parent_type)
 		{
 			field_offset++;
 		}

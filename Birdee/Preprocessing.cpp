@@ -1576,10 +1576,11 @@ namespace Birdee
 				}
 			}
 		}
-		if (this->parent) {
-			parent->Phase0();
-			CompileAssert(parent->resolved_type.type == tok_class, parent->Pos, "Expecting a class as parent");
-			parent_class = parent->resolved_type.class_ast;
+		if (this->parent_type && !this->parent_resolved_type.isResolved()) {
+			// resolve parent type
+			parent_resolved_type = ResolvedType(*parent_type, Pos);
+			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
+			parent_class = parent_resolved_type.class_ast;
 		}
 		for (auto& funcdef : funcs)
 		{
@@ -2121,10 +2122,10 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
 			// new a parent instance
-			if (cls->parent)
+			if (cls->parent_type)
 			{
-				auto casade_ty = cls->parent->type->Copy();
-				inherit_cascade = make_unique<NewExprAST>(std::move(casade_ty), cls->parent->resolved_type, cls->parent->Pos);
+				auto casade_ty = cls->parent_type->Copy();
+				inherit_cascade = make_unique<NewExprAST>(std::move(casade_ty), cls->parent_resolved_type, cls->Pos);
 				inherit_cascade->Phase1();
 			}
 			if (!method.empty())
@@ -2186,10 +2187,6 @@ If usage vararg name is "", match the closest vararg
 			return;
 		Phase0();
 		scope_mgr.PushClass(this);
-		if (parent)
-		{
-			parent->Phase1InClass();
-		}
 		for (auto& fielddef : fields)
 		{
 			fielddef.decl->Phase1InClass();
@@ -2285,7 +2282,7 @@ If usage vararg name is "", match the closest vararg
 				parent_offset++;
 				target_offset++;
 			}
-			if (cur_cls->parent)
+			if (cur_cls->parent_type)
 			{
 				target_offset++;
 			}
@@ -2468,7 +2465,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"super\" outside of a class");
 		CompileAssert(!scope_mgr.class_stack.back()->is_struct, Pos, "Cannot reference \"super\" inside of a struct");
-		CompileAssert(scope_mgr.class_stack.back()->parent, Pos, "Class does not have a parent to reference");
+		CompileAssert(scope_mgr.class_stack.back()->parent_type, Pos, "Class does not have a parent to reference");
 		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
 		{
 			scope_mgr.function_scopes.back().func->captured_parent_super = (llvm::Value*)1;
