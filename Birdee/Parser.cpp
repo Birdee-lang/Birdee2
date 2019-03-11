@@ -545,23 +545,32 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	{
 	case tok_address_of:
 	case tok_pointer_of:
-	{
-		Token tok = tokenizer.CurTok;
-		SourcePos pos = tokenizer.GetSourcePos();
-		tokenizer.GetNextToken();
-		CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
-		firstexpr = ParseExpressionUnknown();
-		CompileExpect(tok_right_bracket, "Expected \')\'");
-		push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
-		break;
-	}
+	// {
+	// 	Token tok = tokenizer.CurTok;
+	// 	SourcePos pos = tokenizer.GetSourcePos();
+	// 	tokenizer.GetNextToken();
+	// 	CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
+	// 	firstexpr = ParseExpressionUnknown();
+	// 	CompileExpect(tok_right_bracket, "Expected \')\'");
+	// 	push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
+	// 	break;
+	// }
 	case tok_typeof:
 	{
+		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof");
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
-		push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
+		// push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
+		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
+		break;
+	}
+	case tok_not:
+	{
+		tokenizer.GetNextToken();
+		firstexpr = ParsePrimaryExpression();
+		push_expr(make_unique<UnaryExprAST>(tok_not, std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:
@@ -579,6 +588,10 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	case tok_this:
 		push_expr(make_unique<ThisExprAST>());
+		tokenizer.GetNextToken();
+		break;
+	case tok_super:
+		push_expr(make_unique<SuperExprAST>());
 		tokenizer.GetNextToken();
 		break;
 	case tok_null:
@@ -808,7 +821,14 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=to
 			tokenizer.GetNextToken(); //eat return
 			pos = tokenizer.GetSourcePos();
 			assert(current_func_proto && "Current func proto is empty!");
-			push_expr(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
+			if (tokenizer.CurTok == tok_newline)
+			{
+				push_expr(make_unique<ReturnAST>(pos));
+			} 
+			else 
+			{
+				push_expr(make_unique<ReturnAST>(ParseExpressionUnknown(), pos));
+			}
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
 			break;
 		case tok_func:
@@ -1266,8 +1286,19 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		ret->template_param = make_unique<TemplateParameters<ClassAST>>();
 		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg, ret->template_param->vararg_name));
 	}
+	// class inherit
+	if (!is_struct) {
+		if (tokenizer.CurTok == tok_colon) {
+			tokenizer.GetNextToken(); // eat colon
+			// CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
+			// tokenizer.GetNextToken(); 
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
+			// ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
+			ret->parent_type = ParseBasicType();
+		}
+	}
 	CompileExpect(tok_newline, "Expected an newline after class name");
-	
+
 	while (true)
 	{
 		if (ParseClassBody(ret)) //if a member is recoginzed, continue to find next one

@@ -255,10 +255,15 @@ public:
 		if (class_stack.size() > 0)
 		{
 			ClassAST* cls = class_stack.back();
-			auto cls_field = cls->fieldmap.find(name);
-			if (cls_field != cls->fieldmap.end())
+			ClassAST* cur_cls = cls;
+			while (cur_cls)
 			{
-				return &(cls->fields[cls_field->second]);
+				auto cls_field = cur_cls->fieldmap.find(name);
+				if (cls_field != cur_cls->fieldmap.end())
+				{
+					return &(cur_cls->fields[cls_field->second]);
+				}
+				cur_cls = cur_cls->parent_class;
 			}
 		}
 		return nullptr;
@@ -309,10 +314,15 @@ public:
 		if (class_stack.size() > 0)
 		{
 			ClassAST* cls = class_stack.back();
-			auto func_field = cls ->funcmap.find(name);
-			if (func_field != cls->funcmap.end())
+			ClassAST* cur_cls = cls;
+			while (cur_cls)
 			{
-				return &(cls->funcs[func_field->second]);
+				auto func_field = cur_cls->funcmap.find(name);
+				if (func_field != cur_cls->funcmap.end())
+				{
+					return &(cur_cls->funcs[func_field->second]);
+				}
+				cur_cls = cur_cls->parent_class;
 			}
 		}
 		return nullptr;
@@ -512,14 +522,17 @@ public:
 		auto cls_field = FindFieldInClass(name);
 		if (cls_field)
 		{
-			auto ret = make_unique<ThisExprAST>(class_stack.back(), pos);
+			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
 			ret->Phase1();
-			return make_unique<MemberExprAST>(std::move(ret), cls_field, pos);
+			return ret;
 		}
 		auto func_field = FindFuncInClass(name);
 		if (func_field)
 		{
-			return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
+			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
+			ret->Phase1();
+			return ret;
+			// return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
 		}
 
 		bool isInOtherModule = isInTemplateOfOtherModuleAndDoImport();
@@ -1563,6 +1576,12 @@ namespace Birdee
 				}
 			}
 		}
+		if (this->parent_type && !this->parent_resolved_type.isResolved()) {
+			// resolve parent type
+			parent_resolved_type = ResolvedType(*parent_type, Pos);
+			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
+			parent_class = parent_resolved_type.class_ast;
+		}
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
@@ -1810,16 +1829,16 @@ If usage vararg name is "", match the closest vararg
 
 
 
-	void AddressOfExprAST::Phase1()
-	{
-		
-		expr->Phase1();
-		if (is_address_of)
-			CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
-		else
-			CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
-		resolved_type.type = tok_pointer;
-	}
+	// void AddressOfExprAST::Phase1()
+	// {
+	// 	
+	// 	expr->Phase1();
+	// 	if (is_address_of)
+	// 		CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
+	// 	else
+	// 		CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
+	// 	resolved_type.type = tok_pointer;
+	// }
 
 	bool IndexExprAST::isOverloaded()
 	{
@@ -2025,7 +2044,12 @@ If usage vararg name is "", match the closest vararg
 			for (int i = 0; i <= scope_mgr.function_scopes.size() - 2; i++)
 				scope_mgr.function_scopes[i].func->capture_this = true;
 		}
-		if (!imported_captured_var.empty() || captured_parent_this) //if captured any parent var, set the function type: is_closure=true
+		if (captured_parent_super)
+		{
+			for (int i = 0; i <= scope_mgr.function_scopes.size() - 2; i++)
+				scope_mgr.function_scopes[i].func->capture_super = true;
+		}
+		if (!imported_captured_var.empty() || captured_parent_this || captured_parent_super) //if captured any parent var, set the function type: is_closure=true
 			Proto->is_closure = true;
 		cur_func = prv_func;
 		scope_mgr.function_scopes.pop_back();
@@ -2080,7 +2104,10 @@ If usage vararg name is "", match the closest vararg
 
 	void NewExprAST::Phase1()
 	{
-		resolved_type = ResolvedType(*ty, Pos);
+		if (!resolved_type.isResolved())
+		{
+			resolved_type = ResolvedType(*ty, Pos);
+		}
 		for (auto& expr : args)
 		{
 			expr->Phase1();
@@ -2126,14 +2153,14 @@ If usage vararg name is "", match the closest vararg
 			return cu.imported_classmap.find(name)->second;
 	}
 
-	void TypeofExprAST::Phase1()
-	{
-		arg->Phase1();
-		CompileAssert(arg->resolved_type.type == tok_class
-			&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
-			Pos ,"typeof must be appiled on class references with runtime type info");
-		resolved_type = ResolvedType(GetTypeInfoClass());
-	}
+	// void TypeofExprAST::Phase1()
+	// {
+	// 	arg->Phase1();
+	// 	CompileAssert(arg->resolved_type.type == tok_class
+	// 		&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+	// 		Pos ,"typeof must be appiled on class references with runtime type info");
+	// 	resolved_type = ResolvedType(GetTypeInfoClass());
+	// }
 
 	ThrowAST::ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos) :expr(std::move(expr))
 	{
@@ -2170,6 +2197,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		scope_mgr.PopClass();
 	}
+
 	void MemberExprAST::Phase1()
 	{
 		if (resolved_type.isResolved())
@@ -2236,26 +2264,43 @@ If usage vararg name is "", match the closest vararg
 			return;
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
+		int parent_offset;
 		ClassAST* cls = Obj->resolved_type.class_ast;
-		auto field = cls->fieldmap.find(member);
-		if (field != cls->fieldmap.end())
-		{
-			if (cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
-				throw CompileError(Pos, "Accessing a private member outside of a class");
-			kind = member_field;
-			this->field = &(cls->fields[field->second]);
-			resolved_type = this->field->decl->resolved_type;
-			return;
-		}
-		auto func = cls->funcmap.find(member);
-		if (func != cls->funcmap.end())
-		{
-			kind = member_function;
-			this->func = &(cls->funcs[func->second]);
-			if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cls)) // if is private and we are not in the class
-				throw CompileError(Pos, "Accessing a private member outside of a class");
-			resolved_type = this->func->decl->resolved_type;
-			return;
+		ClassAST* cur_cls = cls;
+		while (cur_cls) {
+			parent_offset = 0;
+			target_offset = 0;
+			if (cur_cls->needs_rtti)
+			{
+				parent_offset++;
+				target_offset++;
+			}
+			if (cur_cls->parent_type)
+			{
+				target_offset++;
+			}
+			auto field = cur_cls->fieldmap.find(member);
+			if (field != cur_cls->fieldmap.end())
+			{
+				if (cur_cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
+					throw CompileError(Pos, "Accessing a private member outside of a class");
+				kind = member_field;
+				this->field = &(cur_cls->fields[field->second]);
+				resolved_type = this->field->decl->resolved_type;
+				return;
+			}
+			auto func = cur_cls->funcmap.find(member);
+			if (func != cur_cls->funcmap.end())
+			{
+				kind = member_function;
+				this->func = &(cur_cls->funcs[func->second]);
+				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
+					throw CompileError(Pos, "Accessing a private member outside of a class");
+				resolved_type = this->func->decl->resolved_type;
+				return;
+			}
+			casade_offset.emplace_back(parent_offset);
+			cur_cls = cur_cls->parent_class;
 		}
 		throw CompileError(Pos, "Cannot find member "+member);
 	}
@@ -2409,6 +2454,19 @@ If usage vararg name is "", match the closest vararg
 		resolved_type.class_ast = scope_mgr.class_stack.back();
 	}
 
+	void SuperExprAST::Phase1()
+	{
+		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"super\" outside of a class");
+		CompileAssert(!scope_mgr.class_stack.back()->is_struct, Pos, "Cannot reference \"super\" inside of a struct");
+		CompileAssert(scope_mgr.class_stack.back()->parent_type, Pos, "Class does not have a parent to reference");
+		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
+		{
+			scope_mgr.function_scopes.back().func->captured_parent_super = (llvm::Value*)1;
+		}
+		resolved_type.type = tok_class;
+		resolved_type.class_ast = scope_mgr.class_stack.back()->parent_class;
+	}
+
 	void ResolvedFuncExprAST::Phase1()
 	{
 		def->Phase0(); //fix-me: maybe don't need to call phase0?
@@ -2428,9 +2486,12 @@ If usage vararg name is "", match the closest vararg
 
 	void ReturnAST::Phase1()
 	{
-		Val->Phase1();
 		assert(cur_func->Proto->resolved_type.type != tok_error && "The prototype should be resolved first");
-		Val = FixTypeForAssignment(cur_func->Proto->resolved_type, std::move(Val),Pos);
+		if (Val)
+		{
+			Val->Phase1();
+			Val = FixTypeForAssignment(cur_func->Proto->resolved_type, std::move(Val), Pos);
+		}
 	}
 
 	ClassAST* GetStringClass()
@@ -2610,6 +2671,57 @@ If usage vararg name is "", match the closest vararg
 			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
 		}
 
+	}
+
+	void UnaryExprAST::Phase1()
+	{
+		auto& arg = this->arg;
+
+		arg->Phase1();
+
+		if (Op == tok_not)
+		{
+			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
+			{
+				const string name = "__not__";
+				auto itr = arg->resolved_type.class_ast->funcmap.find(name);
+				CompileAssert(itr != arg->resolved_type.class_ast->funcmap.end(), Pos,
+					string("Cannot find function ") + name + " in class " + arg->resolved_type.class_ast->GetUniqueName());
+				auto member_def = &arg->resolved_type.class_ast->funcs[itr->second];
+				func = arg->resolved_type.class_ast->funcs[itr->second].decl.get();
+				auto memberexpr = make_unique<MemberExprAST>(std::move(arg), member_def, Pos);
+				vector<unique_ptr<ExprAST>> args;
+				arg = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
+				arg->Pos = Pos;
+				arg->Phase1();
+				resolved_type = arg->resolved_type;
+			}
+			else
+			{
+				resolved_type.type = tok_boolean;
+				arg = FixTypeForAssignment(resolved_type, std::move(arg), Pos);
+			}
+		}
+		else if (Op == tok_pointer_of)
+		{
+			arg->Phase1();
+			CompileAssert(arg->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
+			resolved_type.type = tok_pointer;
+		}
+		else if (Op == tok_address_of)
+		{
+			arg->Phase1();
+			CompileAssert(arg->GetLValue(true), Pos, "The expression in addressof should be a LValue");
+			resolved_type.type = tok_pointer;
+		}
+		else if (Op == tok_typeof)
+		{
+			arg->Phase1();
+			CompileAssert(arg->resolved_type.type == tok_class
+				&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
+				Pos, "typeof must be appiled on class references with runtime type info");
+			resolved_type = ResolvedType(GetTypeInfoClass());
+		}
 	}
 
 	void ForBlockAST::Phase1()
