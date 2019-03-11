@@ -226,6 +226,7 @@ int main(int argc,char** argv)
 			cu.Generate();
 		}
 	}
+
 	catch (CompileError& e)
 	{
 		e.print();

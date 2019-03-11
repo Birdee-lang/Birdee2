@@ -72,6 +72,7 @@ namespace Birdee
 	{"public",tok_public},
 	{"if",tok_if},
 	{"this",tok_this},
+	{"super",tok_super},
 	{"then",tok_then},
 	{"else",tok_else},
 	{"return",tok_return},
