@@ -2121,13 +2121,6 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
 			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
-			// new a parent instance
-			if (cls->parent_type)
-			{
-				auto casade_ty = cls->parent_type->Copy();
-				inherit_cascade = make_unique<NewExprAST>(std::move(casade_ty), cls->parent_resolved_type, cls->Pos);
-				inherit_cascade->Phase1();
-			}
 			if (!method.empty())
 			{
 				auto itr = cls->funcmap.find(method);

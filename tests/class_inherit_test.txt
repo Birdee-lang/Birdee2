@@ -1,3 +1,9 @@
+@init_script
+{@
+def ty_vararg(idx):
+	set_type(get_cur_class().template_instance_args[idx].resolved_type)
+@}
+
 println("Hello world")
 
 declare function getchar() as int
@@ -22,11 +28,11 @@ class TestBase[a]
 	end
 end
 
-class TestSon[T1, T2, ...] : class TestBase[T1]
+class TestSon[T1, ...] : TestBase[T1]
 	private a as T1
 	private b as double
 	public pa as T1
-	public c as T2
+	public c as {@ty_vararg(1)@}
 	public str as string
 	public function create()
 		super.create()
@@ -54,7 +60,7 @@ class TestSon[T1, T2, ...] : class TestBase[T1]
 	end
 end
 
-class TestFather[A, B, C, ...] : class TestSon[A, C]
+class TestFather[A, B, C, ...] : TestSon[A, C]
 	private aa as A
 	private bb as B
 	public paa as A
@@ -72,7 +78,7 @@ class TestFather[A, B, C, ...] : class TestSon[A, C]
 		return 7
 	end
 	public function pubget() as A
-		return super.pubget() + aa
+		return super.pubget() + aa + super.base1
 	end
 	public function add12(aaa as A) as A
 		return aaa + aa

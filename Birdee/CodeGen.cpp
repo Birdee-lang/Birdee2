@@ -310,8 +310,8 @@ Value* GetObjOfMemberFunc(ExprAST* Callee)
 			else
 			{
 				assert(isa<MemberExprAST>(pidx->instance.get()));
-				auto ptr = static_cast<MemberExprAST*> (pidx->instance.get());
-				obj = ptr->llvm_obj;
+				pobj = static_cast<MemberExprAST*> (pidx->instance.get());
+				obj = pobj->llvm_obj;
 			}
 
 		}
@@ -898,6 +898,10 @@ void Birdee::ClassAST::PreGenerate()
 	}
 	if (llvm_type)
 		return;
+	// parent class should call PreGenerate() before
+	if (parent_type && !parent_class->llvm_type)
+		parent_class->PreGenerate();
+
 	vector<llvm::Type*> types;
 	SmallVector<Metadata *, 8> dtypes;
 
@@ -936,7 +940,7 @@ void Birdee::ClassAST::PreGenerate()
 	if (parent_type)
 	{
 		auto& node2 = helper.GetTypeNode(parent_resolved_type);
-		types.push_back(node2.llvm_ty);
+		types.push_back(node2.llvm_ty->getPointerElementType());
 		ty_nodes.push_back(&node2);
 	}
 	for (auto& field : fields)
@@ -1174,14 +1178,9 @@ llvm::Value * Birdee::NewExprAST::Generate()
 		builder.CreateStore(GetOrCreateTypeInfoGlobal(resolved_type.class_ast),
 			builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(offset++) }));
 	}
-	if (inherit_cascade)
-	{
-		auto casade_ret = inherit_cascade->Generate();
-		builder.CreateStore(casade_ret,
-			builder.CreateGEP(ret, { builder.getInt32(0), builder.getInt32(offset++) }));
-	}
+
 	if(func)
-		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args,this->Pos);
+		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args, this->Pos);
 	return ret;
 }
 
@@ -1236,7 +1235,7 @@ llvm::Value * Birdee::SuperExprAST::Generate()
 		assert(gen_context.cur_func->Proto->cls);
 		int offset = gen_context.cur_func->Proto->cls->needs_rtti ? 1 : 0;
 		auto this_llvm_obj = helper.cur_llvm_func->args().begin();
-		return builder.CreateLoad(builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(offset) }));
+		return builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(offset) });
 	}
 }
 
@@ -1320,7 +1319,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				assert(cls);
 				auto this_llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
 				int offset = cls->needs_rtti ? 1 : 0;
-				captured_parent_super = builder.CreateLoad(builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(offset) }), "super");
+				captured_parent_super = builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(offset) });
 			}
 			for (auto& v : imported_captured_var)
 			{
@@ -1665,7 +1664,7 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			auto casade_llvm_obj = Obj->Generate();
 			for (auto offset : casade_offset)
 			{
-				casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
+				casade_llvm_obj = builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) });
 			}
 			llvm_obj = casade_llvm_obj;
 		}
@@ -1955,10 +1954,9 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 		auto casade_llvm_obj = llvm_obj;
 		for (auto offset : casade_offset)
 		{
-			casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
+			casade_llvm_obj = builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) });
 		}
 		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) });
-		// return builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
 	}
 		
 	return nullptr;

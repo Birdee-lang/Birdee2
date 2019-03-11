@@ -1193,7 +1193,6 @@ namespace Birdee {
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
-		std::unique_ptr<NewExprAST> inherit_cascade;
 		std::unique_ptr<Type> ty;
 		string method;
 	public:
@@ -1202,11 +1201,6 @@ namespace Birdee {
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
-		// constructor for class inherit
-		NewExprAST(std::unique_ptr<Type>&& ty, ResolvedType & resolved_type, SourcePos pos) : ty(std::move(ty)) {
-			this->Pos = Pos;
-			this->resolved_type = resolved_type;
-		}
 		NewExprAST(std::unique_ptr<Type>&& ty, vector<std::unique_ptr<ExprAST>>&& args, const string& method, SourcePos Pos)
 			: ty(std::move(ty)), args(std::move(args)), method(method) {
 			this->Pos = Pos;
