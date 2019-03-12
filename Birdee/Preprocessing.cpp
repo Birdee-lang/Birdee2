@@ -896,11 +896,8 @@ namespace Birdee
 		return cls->GetUniqueName();
 	}
 
-	static void ParseRawTemplateArgs(vector<unique_ptr<ExprAST>>& raw_template_args, vector<TemplateArgument>& template_args)
+	static void ParseRawOneTemplateArg(unique_ptr<ExprAST>&& template_arg, vector<TemplateArgument>& this_template_args)
 	{
-		auto& this_template_args = template_args;
-		for (auto& template_arg : raw_template_args)
-		{
 			RunOnTemplateArg(template_arg.get(),
 				[&this_template_args](BasicTypeExprAST* ex) {
 				this_template_args.push_back(TemplateArgument(ResolvedType(*ex->type, ex->Pos)));
@@ -974,10 +971,32 @@ namespace Birdee
 				[&this_template_args, &template_arg](StringLiteralAST* ex) {
 				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
 			},
+				[&this_template_args, &template_arg](ScriptAST* ex) {
+				ex->Phase1();
+				if (ex->stmt) // if the user called set_ast(), use ScriptAST as an expression
+				{
+					//if ex->resolved_type.isResolved(), then it's an expression. Otherwise, it's an general statement 
+					CompileAssert(ex->resolved_type.isResolved(), ex->Pos,
+						"The returned AST of this script must be an expression, because it is in a template argument");
+					ParseRawOneTemplateArg(unique_ptr_cast<ExprAST>(std::move(ex->stmt)), this_template_args); //recursively parse the expression
+				}
+				else
+				{
+					CompileAssert(ex->type_data.isResolved(), ex->Pos,
+						"This script must be either an expression or type, because it is in a template argument");
+					this_template_args.push_back(TemplateArgument(ex->type_data));
+				}
+			},
 				[&template_arg]() {
-				throw CompileError(template_arg->Pos,  "Invalid template argument expression type");
+				throw CompileError(template_arg->Pos, "Invalid template argument expression type");
 			}
 			);
+	}
+	static void ParseRawTemplateArgs(vector<unique_ptr<ExprAST>>& raw_template_args, vector<TemplateArgument>& template_args)
+	{
+		for (auto& arg : raw_template_args)
+		{
+			ParseRawOneTemplateArg(std::move(arg), template_args);
 		}
 	}
 
@@ -1143,6 +1162,7 @@ namespace Birdee
 			void* globals, *locals;
 			GetPyScope(globals, locals);
 			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type), pos, globals, locals);
+			this->index_level += type.index_level;
 			return;
 		}
 		if (type.type == tok_func)
@@ -1282,7 +1302,6 @@ namespace Birdee
 		}
 		if(this->type==tok_class)
 			CompileAssert(!this->class_ast->isTemplate(), pos, string("Cannot use template as a class instance: ") + this->class_ast->GetUniqueName());
-
 	}
 
 	void CompileUnit::Phase0()

@@ -43,6 +43,29 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_ok('''
+dim a as string[] = new string *32
+dim b as {@set_type(resolve_type("int"))@}[] =new int * 32
+''')
+
+assert_ok('''
+import variant:variant
+dim v as variant[{@set_type(resolve_type("int"))@}]
+''')
+
+assert_generate_ok('''
+class clsbase [Arg as int, T1,T2]
+	public a as T1
+	public b as T2
+end
+
+class clsderived [T1] : clsbase[{@set_ast(NumberExprAST.new(BasicType.INT,32))@}, T1,{@set_type(resolve_type("float"))@}]
+	public c as T1
+end
+
+dim a = new clsderived[int]
+''')
+
+assert_ok('''
 import variant:variant
 dim v as variant[byte,int,long,string]
 v.set(1)
