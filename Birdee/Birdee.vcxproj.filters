@@ -154,6 +154,9 @@
     <Text Include="..\BirdeeHome\src\birdee.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\pylib\bdutils.py">
+      <Filter>资源文件\pylib</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">

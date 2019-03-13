@@ -192,6 +192,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <Text Include="..\BirdeeHome\pylib\bdutils.py" />
     <Text Include="..\BirdeeHome\src\functional.txt" />
     <Text Include="..\BirdeeHome\src\unsafe.txt" />
     <Text Include="..\BirdeeHome\src\variant.txt" />

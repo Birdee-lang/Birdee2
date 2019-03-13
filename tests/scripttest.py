@@ -43,6 +43,28 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_ok('''
+{@from bdutils import *@}
+dim a = {@set_int(234)@}
+dim b = {@set_str("hello")@}
+dim c as {@resolve_set_type("int")@}
+struct p[...]
+	public v1 as {@cls_templ_type_at(0)@}
+	public v2 as {@cls_templ_type_at(1)@}
+end
+dim pv as p[int,string]
+''')
+
+
+assert_fail('''
+{@from bdutils import *@}
+struct p[...]
+	public v1 as {@cls_templ_type_at(10)@}
+	public v2 as {@cls_templ_type_at(1)@}
+end
+dim pv as p[int,string]
+''')
+
+assert_ok('''
 dim a as string[] = new string *32
 dim b as {@set_type(resolve_type("int"))@}[] =new int * 32
 ''')

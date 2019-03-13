@@ -5,6 +5,30 @@ def get_boolean_type():
 	a.set_detail(BasicType.BOOLEAN,None)
 	return a
 
+def require_(*checks):
+	for i in checks:
+		if not i[0]:
+			raise RuntimeError(i[1]())
+
+def is_cls_template_inst(scls):
+	return (scls.is_template_instance(), lambda:"The input class {} is expected to be a template instance".format(scls.get_unique_name()) )
+
+def index_within(index, st, ed):
+	return (st <= index <ed, lambda:"The index {index} is expected to be {st}<= index < {ed}".format(index=index, st= st, ed= ed) )
+
+def is_class(node):
+	return (isinstance(node,ClassAST), lambda:"The AST node {} is expected to be a ClassAST".format(str(node)) )
+
+def is_cls_template(scls):
+	return (scls.is_template(), lambda:"The input class {} is expected to be a template".format(scls.get_unique_name()) )
+
+def is_type_templ_arg(arg,idx):
+	return (arg.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE , 
+		lambda:"The {}-th template argument is expected to be a type".format(idx))
+
+def is_expr_templ_arg(args,idx):
+	return (args[idx].kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_EXPR , 
+		lambda:"The {}-th template argument is expected to be an expression".format(idx))
 
 '''
 Check if "type" is a prototype. Throw if not.
