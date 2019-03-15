@@ -286,8 +286,7 @@ BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,S
 	{
 		for (auto& func_name : anno)
 		{
-			auto pfunc = PyDict_GetItemString(g_dict.ptr(), func_name.c_str());
-			auto func = py::cast<py::object>(pfunc);
+			auto func = py::eval(func_name, g_dict);
 			if (!func)
 				throw CompileError(pos, string("\nCannot find function for annotation: ") + func_name);
 			func(GetRef(impl));
