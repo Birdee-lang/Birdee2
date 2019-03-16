@@ -142,8 +142,6 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 		throw CompileError(ths->Pos, string("\nScript exception:\n") + e.what());
 	}
 	ths->stmt = std::move(outexpr);
-	outexpr = nullptr;
-	outtype.type = tok_error;
 	if (ths->stmt)
 	{
 		ths->stmt->Phase1();
@@ -152,6 +150,12 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 		else
 			ths->resolved_type.type = tok_error;
 	}
+	else
+	{
+		ths->type_data = outtype;
+	}
+	outexpr = nullptr;
+	outtype = ResolvedType();
 }
 
 static UniquePtrStatementAST CompileExpr(char* cmd) {
@@ -282,8 +286,7 @@ BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,S
 	{
 		for (auto& func_name : anno)
 		{
-			auto pfunc = PyDict_GetItemString(g_dict.ptr(), func_name.c_str());
-			auto func = py::cast<py::object>(pfunc);
+			auto func = py::eval(func_name, g_dict);
 			if (!func)
 				throw CompileError(pos, string("\nCannot find function for annotation: ") + func_name);
 			func(GetRef(impl));

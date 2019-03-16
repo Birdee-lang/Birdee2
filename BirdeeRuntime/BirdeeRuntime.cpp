@@ -8,6 +8,78 @@
 #include <gc.h>
 #include "BirdeeRuntime.h"
 
+extern "C" void* birdee_0____create__basic__exception__no__call(int ty);
+extern "C" void __Birdee_Throw(BirdeeRTTIObject* obj);
+#ifndef _WIN32
+#include <signal.h>
+#include <unistd.h>
+
+static void SigSEGVHandler(int iSignal, siginfo_t * psSiginfo, void * psContext)
+{
+	sigset_t x;
+	sigemptyset(&x);
+	sigaddset(&x, SIGSEGV);
+	sigprocmask(SIG_UNBLOCK, &x, NULL);
+	__Birdee_Throw((BirdeeRTTIObject*)birdee_0____create__basic__exception__no__call(0));
+}
+
+static void SigSIGFPEHandler(int iSignal, siginfo_t * psSiginfo, void * psContext)
+{
+	if (psSiginfo->si_code == FPE_INTDIV || psSiginfo->si_code == FPE_INTDIV)
+	{
+		sigset_t x;
+		sigemptyset(&x);
+		sigaddset(&x, SIGFPE);
+		sigprocmask(SIG_UNBLOCK, &x, NULL);
+		__Birdee_Throw((BirdeeRTTIObject*)birdee_0____create__basic__exception__no__call(1));
+	}
+	else
+	{
+		fprintf(stderr, "unhandled SIGFPE\n");
+		_exit(3);
+	}
+}
+
+static void Init()
+{
+	struct sigaction old_sig;
+	struct sigaction new_sig;
+
+	memset(&new_sig, 0, sizeof(new_sig));
+	new_sig.sa_sigaction = SigSEGVHandler;
+	new_sig.sa_flags = SA_SIGINFO;
+	sigaction(SIGSEGV, &new_sig, &old_sig);
+
+	memset(&new_sig, 0, sizeof(new_sig));
+	new_sig.sa_sigaction = SigSIGFPEHandler;
+	new_sig.sa_flags = SA_SIGINFO;
+	sigaction(SIGFPE, &new_sig, &old_sig);
+}
+#else
+#include <eh.h>
+#include <Windows.h>
+void Init()
+{
+	SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS* ptr) -> LONG
+	{
+		auto code = ptr->ExceptionRecord->ExceptionCode;
+		switch (code)
+		{
+		case EXCEPTION_ACCESS_VIOLATION:
+			__Birdee_Throw((BirdeeRTTIObject*)birdee_0____create__basic__exception__no__call(0));
+			return EXCEPTION_CONTINUE_EXECUTION;
+			break;
+		case EXCEPTION_FLT_DIVIDE_BY_ZERO:
+		case EXCEPTION_INT_DIVIDE_BY_ZERO:
+			__Birdee_Throw((BirdeeRTTIObject*)birdee_0____create__basic__exception__no__call(1));
+			return EXCEPTION_CONTINUE_EXECUTION;
+			break;
+		}
+		return EXCEPTION_EXECUTE_HANDLER;
+	});
+}
+#endif
+
 extern "C" void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
 {
 	void* ret= GC_malloc(sz);
@@ -16,7 +88,15 @@ extern "C" void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
 	return ret;
 }
 
+struct ModuleConstructor
+{
+	ModuleConstructor()
+	{
+		Init();
+	}
+};
 
+static ModuleConstructor ctor;
 
 static void* BirdeeAllocArr(va_list args, uint32_t sz,uint32_t cur, uint32_t param_sz)
 {

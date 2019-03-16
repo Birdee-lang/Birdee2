@@ -485,6 +485,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 			auto type = make_unique<QualifiedIdentifierType>(ex->ToStringArray());
 			auto nexpr = make_unique<BasicTypeExprAST>();
 			nexpr->type = std::move(type);
+			nexpr->type->index_level = 1;
 			expr = std::move(nexpr);
 		},
 			[](FunctionTemplateInstanceExprAST* ex) {
@@ -498,6 +499,13 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 		},
 			[](StringLiteralAST* ex) {
 			throw CompileError("Cannot apply index on string");
+		},
+			[&expr](ScriptAST* ex) {
+			auto type = make_unique<ScriptType>(ex->script);
+			auto nexpr = make_unique<BasicTypeExprAST>();
+			nexpr->type = std::move(type);
+			nexpr->type->index_level = 1;
+			expr = std::move(nexpr);
 		},
 			[]() {
 			throw CompileError("Invalid template argument expression type for []");

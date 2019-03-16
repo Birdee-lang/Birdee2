@@ -666,6 +666,8 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BuildClassFromJson(json["Classes"], *this);
 	BuildOrphanClassFromJson(json["ImportedClasses"], *this);
 
+	if (package.size() == 1 && package[0] == "birdee") //if is "birdee" core package, generate "type_info" first
+		classmap.find("type_info")->second->PreGenerate();
 	for (auto& cls : this->classmap)
 	{
 		cls.second->PreGenerate();//it is safe to call multiple times

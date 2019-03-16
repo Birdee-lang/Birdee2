@@ -1349,6 +1349,11 @@ namespace Birdee {
 	class BD_CORE_API ScriptAST : public ExprAST
 	{
 	public:
+		//ScriptAST can be contained in template argument in a BasicTypeExpr. So it can serve as an expression, or can be served
+		//as a resolved type. The field type_data is only valid when stmt is empty (when the user only calls set_type but never calls set_ast() ).
+		//But if stmt is empty, type_data can be invalid in some cases - user did not call either set_ast() or set_type()
+		ResolvedType type_data;
+		//In most cases, ScriptAST is used as a general expr.
 		unique_ptr<StatementAST> stmt;
 		string script;
 		virtual Value* Generate();
