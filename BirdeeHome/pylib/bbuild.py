@@ -245,11 +245,14 @@ def prepare_module(modu,is_main):
 		if proc.wait()!=0:
 			raise RuntimeError("Compile failed, exit code: "+ str(proc.returncode))
 		proc=None #hope to release resource for the process pipe
+		module_set=set()
 		for depstr in dependencies_list:
 			dep=depstr.split(".")
 			if dep[-1][0]==':' or dep[-1][0]=='*':  #if it is a "name import"
 				dep.pop() #delete the imported name
-			cu.add_dependency(prepare_module(dep,False))
+			module_set.add(tuple(dep)) #use a set to remove duplications
+		for dep in module_set:
+			cu.add_dependency(prepare_module(list(dep),False))
 		create_dirs(outpath,modu)
 	return cu
 
@@ -342,7 +345,7 @@ while True:
 
 for modu,cu in prepared_mod.items():
 	if not cu.done:
-		raise RuntimeError("The compile unit " + ".".join(cu.modu) + " is not compiled")
+		raise RuntimeError("The compile unit " + ".".join(cu.modu) + " is not compiled. Dependency cnt = ", cu.dependency_cnt)
 
 if link_executable and link_target:
 	if os.path.exists(link_target) and os.path.isfile(link_target) and  os.path.getmtime(link_target)>max_bin_timestamp:
