@@ -1247,9 +1247,7 @@ namespace Birdee {
 		unordered_map<reference_wrapper<const string>, int> funcmap;
 
 		ClassAST* parent_class = nullptr;
-		// std::unique_ptr<VariableSingleDefAST> parent;
 		std::unique_ptr<Type> parent_type;
-		ResolvedType parent_resolved_type;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
 		//if the class is defined in the current package, this field will be -1
 		//if the class is an orphan class, this field will be -2
@@ -1292,8 +1290,7 @@ namespace Birdee {
 	class BD_CORE_API MemberExprAST : public ResolvedIdentifierExprAST {
 		std::string member;
 	public:
-		int target_offset;
-		vector<int> casade_offset;
+		int casade_parents = 0;
 		std::unique_ptr<ExprAST> Obj;
 		vector<string> ToStringArray();
 		std::unique_ptr<StatementAST> Copy();
