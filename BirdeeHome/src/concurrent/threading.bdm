@@ -1,0 +1,79 @@
+package concurrent
+
+import unsafe
+
+struct closure_unpacked
+	public funcptr as pointer
+	public data as pointer
+end
+
+@init_script
+{@
+from traits import *
+from traits import _
+from bdutils import *
+
+def check_arg_is_functype(idx):
+	def checker(fn):
+		ty = get_function_arg_at(fn,0).resolved_type
+		require_(is_prototype(ty))
+	return checker
+
+def check_arg_is_closure(idx):
+	def checker(fn):
+		ty = get_function_arg_at(fn,0).resolved_type
+		require_(is_prototype(ty))
+		require_( (ty.get_detail().is_closure, lambda:"Expecting a closure"))
+	return checker
+
+def expand_vararg(func, idx_start):
+	args = func.proto.args
+	ret = ""
+	for i in range(idx_start,len(args)):
+		ret+= args[i].name+','
+	return ret[:-1]
+@}
+
+@check_arg_is_closure(0)
+function unpack_closure[T](f as T) as closure_unpacked => unsafe.ptr_load[closure_unpacked](addressof(f))
+
+declare function pthread_create(ptr_thread_id as pointer, attr as pointer, routine as pointer, arg as pointer) as int
+declare function pthread_exit(p as pointer)
+
+function pthread_create_wrapper(ptr_thread_id as pointer, attr as pointer, routine as pointer, arg as pointer) as int => pthread_create(ptr_thread_id,attr,routine,arg)
+function pthread_exit_wrapper(p as pointer) => pthread_exit(p)
+
+
+class thread
+	private handle as pointer
+
+	public function init[T,...](fn as T, ...)
+{@
+func=get_cur_func()
+check_arg_is_functype(0)(func)
+@}
+		dim f = function ()
+			{@set_ast(expr("fn({})".format(expand_vararg(func,1))))@}
+			pthread_exit_wrapper(pointerof(null))
+		end
+		dim unpacked = unpack_closure(f)
+		pthread_create_wrapper(addressof(handle),pointerof(null),unpacked.funcptr,unpacked.data)
+	end
+end
+
+
+##func aaaa()
+	dim a as int
+	dim b = func()
+		a
+		println("hi")
+	end
+	dim clo = unpack_closure(b)
+	println(pointer2str(clo.data))
+	println(pointer2str(clo.funcptr))
+end
+
+aaaa()##
+
+
+

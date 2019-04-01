@@ -1,0 +1,13 @@
+import concurrent.threading:*
+
+declare function sleep(seconds as int)
+declare function getchar() as int
+
+function add(a as int, b as int)
+	println(int2str(a+b))
+end
+
+dim th = new thread
+th.init(add, 1, 2)
+sleep(10)
+println("end")

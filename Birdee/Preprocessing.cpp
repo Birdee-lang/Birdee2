@@ -489,7 +489,7 @@ public:
 					//then create a variable to import the variable
 					var->capture_import_type = v->capture_export_type;
 					var->capture_import_idx = v->capture_export_idx;
-					var->capture_export_idx = VariableSingleDefAST::CAPTURE_NONE;
+					var->capture_export_type = VariableSingleDefAST::CAPTURE_NONE;
 					var->capture_export_idx = -1;
 
 					//v is set to be the imported variable for the next iteration

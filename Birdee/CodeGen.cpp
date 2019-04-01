@@ -1335,10 +1335,11 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				auto var = v.second.get();
 				DIType* ty = helper.GetTypeNode(var->resolved_type).dty;
 				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
+				int impidx = v.second->capture_import_idx;
 				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
-					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }, var->name);
+					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }, var->name);
 				else
-					var->llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }), var->name);
+					var->llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }), var->name);
 				// Create a debug descriptor for the variable.
 				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
 					true);
