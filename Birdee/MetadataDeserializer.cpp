@@ -301,6 +301,12 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	}
 	ret->name = json_cls["name"].get<string>();
 	ret->package_name_idx = module_idx;
+	
+	{
+		auto itr = json_cls.find("is_struct");
+		if(itr!=json_cls.end())
+			ret->is_struct = itr->get<bool>();
+	}
 	const json& json_fields = json_cls["fields"];
 	BirdeeAssert(json_fields.is_array(), "Expected an JSON array");
 	int idx = 0;
