@@ -1210,7 +1210,7 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	}
 
 	if(func)
-		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args, this->Pos);
+		GenerateCall(func->llvm_func, func->Proto.get(), ret, args, this->Pos);
 	return ret;
 }
 

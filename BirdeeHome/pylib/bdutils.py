@@ -39,6 +39,12 @@ def make_str(s):
 def set_str(s):
 	set_ast(make_str(s))
 
+def set_expr(s):
+	set_ast(expr(s))
+
+def set_stmt(s):
+	set_ast(stmt(s))
+
 def resolve_set_type(s):
 	set_type(resolve_type(s))
 

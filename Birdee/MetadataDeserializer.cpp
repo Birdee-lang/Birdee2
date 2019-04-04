@@ -701,7 +701,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 			BirdeeAssert(itr->is_string(), "InitScripts field in bmm file should be a string");
 			//if it has a init script, construct a temp ScriptAST and run it
 			Birdee::PushPyScope(this);
-			ScriptAST tmp= ScriptAST(string());
+			ScriptAST tmp= ScriptAST(string(), true);
 			tmp.script = itr->get<string>();
 			if (!tmp.script.empty())
 			{
