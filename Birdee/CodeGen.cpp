@@ -1227,6 +1227,11 @@ bool Birdee::ASTBasicBlock::Generate()
 	return false;
 }
 
+llvm::Value * Birdee::UpcastExprAST::Generate()
+{
+	return nullptr;
+}
+
 llvm::Value * Birdee::ThisExprAST::Generate()
 {
 	if (resolved_type.class_ast->is_struct)
