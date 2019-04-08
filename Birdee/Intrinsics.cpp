@@ -18,6 +18,7 @@ namespace Birdee
 {
 	extern llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty);
 	extern int GetLLVMTypeSizeInBit(llvm::Type* ty);
+	extern bool IsResolvedTypeClass(const ResolvedType& r);
 
 	static void CheckIntrinsic(FunctionAST* func, int arg_num, int targ_num)
 	{
@@ -131,10 +132,33 @@ namespace Birdee
 		return builder.CreateBitOrPointerCast(v, ty);
 	}
 
+	static void Intrinsic_UnsafeUpcast_Phase1(FunctionAST* func)
+	{
+		CheckIntrinsic(func, 1, 2);
+		auto& targs = *func->template_instance_args;
+		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE && targs[1].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
+			func->Pos, "The 1st and 2nd template arguments for unsafe.bit_cast should be a type");
+	}
+
+	static llvm::Value* Intrinsic_UnsafeUpcast_Generate(FunctionAST* func, llvm::Value* obj, vector<unique_ptr<ExprAST>>& args)
+	{
+		assert(func->template_instance_args);
+		assert(func->template_instance_args->size() == 2);
+		assert(args.size() == 1);
+		auto& targs = *func->template_instance_args;
+		CompileAssert(IsResolvedTypeClass(targs[0].type) && IsResolvedTypeClass(targs[1].type) 
+			&& targs[0].type.class_ast->HasParent(targs[1].type.class_ast), func->Pos,
+			string("Cannot upcast from type ") + targs[1].type.GetString() + " to type " + targs[0].type.GetString());
+		auto v = args[0]->Generate();
+		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
+		return builder.CreateBitOrPointerCast(v, ty);
+	}
+
 	static IntrisicFunction unsafe_bit_cast = { Intrinsic_UnsafeBitCast_Generate , Intrinsic_UnsafeBitCast_Phase1 };
 	static IntrisicFunction unsafe_ptr_cast = { Intrinsic_UnsafePtrCast_Generate , Intrinsic_UnsafePtrCast_Phase1 };
 	static IntrisicFunction unsafe_ptr_load = { Intrinsic_UnsafePtrLoad_Generate , Intrinsic_UnsafePtrLoad_Phase1 };
 	static IntrisicFunction unsafe_ptr_store = { Intrinsic_UnsafePtrStore_Generate , Intrinsic_UnsafePtrStore_Phase1 };
+	static IntrisicFunction unsafe_up_cast = { Intrinsic_UnsafeUpcast_Generate , Intrinsic_UnsafeUpcast_Phase1 };
 
 	static unordered_map<string, unordered_map<string, IntrisicFunction*>> intrinsic_module_names = {
 		{"unsafe",{
@@ -142,6 +166,7 @@ namespace Birdee
 			{"ptr_load",&unsafe_ptr_load},
 			{"ptr_store",&unsafe_ptr_store},
 			{"bit_cast",&unsafe_bit_cast},
+			{"up_cast",&unsafe_up_cast},
 			}
 		},
 	};

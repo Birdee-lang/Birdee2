@@ -501,6 +501,8 @@ void RegisiterClassForBinding(py::module& m)
 		.def("get_unique_name", &ClassAST::GetUniqueName)
 		.def_readwrite("needs_rtti", &ClassAST::needs_rtti)
 		.def_property_readonly("is_struct", [](ClassAST& ths) {return ths.is_struct; })
+		.def_readwrite("parent_class", &ClassAST::parent_class)
+		.def("has_parent", &ClassAST::HasParent)
 		.def("run", [](ClassAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
 //	unordered_map<reference_wrapper<const string>, int> fieldmap;
 //	unordered_map<reference_wrapper<const string>, int> funcmap;

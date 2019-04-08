@@ -94,6 +94,11 @@ namespace Birdee
 	{"catch",tok_catch},
 	{"throw",tok_throw},
 	};
+
+	BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r)
+	{
+		return r.type == tok_class && r.index_level == 0 && !r.class_ast->is_struct;
+	}
 }
 
 extern void ClearPreprocessingState();

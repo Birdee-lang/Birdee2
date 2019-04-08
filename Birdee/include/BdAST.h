@@ -1212,6 +1212,7 @@ namespace Birdee {
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
 
+		//resolved after Phase0
 		ClassAST* parent_class = nullptr;
 		std::unique_ptr<Type> parent_type;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
@@ -1228,6 +1229,7 @@ namespace Birdee {
 		}
 		bool isTemplateInstance() { return template_instance_args != nullptr; }
 		bool isTemplate() { return template_param != nullptr && (template_param->params.size() != 0 || template_param->is_vararg); }
+		bool HasParent(ClassAST* checkparent);
 		string GetUniqueName();
 		void PreGenerate();
 		void PreGenerateFuncs();

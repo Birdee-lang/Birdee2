@@ -93,5 +93,5 @@ GenerateCastFP2I(tok_ulong, tok_uint, CreateZExtOrTrunc, getInt32Ty);
 
 unique_ptr<StatementAST> Birdee::UpcastExprAST::Copy()
 {
-	return make_unique<UpcastExpr>(unique_ptr_cast<UpcastExprAST>(expr->Copy()), target, Pos);
+	return make_unique<UpcastExprAST>(unique_ptr_cast<UpcastExprAST>(expr->Copy()), target, Pos);
 }

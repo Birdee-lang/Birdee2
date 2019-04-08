@@ -49,6 +49,7 @@ namespace Birdee
 			src_template(src_template), args(std::move(args)), CompileError(pos,_msg)
 		{}
 	};
+	extern bool IsResolvedTypeClass(const ResolvedType& r);
 }
 
 #ifdef BIRDEE_USE_DYN_LIB
@@ -804,6 +805,20 @@ void FixNull(ExprAST* v, ResolvedType& target)
 	expr->resolved_type = target;
 }
 
+bool Birdee::ClassAST::HasParent(Birdee::ClassAST* checkparent)
+{
+	ClassAST* cur = this;
+	while (cur != checkparent)
+	{
+		cur = cur->parent_class;
+		if (cur == nullptr)
+			return false;
+	}
+	return true;
+}
+
+
+
 unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAST>&& val,SourcePos pos)
 {
 	if (target == val->resolved_type)
@@ -819,10 +834,19 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 			return make_unique<FunctionToClosureAST>(std::move(val));
 		}
 	}
-	if ( target.isReference() && val->resolved_type.isNull())
+	if (target.isReference())
 	{
-		FixNull(val.get(), target);
-		return std::move(val);
+		if (val->resolved_type.isNull())
+		{
+			FixNull(val.get(), target);
+			return std::move(val);
+		}
+		if (IsResolvedTypeClass(val->resolved_type)
+			&& IsResolvedTypeClass(target)) // check for upcast
+		{
+			if (val->resolved_type.class_ast->HasParent(target.class_ast))
+				return make_unique<UpcastExprAST>(std::move(val), target.class_ast, pos);
+		}
 	}
 #define fix_type(typeto) FixTypeForAssignment2<typeto>(target,std::move(val),pos)
 	else if (target.isNumber() && val->resolved_type.index_level==0)

@@ -1241,7 +1241,17 @@ bool Birdee::ASTBasicBlock::Generate()
 
 llvm::Value * Birdee::UpcastExprAST::Generate()
 {
-	return nullptr;
+	std::vector<Value*> gep = { builder.getInt32(0)};
+	auto val = expr->Generate();
+	assert(expr->resolved_type.type == tok_class && expr->resolved_type.index_level == 0);
+	auto curcls = expr->resolved_type.class_ast;
+	while (curcls != target)
+	{
+		gep.push_back(builder.getInt32(0)); //get the parent pointer
+		curcls = curcls->parent_class;
+		assert(curcls);
+	}
+	return builder.CreateGEP(val,gep);
 }
 
 llvm::Value * Birdee::ThisExprAST::Generate()

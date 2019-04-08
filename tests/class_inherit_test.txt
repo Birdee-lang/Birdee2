@@ -1,3 +1,5 @@
+import unsafe:up_cast
+
 {@
 import bdutils
 @}
@@ -88,10 +90,14 @@ class TestFather[A, B, C, ...] : TestSon[A, C]
 end
 
 dim ts = new TestFather[int, double, boolean]:create()
+dim tb as TestBase[int] = ts
 
+println(int2str(tb.base1))
 println(int2str(ts.base1))
 println(int2str(ts.base2))
 println(ts.basestr)
+
+ts = up_cast[TestFather[int, double, boolean]](tb)
 
 println("=============")
 
