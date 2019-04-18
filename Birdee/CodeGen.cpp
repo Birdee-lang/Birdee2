@@ -196,6 +196,8 @@ struct GeneratorContext
 	llvm::BasicBlock* landingpad = nullptr;
 	StructType* landingpadtype = nullptr;
 	unordered_map<ClassAST*, GlobalVariable*> rtti_map;
+	//a map from virtual function number to {rtti,vtable...} type map
+	unordered_map<int, StructType*> vtable_type_map;
 
 	//the wrappers for raw functions, useful for conversion from functype to closure
 	unordered_map<Function*, Function*> function_wrapper_cache;
@@ -251,7 +253,38 @@ static ClassAST* GetTypeInfoType()
 	return gen_context.cls_typeinfo;
 }
 
-static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
+static StructType* GetOrCreateVTableType(int vcnt)
+{
+	assert(vcnt > 0);
+	auto itr = gen_context.vtable_type_map.find(vcnt);
+	StructType* ty;
+	if (itr != gen_context.vtable_type_map.end())
+	{
+		ty = itr->second;
+	}
+	else
+	{
+		ty = StructType::create({ GetTypeInfoType()->llvm_type , ArrayType::get(builder.getInt8PtrTy(),vcnt) });
+		gen_context.vtable_type_map[vcnt] = ty;
+	}
+	return ty;
+}
+static GlobalVariable* CreateTypeInfoWithVTableGlobal(ClassAST* cls)
+{
+
+	string name;
+	MangleNameAndAppend(name, cls->GetUniqueName());
+	name += "0_typeinfo_vtable";
+	auto newv = new GlobalVariable(*module, GetOrCreateVTableType(cls->vtabledef.size()),
+		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
+		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+	gen_context.rtti_map[cls] = newv;
+	return newv;
+}
+
+//For virtual classes, a struct of { rtti, vtable } will be generated
+//For non-virtual classes, real rtti is generated
+static GlobalVariable* GetOrCreateTypeInfoGlobalRaw(ClassAST* cls)
 {
 	auto itr = gen_context.rtti_map.find(cls);
 	if (itr != gen_context.rtti_map.end())
@@ -261,11 +294,27 @@ static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	string name;
 	MangleNameAndAppend(name, cls->GetUniqueName());
 	name += "0_typeinfo";
-	auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
-		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
-		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
-	gen_context.rtti_map[cls] = newv;
-	return newv;
+
+	if (cls->vtabledef.empty())
+	{
+		auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
+			true, GlobalVariable::LinkOnceODRLinkage, nullptr,
+			name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+		gen_context.rtti_map[cls] = newv;
+		return newv;
+	}
+	else
+		return CreateTypeInfoWithVTableGlobal(cls);
+}
+
+//Get or create rtti global variable. If it is virtual class, 
+//automatically cast rtti-with-vtable to rtti
+static Value* GetOrCreateTypeInfoGlobal(ClassAST* cls)
+{
+	auto* ret = GetOrCreateTypeInfoGlobalRaw(cls);
+	if (cls->vtabledef.empty())
+		return ret;
+	return builder.CreatePointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
 }
 
 template<typename Derived>
@@ -840,7 +889,6 @@ void Birdee::CompileUnit::Generate()
 
 	legacy::PassManager pass;
 	auto FileType = TargetMachine::CGFT_ObjectFile;
-
 	if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
 		errs() << "TheTargetMachine can't emit a file of this type";
 		return;
@@ -913,7 +961,7 @@ void Birdee::ClassAST::PreGenerate()
 	if (llvm_type)
 		return;
 	// parent class should call PreGenerate() before
-	if (parent_type && !parent_class->llvm_type)
+	if (parent_class && !parent_class->llvm_type)
 		parent_class->PreGenerate();
 
 	vector<llvm::Type*> types;
@@ -988,7 +1036,7 @@ void Birdee::ClassAST::PreGenerate()
 
 		if (needs_rtti && !parent_class)
 			push_dtype("__rtti_ptr__", 0);
-		if (parent_type)
+		if (parent_class)
 			push_dtype("__class_parent__", field_offset - 1);
 		int _idx = field_offset;
 		for (auto& field : fields)
@@ -1008,7 +1056,7 @@ void Birdee::ClassAST::PreGenerate()
 	
 	if (needs_rtti && !parent_class)
 	{
-		GetOrCreateTypeInfoGlobal(this);
+		GetOrCreateTypeInfoGlobalRaw(this);
 	}
 	//fix-me: now the debug info is not portable
 }
@@ -1740,7 +1788,7 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			llvm_obj = GenerateMemberParentGEP(casade_llvm_obj, curcls, casade_parents);
 			//if current class is a subclass, add 1 to offset,
 			//because field 0 is always the embeded parent class object
-			if (curcls->parent_type)
+			if (curcls->parent_class)
 				field_offset++;
 			else if(curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
 				field_offset++;
@@ -1773,6 +1821,21 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			builder.CreateStore(Obj->Generate(), llvm_obj); //store the obj to the alloca
 		}
 		return func->decl->llvm_func;
+	}
+	else if (kind == member_virtual_function)
+	{
+		assert(Obj->resolved_type.type == tok_class);
+		//SomeClass* obj => RttiVtable** ppvtable
+		Value* v = builder.CreatePointerCast(llvm_obj,
+			GetOrCreateVTableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo()->getPointerTo());
+		//RttiVtable* pvtable = *ppvatable
+		v = builder.CreateLoad(v);
+		//char** pfunc = &(v[0].vtable[idx])
+		v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(func->virtual_idx) });
+		v = builder.CreateLoad(v);
+		//PFUNC func = (PFUNC)*pfunc
+		v = builder.CreatePointerCast(v, Obj->resolved_type.class_ast->vtabledef[func->virtual_idx]->llvm_func->getType());
+		return v;
 	}
 	else if (kind == member_imported_dim)
 	{
@@ -1947,16 +2010,29 @@ llvm::Value * Birdee::ClassAST::Generate()
 
 	if (needs_rtti) //the class is instantiated in the current module, generate type_info
 	{
-		auto tyinfo = GetOrCreateTypeInfoGlobal(this);
+		auto tyinfo = GetOrCreateTypeInfoGlobalRaw(this);
 		tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
 		tyinfo->setExternallyInitialized(false);
 
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
 		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
-
 		auto val = ConstantStruct::get(GetTypeInfoType()->llvm_type, {
 				const_ptr_5
 			});
+		//if the class has vtable, the rtti is wrapped in rtti-vtable struct
+		if (vtabledef.size())
+		{
+			vector<Constant*> table;
+			for (auto func : vtabledef)
+			{
+				assert(llvm::isa<Function>(*func->llvm_func));
+				table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(func->llvm_func), builder.getInt8PtrTy()));
+			}
+			val = ConstantStruct::get(GetOrCreateVTableType(vtabledef.size()), {
+					val,
+					ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(),vtabledef.size()),table)
+				});
+		}
 		tyinfo->setInitializer(val);
 	}
 
@@ -2013,7 +2089,7 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 		assert(Obj->resolved_type.type == tok_class);
 		auto curcls = Obj->resolved_type.class_ast;
 		auto casade_llvm_obj = GenerateMemberParentGEP(llvm_obj, curcls, casade_parents);
-		if (curcls->parent_type)
+		if (curcls->parent_class)
 			offset++;
 		else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
 			offset++;

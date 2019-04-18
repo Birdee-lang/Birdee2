@@ -1605,17 +1605,12 @@ namespace Birdee
 
 	void ClassAST::Phase0()
 	{
-		scope_mgr.class_stack.push_back(this);
+		if (phase0_done) 
+			return;
 		if (isTemplate())
 		{
-			scope_mgr.class_stack.pop_back();
+			phase0_done = true;
 			return;
-		}
-		if (this->parent_type) {
-			// resolve parent type
-			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
-			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
-			parent_class = parent_resolved_type.class_ast;
 		}
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
@@ -1628,18 +1623,64 @@ namespace Birdee
 				}
 			}
 		}
+		static std::vector<ClassAST*> loop_checker;
+		if (std::find(loop_checker.begin(), loop_checker.end(), this) != loop_checker.end())
+		{
+			std::stringstream buf;
+			buf << "A loop in the class inherience relations is detected:";
+			for (auto& itr : loop_checker)
+				buf << "->" << itr->GetUniqueName();
+			throw CompileError(Pos, buf.str());
+		}
+		scope_mgr.class_stack.push_back(this);
+		if (this->parent_type) {
+			// resolve parent type and call Phase0 on parent
+			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
+			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
+			this->parent_type = nullptr;
+			parent_class = parent_resolved_type.class_ast;
+			loop_checker.push_back(this);
+			scope_mgr.class_stack.pop_back();
+			parent_class->Phase0();
+			scope_mgr.class_stack.push_back(this);
+			loop_checker.pop_back();
+			vtabledef = parent_class->vtabledef;
+		}
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
+			//if it is a virtual function, set the virtual index and set the vtable
+			if (funcdef.virtual_idx != MemberFunctionDef::VIRT_NONE)
+			{
+				for (int i = 0; i < vtabledef.size(); i++)
+				{
+					if (funcdef.decl->Proto->Name == vtabledef[i]->Proto->Name)
+					{
+						//make sure the overriden function has the same prototype
+						CompileAssert(funcdef.decl->Proto->IsSamePrototype(*vtabledef[i]->Proto.get()), Pos,
+							string("The function ") + funcdef.decl->Proto->Name + " overrides the function at " + vtabledef[i]->Pos.ToString()
+							+ " but they have different prototypes");
+						vtabledef[i] = funcdef.decl.get();
+						funcdef.virtual_idx = i;
+					}
+				}
+				//if no overriding parent functions
+				if (funcdef.virtual_idx == MemberFunctionDef::VIRT_UNRESOLVED)
+				{
+					vtabledef.push_back(funcdef.decl.get());
+					funcdef.virtual_idx = vtabledef.size() - 1;
+				}
+			}
 		}
 		for (auto& fielddef : fields)
 		{
 			fielddef.decl->Phase0();
 		}
 		scope_mgr.class_stack.pop_back();
+		phase0_done = true;
 	}
 
-	vector<string> Birdee::MemberExprAST::ToStringArray()
+	vector<string> MemberExprAST::ToStringArray()
 	{
 		vector<string*> reverse;
 		reverse.push_back(&member);
@@ -2207,15 +2248,6 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
-	// void TypeofExprAST::Phase1()
-	// {
-	// 	arg->Phase1();
-	// 	CompileAssert(arg->resolved_type.type == tok_class
-	// 		&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
-	// 		Pos ,"typeof must be appiled on class references with runtime type info");
-	// 	resolved_type = ResolvedType(GetTypeInfoClass());
-	// }
-
 	ThrowAST::ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos) :expr(std::move(expr))
 	{
 		Pos = pos;
@@ -2355,8 +2387,8 @@ If usage vararg name is "", match the closest vararg
 			auto func = cur_cls->funcmap.find(member);
 			if (func != cur_cls->funcmap.end())
 			{
-				kind = member_function;
 				this->func = &(cur_cls->funcs[func->second]);
+				kind = this->func->virtual_idx==MemberFunctionDef::VIRT_NONE? member_function : member_virtual_function;
 				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
 					throw CompileError(Pos, "Accessing a private member outside of a class");
 				resolved_type = this->func->decl->resolved_type;
@@ -2533,7 +2565,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"super\" outside of a class");
 		CompileAssert(!scope_mgr.class_stack.back()->is_struct, Pos, "Cannot reference \"super\" inside of a struct");
-		CompileAssert(scope_mgr.class_stack.back()->parent_type, Pos, "Class does not have a parent to reference");
+		CompileAssert(scope_mgr.class_stack.back()->parent_class, Pos, "Class does not have a parent to reference");
 		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
 		{
 			scope_mgr.function_scopes.back().func->captured_parent_super = (llvm::Value*)1;

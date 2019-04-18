@@ -364,7 +364,7 @@ namespace Birdee
 	}
 	MemberFunctionDef Birdee::MemberFunctionDef::Copy()
 	{
-		return MemberFunctionDef(access,unique_ptr_cast<FunctionAST>(decl->Copy()));
+		return MemberFunctionDef(access,unique_ptr_cast<FunctionAST>(decl->Copy()),virtual_idx);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::ResolvedFuncExprAST::Copy()

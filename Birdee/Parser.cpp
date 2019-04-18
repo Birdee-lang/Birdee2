@@ -1189,6 +1189,19 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 	return make_unique<FunctionAST>(std::move(funcproto), link_name, funcproto->pos);
 }
 
+//is_field: true for FieldDef, false for MemberFunctionDef
+//index: the index within fields/funcdef
+static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, int index)>> interal_class_annontation_map = {
+	{"virtual", [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
+		CompileAssert(!cls->is_struct, "The \'virtual\' annotation can only be applied on class functions");
+		CompileAssert(!cls->isTemplate(), "The \'virtual\' annotation cannot be applied on class templates");
+		cls->needs_rtti = true;
+		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
+		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
+	}}
+};
+
 BD_CORE_API bool ParseClassBody(ClassAST* ret)
 {
 	std::vector<FieldDef>& fields = ret->fields;
@@ -1209,11 +1222,26 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 	};
 	AccessModifier access;
+	while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
+	std::vector<string> anno;
+	while (tokenizer.CurTok == tok_annotation)
+	{
+		anno.emplace_back(std::move(tokenizer.IdentifierStr));
+		tokenizer.GetNextToken();
+		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
+	}
+	auto apply_annotations = [&anno, ret](bool is_field, int index)
+	{
+		for (auto& ano : anno)
+		{
+			auto itr = interal_class_annontation_map.find(ano);
+			CompileAssert(itr != interal_class_annontation_map.end(), string("Unrecognized annotation: ") 
+				+ ano + " ,note that class members only supports internal annotations. Python annotations are not supported");
+			itr->second(ret, is_field, index);
+		}
+	};
 	switch (tokenizer.CurTok)
 	{
-	case tok_newline:
-		tokenizer.GetNextToken(); //eat newline
-		break;
 	case tok_dim:
 		throw CompileError("You should use public/private to define a member variable in a class");
 		break;
@@ -1230,7 +1258,9 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 				fields.push_back(FieldDef(access, std::move(def), fields.size()));
 				fieldmap.insert(std::make_pair(reference_wrapper<const string>(fields.back().decl->name), fields.size() - 1));
 			});
+			apply_annotations(true, fields.size() - 1);
 			CompileExpect(tok_newline, "Expected a new line after variable definition");
+
 		}
 		else if (tokenizer.CurTok == tok_func)
 		{
@@ -1240,6 +1270,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
 			CompileExpect(tok_newline, "Expected a new line after function definition");
+			apply_annotations(false, funcs.size() - 1);
 		}
 		else
 		{
@@ -1253,6 +1284,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
 		CompileExpect({ tok_newline }, "Expected a new line after function definition");
+		apply_annotations(false, funcs.size() - 1);
 		break;
 	case tok_declare:
 		tokenizer.GetNextToken(); //eat declare
@@ -1261,6 +1293,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
+		apply_annotations(false, funcs.size() - 1);
 		break;
 	default :
 		return false;

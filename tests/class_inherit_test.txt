@@ -150,4 +150,25 @@ println(ts.basestr)
 
 println(int2str(ts.pubget()))
 println(typeof(ts).get_name())
+
+class bird
+	@virtual
+	public func say(a as string) as int
+		println("bird"+a)
+		return 1
+	end
+end
+
+class quail : bird
+	@virtual
+	public func say(a as string) as int
+		println("quail"+a)
+		return 2
+	end
+end
+
+dim a = new quail
+dim b as bird =a
+b.say("asd")
+println("End")
 getchar()

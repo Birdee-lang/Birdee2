@@ -1160,6 +1160,12 @@ namespace Birdee {
 	{
 	public:
 		AccessModifier access;
+		static constexpr int VIRT_NONE = -1;
+		static constexpr int VIRT_UNRESOLVED = -2;
+		//the index in the vtable, or VIRT_NONE if is non-virtual
+		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
+		//only valid after Phase0
+		int virtual_idx = -1;
 		std::unique_ptr<FunctionAST> decl;
 		void print(int level)
 		{
@@ -1172,7 +1178,7 @@ namespace Birdee {
 			decl->print(level);
 		}
 		MemberFunctionDef Copy();
-		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl) :access(access), decl(std::move(decl)) {}
+		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl, int virtual_idx = -1) :access(access), decl(std::move(decl)), virtual_idx(virtual_idx){}
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
@@ -1204,6 +1210,10 @@ namespace Birdee {
 		std::string name;
 		bool needs_rtti = false;
 		bool is_struct = false;
+		bool phase0_done = false;
+		//the table of virtual functions, including the inherited virt functions from parents
+		//valid after Phase0
+		vector<FunctionAST*> vtabledef;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
 		unique_ptr< vector<TemplateArgument>> template_instance_args;
@@ -1280,6 +1290,7 @@ namespace Birdee {
 			member_function,
 			member_imported_dim,
 			member_imported_function,
+			member_virtual_function,
 		}kind;
 		void Phase1();
 		bool isMutable() {
