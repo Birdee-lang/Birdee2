@@ -397,7 +397,7 @@ namespace Birdee
 	}
 	unique_ptr<StatementAST> Birdee::ScriptAST::Copy()
 	{
-		auto ret = make_unique<ScriptAST>(script);
+		auto ret = make_unique<ScriptAST>(script, is_top_level);
 		ret->Pos = Pos;
 		if (stmt)
 			ret->stmt = stmt->Copy();

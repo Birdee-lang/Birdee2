@@ -94,11 +94,11 @@ def is_expr_templ_arg(args,idx):
 Check if "type" is a prototype. Throw if not.
  - type: The ResolvedType to check
 '''
-def check_is_prototype(ctype):
-	if ctype.base!=BasicType.FUNC or ctype.index_level!=0:
-		raise RuntimeError("The type {} is not a function prototype".format(str(ctype)))
-
 def is_prototype(ctype):
+	return (ctype.base==BasicType.FUNC and ctype.index_level==0,
+		lambda:"The type {} is not a function prototype".format(str(ctype)) )
+
+def is_prototype_(ctype):
 	return ctype.base==BasicType.FUNC and ctype.index_level==0
 
 '''
@@ -110,7 +110,7 @@ Returns the resolvedtype of what the function returns
 '''
 def return_type_of(expr):
 	proto = expr.resolved_type
-	check_is_prototype(proto)
+	require_(is_prototype_(proto))
 	return proto.get_detail().return_type
 
 '''

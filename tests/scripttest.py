@@ -43,6 +43,12 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_ok('''
+{@set_ast(stmt("declare function getc() as int"))@}
+getc()
+''')
+
+
+assert_ok('''
 {@from bdutils import *
 from traits import *
 from traits import _
