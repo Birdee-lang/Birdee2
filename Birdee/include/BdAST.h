@@ -1210,7 +1210,7 @@ namespace Birdee {
 		std::string name;
 		bool needs_rtti = false;
 		bool is_struct = false;
-		bool phase0_done = false;
+		int done_phase = 0;
 		//the table of virtual functions, including the inherited virt functions from parents
 		//valid after Phase0
 		vector<FunctionAST*> vtabledef;

@@ -1605,13 +1605,12 @@ namespace Birdee
 
 	void ClassAST::Phase0()
 	{
-		if (phase0_done) 
+		if (done_phase >= 1)
 			return;
+		done_phase = 1;
 		if (isTemplate())
-		{
-			phase0_done = true;
 			return;
-		}
+
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
 			if (template_source_class->template_param->mod)
@@ -1633,12 +1632,17 @@ namespace Birdee
 			throw CompileError(Pos, buf.str());
 		}
 		scope_mgr.class_stack.push_back(this);
-		if (this->parent_type) {
-			// resolve parent type and call Phase0 on parent
+		if (parent_type) //it is possible that parent_class!=null and parent_type==null, when the class is imported
+		{
+			// resolve parent type 
 			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
 			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
-			this->parent_type = nullptr;
+			parent_type = nullptr;
 			parent_class = parent_resolved_type.class_ast;
+		}
+		if(parent_class) 
+		{
+			//call Phase0 on parent
 			loop_checker.push_back(this);
 			scope_mgr.class_stack.pop_back();
 			parent_class->Phase0();
@@ -1646,29 +1650,56 @@ namespace Birdee
 			loop_checker.pop_back();
 			vtabledef = parent_class->vtabledef;
 		}
+		auto checkproto = [](FunctionAST* curfunc, FunctionAST* overriden) {
+			//make sure the overriden function has the same prototype
+			CompileAssert(curfunc->Proto->IsSamePrototype(*overriden->Proto.get()), curfunc->Pos,
+				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
+				+ " but they have different prototypes");
+		};
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
 			//if it is a virtual function, set the virtual index and set the vtable
 			if (funcdef.virtual_idx != MemberFunctionDef::VIRT_NONE)
 			{
-				for (int i = 0; i < vtabledef.size(); i++)
-				{
-					if (funcdef.decl->Proto->Name == vtabledef[i]->Proto->Name)
+				if (funcdef.virtual_idx != MemberFunctionDef::VIRT_UNRESOLVED)
+				{//if the class is imported, the virtual function has already an index
+					if (funcdef.virtual_idx >= 0 && funcdef.virtual_idx < vtabledef.size())
+					{ //if it is an override function
+						CompileAssert(funcdef.decl->Proto->Name == vtabledef[funcdef.virtual_idx]->Proto->Name,
+							Pos, string("The imported virtual function ") + funcdef.decl->Proto->Name
+							+ " overrides a function with different name " + vtabledef[funcdef.virtual_idx]->Proto->Name);
+						checkproto(funcdef.decl.get(), vtabledef[funcdef.virtual_idx]);
+						vtabledef[funcdef.virtual_idx] = funcdef.decl.get();
+					}
+					else if (funcdef.virtual_idx ==  vtabledef.size())
+					{//if it is not overriding a parent function, the virtual idx should be same as the size of vtable
+						vtabledef.push_back(funcdef.decl.get());
+					}
+					else
 					{
-						//make sure the overriden function has the same prototype
-						CompileAssert(funcdef.decl->Proto->IsSamePrototype(*vtabledef[i]->Proto.get()), Pos,
-							string("The function ") + funcdef.decl->Proto->Name + " overrides the function at " + vtabledef[i]->Pos.ToString()
-							+ " but they have different prototypes");
-						vtabledef[i] = funcdef.decl.get();
-						funcdef.virtual_idx = i;
+						std::stringstream buf;
+						buf << "The imported virtual function " << funcdef.decl->Proto->Name << " has a bad virtual index " << funcdef.virtual_idx;
+						throw CompileError(Pos, buf.str());
 					}
 				}
-				//if no overriding parent functions
-				if (funcdef.virtual_idx == MemberFunctionDef::VIRT_UNRESOLVED)
+				else //if the virtual function index has not been resolved
 				{
-					vtabledef.push_back(funcdef.decl.get());
-					funcdef.virtual_idx = vtabledef.size() - 1;
+					for (int i = 0; i < vtabledef.size(); i++)
+					{
+						if (funcdef.decl->Proto->Name == vtabledef[i]->Proto->Name)
+						{
+							checkproto(funcdef.decl.get(), vtabledef[i]);
+							vtabledef[i] = funcdef.decl.get();
+							funcdef.virtual_idx = i;
+						}
+					}
+					//if no overriding parent functions
+					if (funcdef.virtual_idx == MemberFunctionDef::VIRT_UNRESOLVED)
+					{
+						vtabledef.push_back(funcdef.decl.get());
+						funcdef.virtual_idx = vtabledef.size() - 1;
+					}
 				}
 			}
 		}
@@ -1677,7 +1708,6 @@ namespace Birdee
 			fielddef.decl->Phase0();
 		}
 		scope_mgr.class_stack.pop_back();
-		phase0_done = true;
 	}
 
 	vector<string> MemberExprAST::ToStringArray()
@@ -2274,6 +2304,9 @@ If usage vararg name is "", match the closest vararg
 
 	void ClassAST::Phase1()
 	{
+		if (done_phase >= 2)
+			return;
+		done_phase = 2;
 		if (isTemplate())
 			return;
 		Phase0();

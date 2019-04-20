@@ -1,5 +1,6 @@
 import unsafe:up_cast
 
+@init_script
 {@
 import bdutils
 @}

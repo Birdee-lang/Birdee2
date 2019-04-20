@@ -103,7 +103,8 @@ int ConvertClassToIndex(ClassAST* class_ast)
 				int retidx = defined_classes->size();
 				class_idx_map[class_ast] = retidx;
 				defined_classes->push_back(json());
-				auto& the_class = defined_classes->back();
+				(*defined_classes)[retidx] = BuildSingleClassJson(*class_ast, false);
+				auto& the_class = (*defined_classes)[retidx];
 				the_class["source"] = ConvertClassToIndex(class_ast->template_source_class);
 				auto args = json::array();
 				for (auto& arg : *class_ast->template_instance_args)
@@ -223,10 +224,8 @@ json ConvertTypeToIndex(ResolvedType& type)
 		ret["base"] = -10;
 		break;
 	case tok_class:
-	{
 		ret["base"] = ConvertClassToIndex(type.class_ast);
 		break;
-	}
 	default:
 		BirdeeAssert(0 , "Error type");
 	}
@@ -333,6 +332,10 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
+	if (cls.parent_class)
+	{
+		json_cls["parent"] = ConvertClassToIndex(cls.parent_class);
+	}
 	if (cls.isTemplate())
 	{
 		assert(!cls.template_param->source.empty());
@@ -359,6 +362,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 			json json_func;
 			auto access = GetAccessModifierName(func.access);
 			json_func["access"] = access;
+			json_func["virtual_idx"] = func.virtual_idx;
 			if (func.decl->isTemplate())
 			{
 				/*for (auto& instance : (func.decl->template_param->instances))

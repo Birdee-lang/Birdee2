@@ -21,6 +21,8 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Transforms/IPO/StripDeadPrototypes.h"
+#include "llvm/Transforms/IPO/GlobalDCE.h"
 
 #include "CompileError.h"
 #include "BdAST.h"
@@ -314,7 +316,7 @@ static Value* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	auto* ret = GetOrCreateTypeInfoGlobalRaw(cls);
 	if (cls->vtabledef.empty())
 		return ret;
-	return builder.CreatePointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
+	return ConstantExpr::getPointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
 }
 
 template<typename Derived>
@@ -874,6 +876,12 @@ void Birdee::CompileUnit::Generate()
 	//module->print(errs(), nullptr);
 
 	//verifyModule(*module);
+	legacy::PassManager pass;
+	llvm::ModulePassManager mpm;
+	llvm::ModuleAnalysisManager mam;
+	mpm.addPass(StripDeadPrototypesPass());
+	mpm.addPass(GlobalDCEPass());
+	mpm.run(*module, mam);
 
 	if(cu.is_print_ir)
 		module->print(errs(), nullptr);
@@ -887,7 +895,8 @@ void Birdee::CompileUnit::Generate()
 		return;
 	}
 
-	legacy::PassManager pass;
+
+
 	auto FileType = TargetMachine::CGFT_ObjectFile;
 	if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
 		errs() << "TheTargetMachine can't emit a file of this type";
@@ -897,8 +906,6 @@ void Birdee::CompileUnit::Generate()
 	pass.run(*module);
 	dest.flush();
 
-	outs() << "Wrote " << Filename << "\n";
-	dest.flush();
 }
 
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()

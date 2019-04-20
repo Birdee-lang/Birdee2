@@ -19,6 +19,7 @@ using namespace Birdee;
 static std::vector<ClassAST*> idx_to_class;
 static std::vector<PrototypeAST*> idx_to_proto;
 static std::vector<ClassAST*> orphan_idx_to_class;
+static std::vector<ClassAST*> to_run_phase0;
 static string current_package_name;
 static int current_module_idx;
 
@@ -48,6 +49,25 @@ static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
 	toknzr.GetNextToken();
 	return SwitchTokenizer(std::move(toknzr));
 }
+
+ClassAST* ConvertIdToClass(int idtype)
+{
+	BirdeeAssert(idtype < MAX_CLASS_COUNT, "Bad type id for class");
+
+	if (idtype < MAX_CLASS_DEF_COUNT)
+	{
+		BirdeeAssert(idtype < idx_to_class.size(), "Bad type id for class");
+		return idx_to_class[idtype];
+	}
+	else
+	{
+		idtype -= MAX_CLASS_DEF_COUNT;
+		BirdeeAssert(idtype < orphan_idx_to_class.size(), "Bad type id for class");
+		return orphan_idx_to_class[idtype];
+	}
+
+}
+
 ResolvedType ConvertIdToType(const json& type)
 {
 	ResolvedType ret;
@@ -95,19 +115,8 @@ ResolvedType ConvertIdToType(const json& type)
 		}
 		else
 		{
-			BirdeeAssert(idtype < MAX_CLASS_COUNT, "Bad type id");
+			ret.class_ast = ConvertIdToClass(idtype);
 			ret.type = tok_class;
-			if (idtype < MAX_CLASS_DEF_COUNT)
-			{
-				BirdeeAssert(idtype < idx_to_class.size(), "Bad type id");
-				ret.class_ast = idx_to_class[idtype];
-			}
-			else
-			{
-				idtype -= MAX_CLASS_DEF_COUNT;
-				BirdeeAssert(idtype < orphan_idx_to_class.size(), "Bad type id");
-				ret.class_ast = orphan_idx_to_class[idtype];
-			}
 		}
 	}
 	ret.index_level = type["index"].get<int>();
@@ -299,6 +308,14 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 
 		return;
 	}
+	{
+		auto itr = json_cls.find("parent");
+		if (itr != json_cls.end())
+		{
+			ret->parent_class = ConvertIdToClass(itr->get<int>());
+		}
+			
+	}
 	ret->name = json_cls["name"].get<string>();
 	ret->package_name_idx = module_idx;
 	
@@ -323,6 +340,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	idx = 0;
 	const json& json_funcs = json_cls["funcs"];
 	BirdeeAssert(json_funcs.is_array(), "Expected an JSON array");
+	bool is_virtual = false;
 	for (auto& func : json_funcs)
 	{
 		json json_func;
@@ -348,10 +366,14 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 			funcdef = BuildFunctionFromJson(func["def"], ret);
 		}
 		const string& str = funcdef->Proto->GetName();
-		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef)));
+		auto vidx_itr = func.find("virtual_idx");
+		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE));
+		is_virtual |= (ret->funcs.back().virtual_idx != MemberFunctionDef::VIRT_NONE);
 		ret->funcmap[str] = idx;
 		idx++;
 	}
+	if (is_virtual)
+		to_run_phase0.push_back(ret);
 	if (ret->template_instance_args == nullptr) //if we have already put the argument, we can skip
 	{
 		auto templ_args = json_cls.find("template_arguments");
@@ -365,13 +387,12 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 void PreBuildClassFromJson(const json& cls, const string& module_name, ImportedModule& mod)
 {
 	BirdeeAssert(cls.is_array(), "Expeccted a JSON array");
-	bool has_end = false;
 	for (auto& json_cls : cls)
 	{
 		auto itr = json_cls.find("name");
 		if (itr != json_cls.end()) //if it's a class def or class template
 		{
-			BirdeeAssert(!has_end, "Class def is not allowed after class template instances");
+			//BirdeeAssert(!has_end, "Class def is not allowed after class template instances");
 			string name = itr->get<string>();
 			auto orphan = cu.orphan_class.find(module_name + '.' + name);
 			unique_ptr<ClassAST> classdef;
@@ -389,9 +410,7 @@ void PreBuildClassFromJson(const json& cls, const string& module_name, ImportedM
 		}
 		else//assert that it's a class template instance
 		{
-			BirdeeAssert(json_cls.find("source") != json_cls.end(), "Either class def or class template instance is allowed here.");
-			has_end = true;
-			idx_to_class.push_back(nullptr);
+			BirdeeAssert(false, "The class needs a name");
 		}
 
 	}
@@ -535,25 +554,32 @@ void BuildClassFromJson(const json& cls, ImportedModule& mod)
 	auto itr = idx_to_class.begin();
 	for (auto& json_cls : cls)
 	{
-		auto nameitr = json_cls.find("name");
-		if (nameitr != json_cls.end()) //if it's a class def or class template
-		{
-			if ((*itr)->name.size() == 0) // if it is a placeholder
-			{
-				BuildSingleClassFromJson((*itr), json_cls, cu.imported_module_names.size() - 1, mod);
-			}
-			//fix-me: check if the imported type is the same as the existing type
 
-		}
-		else //if it's a class template instance
+		if ((*itr)->name.size() == 0) // if it is a placeholder
 		{
-			assert(*itr == nullptr);
-			int src_idx = json_cls["source"].get<int>();
+			BuildSingleClassFromJson((*itr), json_cls, cu.imported_module_names.size() - 1, mod);
+		}
+		//fix-me: check if the imported type is the same as the existing type
+
+
+		auto srcitr = json_cls.find("source");
+		if (srcitr != json_cls.end()) //if it's a class template instance
+		{
+			int src_idx = srcitr->get<int>();
 			BirdeeAssert(src_idx >= 0 && src_idx < idx_to_class.size(), "Template source index out of index");
 			ClassAST* src = idx_to_class[src_idx];
 			BirdeeAssert(src->isTemplate(), "The source must be a class template");
 			auto targs = BuildTemplateArgsFromJson(json_cls["arguments"]);
-			*itr = src->template_param->GetOrCreate(std::move(targs), src, SourcePos(source_paths.size() - 1, 0, 0));
+			auto name_cls_itr = mod.classmap.find((*itr)->name);
+			assert(name_cls_itr != mod.classmap.end());
+			auto oldcls = src->template_param->Get(*targs);
+			if (!oldcls)
+			{
+				src->template_param->AddImpl(*targs, std::move(name_cls_itr->second));
+				(*itr)->template_instance_args = std::move(targs);
+				(*itr)->template_source_class = src;
+			}
+			mod.classmap.erase(name_cls_itr);
 		}
 		itr++;
 	}
@@ -648,6 +674,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	current_module_idx = cu.imported_module_names.size() - 1;
 	idx_to_proto.clear();
 	idx_to_class.clear();
+	to_run_phase0.clear();
 	orphan_idx_to_class.clear();
 	source_paths.push_back(path);
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
@@ -694,6 +721,9 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BuildGlobalVaribleFromJson(json["Variables"], *this);
 	BuildGlobalFuncFromJson(json["Functions"], *this);
 
+	for (auto cls : to_run_phase0)
+		cls->Phase0();
+	
 	{
 		auto itr = json.find("InitScripts");
 		if (itr != json.end())
