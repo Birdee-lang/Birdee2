@@ -1,0 +1,5 @@
+package headertest
+
+class AAA[T]
+	public func say() => println("hello")
+end

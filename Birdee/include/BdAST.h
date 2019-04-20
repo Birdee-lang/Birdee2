@@ -110,6 +110,7 @@ namespace Birdee {
 		PyHandle py_scope;
 		string source_dir;
 		string source_file;
+		bool is_header_only;
 		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};
@@ -374,7 +375,8 @@ namespace Birdee {
 		void Phase0();
 		void Phase1();
 		void InitForGenerate();
-		void Generate();
+		//generate object file. returns if it is empty.
+		bool Generate();
 		void AbortGenerate();
 	};
 	BD_CORE_API extern  CompileUnit cu;

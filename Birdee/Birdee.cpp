@@ -9,7 +9,7 @@
 using namespace Birdee;
 
 extern int ParseTopLevel();
-extern void SeralizeMetadata(std::ostream& out);
+extern void SeralizeMetadata(std::ostream& out, bool is_empty);
 extern void ParseTopLevelImportsOnly();
 extern string GetModuleNameByArray(const vector<string>& package);
 
@@ -205,7 +205,7 @@ int main(int argc,char** argv)
 		RunGenerativeScript();
 		return 0;
 	}
-
+	int is_empty = false;
 	try {
 		if (is_print_import_mode)
 		{
@@ -223,10 +223,9 @@ int main(int argc,char** argv)
 			ParseTopLevel();
 			cu.Phase0();
 			cu.Phase1();
-			cu.Generate();
+			is_empty = cu.Generate();
 		}
 	}
-
 	catch (CompileError& e)
 	{
 		e.print();
@@ -242,7 +241,7 @@ int main(int argc,char** argv)
 		node->print(0);
 	}*/
 	std::ofstream metaf(cu.targetmetapath, std::ios::out);
-	SeralizeMetadata(metaf);
+	SeralizeMetadata(metaf, is_empty);
     return 0;
 }
 

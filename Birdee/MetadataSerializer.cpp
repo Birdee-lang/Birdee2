@@ -442,7 +442,7 @@ string BuildInitScript(vector<ScriptAST*>& scripts)
 	return ret;
 }
 
-BD_CORE_API void SeralizeMetadata(std::ostream& out)
+BD_CORE_API void SeralizeMetadata(std::ostream& out, bool is_empty)
 {
 	json outjson;
 	imported_class.clear();
@@ -455,6 +455,7 @@ BD_CORE_API void SeralizeMetadata(std::ostream& out)
 	outjson["Version"] = META_DATA_VERSION;
 	outjson["Package"] = cu.symbol_prefix.substr(0, cu.symbol_prefix.size() - 1);
 	outjson["Classes"] = json::array();
+	outjson["HeaderOnly"] = is_empty;
 	defined_classes = &outjson["Classes"];
 
 	BuildExportedPrototypePlaceholders();

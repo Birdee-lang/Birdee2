@@ -192,6 +192,7 @@ struct GeneratorContext
 	unordered_map<StringRefOrHolder, GlobalVariable*> stringpool;
 	llvm::Type* byte_arr_ty = nullptr;
 	ClassAST* array_cls = nullptr;
+	int concrete_func_cnt = 0;
 	LLVMHelper helper;
 	FunctionAST* cur_func = nullptr;
 	//if landingpad!=null, we are in a try-block
@@ -715,7 +716,7 @@ void Birdee::CompileUnit::AbortGenerate()
 }
 
 
-void Birdee::CompileUnit::Generate()
+bool Birdee::CompileUnit::Generate()
 {
 	auto TargetTriple = sys::getDefaultTargetTriple();
 	module->setTargetTriple(TargetTriple);
@@ -727,8 +728,7 @@ void Birdee::CompileUnit::Generate()
 	// This generally occurs if we've forgotten to initialise the
 	// TargetRegistry or we have a bogus target triple.
 	if (!Target) {
-		errs() << Error;
-		return;
+		throw CompileError(Error);
 	}
 
 	auto CPU = "generic";
@@ -826,17 +826,36 @@ void Birdee::CompileUnit::Generate()
 	builder.CreateRetVoid();
 
 	builder.SetInsertPoint(BF);
-	builder.CreateStore(builder.getInt1(true), check_init);
 
-	for (auto& name : cu.imported_module_names)
+	llvm::Instruction* lastinst = builder.CreateStore(builder.getInt1(true), check_init);
+
+	std::function<void(ImportTree* tree, string& name)> gen_module_main_call;
+	gen_module_main_call = [&lastinst, FT, F, &gen_module_main_call](ImportTree* tree, string& name)
 	{
-		string func_name;
-		MangleNameAndAppend(func_name, name);
-		func_name += "_0_1main";
-		Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, func_name, module);
-		builder.SetCurrentDebugLocation(DebugLoc::get(0, 0, F->getSubprogram()));
-		builder.CreateCall(OtherMain);
-	}
+		if (tree->map.empty() && tree->mod && !tree->mod->is_header_only)
+		{
+			string func_name;
+			MangleNameAndAppend(func_name, name);
+			func_name += "_1main";
+			Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, func_name, module);
+			builder.SetCurrentDebugLocation(DebugLoc::get(0, 0, F->getSubprogram()));
+			lastinst = builder.CreateCall(OtherMain);
+			return;
+		}
+		else
+		{
+			auto sz = name.size();
+			for (auto& itr : tree->map)
+			{
+				name += itr.first;
+				name += '.';
+				gen_module_main_call(itr.second.get(), name);
+				name.resize(sz);
+			}
+		}
+	};
+	string strbuf;
+	gen_module_main_call(&cu.imported_packages, strbuf);
 	
 	if (toplevel.size() > 0)
 	{
@@ -886,26 +905,32 @@ void Birdee::CompileUnit::Generate()
 	if(cu.is_print_ir)
 		module->print(errs(), nullptr);
 
-	auto Filename = cu.targetpath;
-	std::error_code EC;
-	raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
-
-	if (EC) {
-		errs() << "Could not open file: " << EC.message();
-		return;
+	llvm::Instruction* second_last_inst = &(*--(--BF->getInstList().end()));
+	if (module->getGlobalList().size() == 1 //no other globals other than is_init
+		&& gen_context.concrete_func_cnt == 0 //no other functions other than top-level
+		&& second_last_inst == lastinst) //no top-level code
+	{
+		return true;
 	}
+	else
+	{
+		auto Filename = cu.targetpath;
+		std::error_code EC;
+		raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
 
+		if (EC) {
+			throw CompileError(string("Could not open file: ") + EC.message());
+		}
 
+		auto FileType = TargetMachine::CGFT_ObjectFile;
+		if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
+			throw CompileError("TheTargetMachine can't emit a file of this type");
+		}
 
-	auto FileType = TargetMachine::CGFT_ObjectFile;
-	if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
-		errs() << "TheTargetMachine can't emit a file of this type";
-		return;
+		pass.run(*module);
+		dest.flush();
+		return false;
 	}
-
-	pass.run(*module);
-	dest.flush();
-
 }
 
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
@@ -1379,6 +1404,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 	if (!isDeclare)
 	{
+		gen_context.concrete_func_cnt++;
 		assert(myfunc->getBasicBlockList().empty());
 		auto curfunc_backup = gen_context.cur_func;
 		auto landingpad_backup = gen_context.landingpad;

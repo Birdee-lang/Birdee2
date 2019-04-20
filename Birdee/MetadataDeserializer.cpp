@@ -686,7 +686,11 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 		if (itr != json.end())
 			BuildGlobalTemplateFuncFromJson(*itr, *this);
 	}
-
+	{
+		auto itr = json.find("HeaderOnly");
+		if (itr != json.end())
+			is_header_only=itr->get<bool>();
+	}
 	//we first make place holder for each class. Because classes may reference each other
 	PreBuildClassFromJson(json["Classes"], module_name, *this);
 	PreBuildOrphanClassFromJson(json["ImportedClasses"], *this);

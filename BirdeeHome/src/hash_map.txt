@@ -42,7 +42,7 @@ class hash_map[K,V]
 		dim lst = buckets[h%buckets_num]
 		dim _pair = get_pair_from_list(k,lst)
 		if _pair === null then
-			lst.push_back(new pair[K,V]:set(k,v))
+			lst.insert_back(new pair[K,V]:set(k,v))
 		else
 			_pair.value = v
 		end
