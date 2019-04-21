@@ -2472,7 +2472,10 @@ If usage vararg name is "", match the closest vararg
 			if (func != cur_cls->funcmap.end())
 			{
 				this->func = &(cur_cls->funcs[func->second]);
-				kind = this->func->virtual_idx==MemberFunctionDef::VIRT_NONE? member_function : member_virtual_function;
+				if (dyncast_resolve_anno<SuperExprAST>(Obj.get())) //if the object is "super", do not generate virtual call here
+					kind = member_function;
+				else
+					kind = this->func->virtual_idx==MemberFunctionDef::VIRT_NONE? member_function : member_virtual_function;
 				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
 					throw CompileError(Pos, "Accessing a private member outside of a class");
 				resolved_type = this->func->decl->resolved_type;
