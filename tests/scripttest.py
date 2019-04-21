@@ -43,6 +43,22 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_generate_ok('''
+import rtti:dyn_cast
+
+@enable_rtti
+class parent
+end
+
+class child:parent
+end
+
+dim a = new child
+dim c as parent =a
+a= dyn_cast[child](c)
+''')
+
+
+assert_generate_ok('''
 class parent
 	public func __init__(v as string)=> this.v=v
 	public v as string
@@ -79,7 +95,7 @@ dim a = {@set_int(234)@}
 dim b = {@set_str("hello")@}
 dim c as {@resolve_set_type("int")@}
 
-@require((is_cls_template_inst, _), (is_type_templ_arg_in_class, _, 0))
+@require((is_template_inst, _), (is_type_templ_arg_in_class, _, 0))
 struct p[...]
 	public v1 as {@cls_templ_type_at(0)@}
 	public v2 as {@cls_templ_type_at(1)@}

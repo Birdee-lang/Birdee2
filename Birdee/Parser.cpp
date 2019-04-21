@@ -828,7 +828,7 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=to
 		case tok_return:
 			tokenizer.GetNextToken(); //eat return
 			pos = tokenizer.GetSourcePos();
-			assert(current_func_proto && "Current func proto is empty!");
+			//assert(current_func_proto && "Current func proto is empty!");
 			if (tokenizer.CurTok == tok_newline)
 			{
 				push_expr(make_unique<ReturnAST>(pos));

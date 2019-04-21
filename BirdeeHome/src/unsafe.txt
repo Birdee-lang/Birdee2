@@ -10,6 +10,6 @@ end
 function bit_cast[T1,T2](a as T2) as T1
 end
 
-function up_cast[T1,T2](a as T2) as T1
+function static_cast[T1,T2](a as T2) as T1
 end
 

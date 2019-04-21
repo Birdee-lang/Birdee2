@@ -1,0 +1,40 @@
+import unsafe:ptr_cast
+
+#intrinsic
+func get_type_info[T]() as type_info
+end
+
+function is_parent_of(parent as type_info, child as type_info) as boolean
+	dim cur = child
+	while cur!==null
+		if cur === parent then
+			return true
+		end
+		cur=cur.get_parent()
+	end
+	return false
+end
+
+@init_script
+{@import bdutils
+from traits import require_
+@}
+
+function dyn_cast[T1,T2](ptr as T2) as T1
+{@
+t1=bdutils.get_func_type_templ_at(0)
+t2=bdutils.get_func_type_templ_at(1)
+require_(  (t1.is_class(), lambda: "T1 must be a class"),
+	(t2.is_class(), lambda: "T2 must be a class") )
+if t2.get_detail().has_parent(t1.get_detail()):
+	bdutils.make_stmt("return ptr")
+else:
+	require_( (t1.get_detail().has_parent(t2.get_detail()), lambda:  "T2 should be a super class of T1"))
+	bdutils.set_stmt('''if is_parent_of(get_type_info[T1](),typeof(ptr)) then
+	return ptr_cast[T1](ptr)
+else
+	return null
+end
+''')
+@}
+end

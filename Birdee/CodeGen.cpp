@@ -312,7 +312,7 @@ static GlobalVariable* GetOrCreateTypeInfoGlobalRaw(ClassAST* cls)
 
 //Get or create rtti global variable. If it is virtual class, 
 //automatically cast rtti-with-vtable to rtti
-static Value* GetOrCreateTypeInfoGlobal(ClassAST* cls)
+Constant* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 {
 	auto* ret = GetOrCreateTypeInfoGlobalRaw(cls);
 	if (cls->vtabledef.empty())
@@ -2049,8 +2049,10 @@ llvm::Value * Birdee::ClassAST::Generate()
 
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
 		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
+		Constant* parent_rtti = parent_class ? GetOrCreateTypeInfoGlobal(parent_class) : Constant::getNullValue(GetTypeInfoType()->llvm_type->getPointerTo());
 		auto val = ConstantStruct::get(GetTypeInfoType()->llvm_type, {
-				const_ptr_5
+				const_ptr_5,
+				parent_rtti,
 			});
 		//if the class has vtable, the rtti is wrapped in rtti-vtable struct
 		if (vtabledef.size())

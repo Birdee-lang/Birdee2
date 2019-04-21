@@ -74,7 +74,9 @@ end class
 
 class type_info
 	private name as string
+	private parent as type_info
 	public function get_name() as string => name
+	public function get_parent() as type_info => parent
 end
 
 declare function BirdeeI2S (i as int) as string

@@ -2878,11 +2878,9 @@ If usage vararg name is "", match the closest vararg
 	void UnaryExprAST::Phase1()
 	{
 		auto& arg = this->arg;
-
-		arg->Phase1();
-
 		if (Op == tok_not)
 		{
+			arg->Phase1();
 			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
 			{
 				const string name = "__not__";

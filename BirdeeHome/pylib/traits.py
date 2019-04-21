@@ -64,8 +64,12 @@ def	OR(pack1, pack2):
 		return (result1 or result2, and_str_func)
 	return (or_func,) + pack1[1:] + pack2[1:]	
 
-def is_cls_template_inst(scls):
-	return (scls.is_template_instance(), lambda:"The input class {} is expected to be a template instance".format(scls.get_unique_name()) )
+def is_template_inst(scls):
+	result = scls.is_template_instance
+	if not isinstance(result, bool):
+		result = result()
+	return (result, lambda:"The input class/function {} is expected to be a template instance".format(scls.get_unique_name()) )
+
 
 def index_within(index, st, ed):
 	return (st <= index <ed, lambda:"The index {index} is expected to be {st}<= index < {ed}".format(index=index, st= st, ed= ed) )
@@ -77,7 +81,7 @@ def is_cls_template(scls):
 	return (scls.is_template(), lambda:"The input class {} is expected to be a template".format(scls.get_unique_name()) )
 
 def is_type_templ_arg_in_class(clazz,idx):
-	require_(is_cls_template_inst(clazz), index_within(idx, 0, len(clazz.template_instance_args)))
+	require_(is_template_inst(clazz), index_within(idx, 0, len(clazz.template_instance_args)))
 	arg = clazz.template_instance_args[idx]
 	return (arg.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE , 
 		lambda:"The {}-th template argument of class {} is expected to be a type".format(idx, clazz.get_unique_name()))
