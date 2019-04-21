@@ -917,6 +917,8 @@ namespace Birdee {
 		std::size_t rawhash() const; 
 		//compare the arguments, return type and the belonging class, without comparing is_closure field
 		bool IsSamePrototype(const PrototypeAST&) const;
+		//Check if "this" can be assigned with "that". True if all types in "this" is parent class of "that"
+		bool CanBeAssignedWith(const PrototypeAST& that) const;
 		ResolvedType resolved_type;
 		std::unique_ptr<VariableDefAST> Args;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
@@ -1310,11 +1312,8 @@ namespace Birdee {
 			const std::string& member)
 			: Obj(std::move(Obj)), member(member), kind(member_error), func(nullptr) {}
 		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
-			MemberFunctionDef* member,SourcePos pos)
-			: Obj(std::move(Obj)), func(member), kind(member_function) {
-			resolved_type = func->decl->resolved_type;
-			Pos = pos;
-		}
+			MemberFunctionDef* member, SourcePos pos);
+
 		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
 			FieldDef* member, SourcePos pos)
 			: Obj(std::move(Obj)), field(member), kind(member_field) {

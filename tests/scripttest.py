@@ -38,9 +38,28 @@ def assert_generate_fail(istr):
 		print(e.linenumber,e.pos,e.msg)		
 	clear_compile_unit()
 
-set_print_ir(False)
+set_print_ir(True)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
+
+assert_generate_ok('''
+class parent
+	public func __init__(v as string)=> this.v=v
+	public v as string
+	@virtual public func __add__(other as parent) as parent => new parent(v+other.v)
+end
+
+class child:parent
+	public func __init__(v as string)=> this.v=v
+	public func __add__(other as child) as child => new child(v + other.v + "child")
+end
+
+dim a = new child("1"), b= new child("2")
+dim c as parent =a, d as parent =b
+dim e = c+d
+
+''')
+exit(0)
 
 assert_ok('''
 {@set_ast(stmt("declare function getc() as int"))@}

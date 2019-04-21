@@ -16,6 +16,8 @@ using namespace Birdee;
 
 //fix-me: show template stack on error
 
+#define type_is_class(_rty) (_rty.type==tok_class && !_rty.class_ast->is_struct)
+
 template <typename T>
 T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
 	const string& name)
@@ -1429,6 +1431,39 @@ namespace Birdee
 		return true;
 	}
 
+
+	bool IsSubResolvedType(const ResolvedType& parent, const ResolvedType& child)
+	{
+		if (type_is_class(parent))
+		{
+			if (!type_is_class(child))
+				return false;
+			return child.class_ast->HasParent(parent.class_ast);
+		}
+		return parent == child;
+	}
+
+	bool PrototypeAST::CanBeAssignedWith(const PrototypeAST& other) const
+	{
+		auto& ths = *this;
+		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
+		//check return type
+		if (!IsSubResolvedType(ths.resolved_type, other.resolved_type))
+			return false;
+		if (ths.resolved_args.size() != other.resolved_args.size())
+			return false;
+		auto itr1 = ths.resolved_args.begin();
+		auto itr2 = other.resolved_args.begin();
+		for (; itr1 != ths.resolved_args.end(); itr1++, itr2++)
+		{
+			ResolvedType& t1 = (*itr1)->resolved_type;
+			ResolvedType& t2 = (*itr2)->resolved_type;
+			assert(t1.isResolved() && t2.isResolved());
+			if (!IsSubResolvedType(t1, t2))
+				return false;
+		}
+		return true;
+	}
 	std::size_t PrototypeAST::rawhash() const
 	{
 		const PrototypeAST* proto = this;
@@ -1652,22 +1687,38 @@ namespace Birdee
 		}
 		auto checkproto = [](FunctionAST* curfunc, FunctionAST* overriden) {
 			//make sure the overriden function has the same prototype
-			CompileAssert(curfunc->Proto->IsSamePrototype(*overriden->Proto.get()), curfunc->Pos,
+			CompileAssert(overriden->Proto->CanBeAssignedWith(*curfunc->Proto), curfunc->Pos,
 				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
 				+ " but they have different prototypes");
 		};
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
-			//if it is a virtual function, set the virtual index and set the vtable
+			if (funcdef.virtual_idx == MemberFunctionDef::VIRT_NONE)
+			{
+				//if the function is not manually marked virtual, check if it overrides a virtual function
+				//if so, copy the virtual idx
+				ClassAST* cls = parent_class;
+				while (cls)
+				{
+					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
+					if (itr != cls->funcmap.end())
+					{
+						funcdef.virtual_idx = cls->funcs[itr->second].virtual_idx;
+						break;
+					}
+					cls = cls->parent_class;
+				}
+			}
+			//if it is marked a virtual function, set the virtual index and set the vtable
 			if (funcdef.virtual_idx != MemberFunctionDef::VIRT_NONE)
 			{
 				if (funcdef.virtual_idx != MemberFunctionDef::VIRT_UNRESOLVED)
-				{//if the class is imported, the virtual function has already an index
+				{//if the virtual function is resolved (either is imported or overides a parent), the virtual function has already an index
 					if (funcdef.virtual_idx >= 0 && funcdef.virtual_idx < vtabledef.size())
 					{ //if it is an override function
 						CompileAssert(funcdef.decl->Proto->Name == vtabledef[funcdef.virtual_idx]->Proto->Name,
-							Pos, string("The imported virtual function ") + funcdef.decl->Proto->Name
+							Pos, string("The virtual function ") + funcdef.decl->Proto->Name
 							+ " overrides a function with different name " + vtabledef[funcdef.virtual_idx]->Proto->Name);
 						checkproto(funcdef.decl.get(), vtabledef[funcdef.virtual_idx]);
 						vtabledef[funcdef.virtual_idx] = funcdef.decl.get();
@@ -2726,7 +2777,7 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
 				string("Cannot find function ") + name + " in class " + LHS->resolved_type.class_ast->GetUniqueName());
 			auto member_def = &LHS->resolved_type.class_ast->funcs[itr->second];
-			func = LHS->resolved_type.class_ast->funcs[itr->second].decl.get();
+			func = member_def->decl.get();
 			auto memberexpr = make_unique<MemberExprAST>(std::move(LHS), member_def, Pos);
 			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(RHS));
 			LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
@@ -2811,6 +2862,14 @@ If usage vararg name is "", match the closest vararg
 			resolved_type.type = PromoteNumberExpression(LHS, RHS, isBooleanToken(Op), Pos);
 		}
 
+	}
+
+	MemberExprAST::MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
+		MemberFunctionDef* member, SourcePos pos)
+		: Obj(std::move(Obj)), func(member),
+		kind(member->virtual_idx== MemberFunctionDef::VIRT_NONE? member_function:member_virtual_function) {
+		resolved_type = func->decl->resolved_type;
+		Pos = pos;
 	}
 
 	void UnaryExprAST::Phase1()

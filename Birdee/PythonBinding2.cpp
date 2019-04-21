@@ -406,7 +406,8 @@ void RegisiterClassForBinding(py::module& m)
 			if (p) std::rethrow_exception(p);
 		}
 		catch (const CompileError &e) {
-			CompileErrorExc(e.msg.c_str());
+			auto str = e.GetMessage();
+			CompileErrorExc(str.c_str());
 		}
 		catch (const TokenizerError &e) {
 			TokenizerErrorExc(e.msg.c_str());

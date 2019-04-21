@@ -11,7 +11,7 @@ namespace Birdee
 		int source_idx;
 		int line;
 		int pos;
-		BD_CORE_API std::string ToString();
+		BD_CORE_API std::string ToString() const;
 		SourcePos(int source_idx,int line, int pos) :source_idx(source_idx),line(line), pos(pos) {}
 	};
 }
