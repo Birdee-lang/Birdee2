@@ -301,6 +301,12 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	}
 	ret->name = json_cls["name"].get<string>();
 	ret->package_name_idx = module_idx;
+	
+	{
+		auto itr = json_cls.find("is_struct");
+		if(itr!=json_cls.end())
+			ret->is_struct = itr->get<bool>();
+	}
 	const json& json_fields = json_cls["fields"];
 	BirdeeAssert(json_fields.is_array(), "Expected an JSON array");
 	int idx = 0;
@@ -666,6 +672,8 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BuildClassFromJson(json["Classes"], *this);
 	BuildOrphanClassFromJson(json["ImportedClasses"], *this);
 
+	if (package.size() == 1 && package[0] == "birdee") //if is "birdee" core package, generate "type_info" first
+		classmap.find("type_info")->second->PreGenerate();
 	for (auto& cls : this->classmap)
 	{
 		cls.second->PreGenerate();//it is safe to call multiple times
@@ -693,7 +701,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 			BirdeeAssert(itr->is_string(), "InitScripts field in bmm file should be a string");
 			//if it has a init script, construct a temp ScriptAST and run it
 			Birdee::PushPyScope(this);
-			ScriptAST tmp= ScriptAST(string());
+			ScriptAST tmp= ScriptAST(string(), true);
 			tmp.script = itr->get<string>();
 			if (!tmp.script.empty())
 			{

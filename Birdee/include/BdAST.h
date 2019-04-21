@@ -761,24 +761,7 @@ namespace Birdee {
 			ExprAST::print(level + 1); std::cout << "----------------\n";
 		}
 	};
-// 	class BD_CORE_API AddressOfExprAST : public ExprAST {
-// 	public:
-// 		std::unique_ptr<ExprAST> expr;
-// 		bool is_address_of; //true for addressof, false for pointerof
-// 		void Phase1();
-// 		std::unique_ptr<StatementAST> Copy();
-// 		llvm::Value* Generate();
-// 		AddressOfExprAST(unique_ptr<ExprAST>&& Expr, bool is_address_of, SourcePos Pos)
-// 			: expr(std::move(Expr)), is_address_of(is_address_of){
-// 			this->Pos = Pos;
-// 		}
-// 		void print(int level) {
-// 			ExprAST::print(level);
-// 			std::cout << "AddressOf\n";
-// 			expr->print(level + 1);
-//			
-// 		}
-// 	};
+
 	/// CallExprAST - Expression class for function calls.
 	class BD_CORE_API CallExprAST : public ExprAST {
 	public:
@@ -1197,7 +1180,7 @@ namespace Birdee {
 		string method;
 	public:
 		vector<std::unique_ptr<ExprAST>> args;
-		MemberFunctionDef* func = nullptr;
+		FunctionAST* func = nullptr;
 		std::unique_ptr<StatementAST> Copy();
 		void Phase1();
 		llvm::Value* Generate();
@@ -1212,23 +1195,6 @@ namespace Birdee {
 
 		}
 	};
-// 	class BD_CORE_API TypeofExprAST : public ExprAST {
-// 	public:
-// 		unique_ptr<ExprAST> arg;
-// 		std::unique_ptr<StatementAST> Copy();
-// 		//first resolve variables then resolve class names
-// 		void Phase1();
-// 		llvm::Value* Generate();
-// 		TypeofExprAST(unique_ptr<ExprAST>&& arg, SourcePos Pos)
-// 			: arg(std::move(arg)) {
-// 			this->Pos = Pos;
-// 		}
-// 		void print(int level) {
-// 			ExprAST::print(level);
-// 			std::cout << "typeof \n";
-// 			arg->print(level+1);
-//			}
-//		};
 
 	class BD_CORE_API ClassAST : public StatementAST {
 	public:
@@ -1349,7 +1315,13 @@ namespace Birdee {
 	class BD_CORE_API ScriptAST : public ExprAST
 	{
 	public:
+		//ScriptAST can be contained in template argument in a BasicTypeExpr. So it can serve as an expression, or can be served
+		//as a resolved type. The field type_data is only valid when stmt is empty (when the user only calls set_type but never calls set_ast() ).
+		//But if stmt is empty, type_data can be invalid in some cases - user did not call either set_ast() or set_type()
+		ResolvedType type_data;
+		//In most cases, ScriptAST is used as a general expr.
 		unique_ptr<StatementAST> stmt;
+		bool is_top_level;
 		string script;
 		virtual Value* Generate();
 		virtual void Phase1();
@@ -1358,7 +1330,7 @@ namespace Birdee {
 			ExprAST::print(level);
 			std::cout << "script " << script<<"\n";
 		}
-		ScriptAST(const string& str):script(str) {}
+		ScriptAST(const string& str, bool is_top_level):script(str), is_top_level(is_top_level){}
 		virtual llvm::Value* GetLValue(bool checkHas);
 	};
 

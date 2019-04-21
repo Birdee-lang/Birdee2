@@ -16,10 +16,11 @@ extern int ParseTopLevel();
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
-extern unique_ptr<StatementAST> ParseStatement();
+extern unique_ptr<StatementAST> ParseStatement(bool is_top_level);
 
 static unique_ptr<StatementAST> outexpr = nullptr;
 static ResolvedType outtype;
+static ScriptAST* cur_script_ast = nullptr;
 
 extern BD_CORE_API Tokenizer tokenizer;
 
@@ -131,6 +132,7 @@ BIRDEE_BINDING_API void* BirdeeGetOrigScope()
 
 BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, void* locals)
 {
+	cur_script_ast = ths;
 	auto& env=InitPython();
 	try
 	{
@@ -142,8 +144,6 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 		throw CompileError(ths->Pos, string("\nScript exception:\n") + e.what());
 	}
 	ths->stmt = std::move(outexpr);
-	outexpr = nullptr;
-	outtype.type = tok_error;
 	if (ths->stmt)
 	{
 		ths->stmt->Phase1();
@@ -152,6 +152,13 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 		else
 			ths->resolved_type.type = tok_error;
 	}
+	else
+	{
+		ths->type_data = outtype;
+	}
+	outexpr = nullptr;
+	outtype = ResolvedType();
+	cur_script_ast = nullptr;
 }
 
 static UniquePtrStatementAST CompileExpr(char* cmd) {
@@ -167,7 +174,7 @@ static UniquePtrStatementAST CompileStmt(char* cmd) {
 	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(cmd)), -1);
 	toknzr.GetNextToken();
 	auto old_tok = SwitchTokenizer(std::move(toknzr));
-	auto stmt = ParseStatement();
+	auto stmt = ParseStatement(cur_script_ast ? cur_script_ast->is_top_level: false);
 	SwitchTokenizer(std::move(old_tok));
 	return UniquePtrStatementAST(std::move(stmt));
 }
@@ -282,8 +289,7 @@ BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,S
 	{
 		for (auto& func_name : anno)
 		{
-			auto pfunc = PyDict_GetItemString(g_dict.ptr(), func_name.c_str());
-			auto func = py::cast<py::object>(pfunc);
+			auto func = py::eval(func_name, g_dict);
 			if (!func)
 				throw CompileError(pos, string("\nCannot find function for annotation: ") + func_name);
 			func(GetRef(impl));
@@ -543,7 +549,7 @@ void RegisiterClassForBinding(py::module& m)
 		.def("run", [](MemberExprAST& ths, py::object& func) {func(GetRef(ths.Obj)); });
 
 	py::class_ < ScriptAST, ExprAST>(m, "ScriptAST")
-		.def_static("new", [](const string& str) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str)); })
+		.def_static("new", [](const string& str, bool is_top_level) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str, is_top_level)); })
 		.def_property("stmt", [](ScriptAST& ths) {return GetRef(ths.stmt); }, [](ScriptAST& ths, UniquePtrStatementAST& v) {
 			ths.stmt = v.move_expr();
 		})

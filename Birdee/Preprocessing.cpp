@@ -489,7 +489,7 @@ public:
 					//then create a variable to import the variable
 					var->capture_import_type = v->capture_export_type;
 					var->capture_import_idx = v->capture_export_idx;
-					var->capture_export_idx = VariableSingleDefAST::CAPTURE_NONE;
+					var->capture_export_type = VariableSingleDefAST::CAPTURE_NONE;
 					var->capture_export_idx = -1;
 
 					//v is set to be the imported variable for the next iteration
@@ -746,20 +746,20 @@ static FunctionAST* GetFunctionFromExpression(ExprAST* expr,SourcePos Pos, uniqu
 			need_preserve_member = &resolvedfunc->Obj;
 		}
 	}
-	else
+	else if (MemberExprAST*  mem = dyncast_resolve_anno<MemberExprAST>(expr))
 	{
-		MemberExprAST*  mem = dyncast_resolve_anno<MemberExprAST>(expr);
-		if (mem)
+		if (mem->kind == MemberExprAST::member_function)
 		{
-			if (mem->kind == MemberExprAST::member_function)
-			{
-				func = mem->func->decl.get();
-			}
-			else if (mem->kind == MemberExprAST::member_imported_function)
-			{
-				func = mem->import_func;
-			}
+			func = mem->func->decl.get();
 		}
+		else if (mem->kind == MemberExprAST::member_imported_function)
+		{
+			func = mem->import_func;
+		}
+	}
+	else if (auto resolved_func = dyncast_resolve_anno<ResolvedFuncExprAST>(expr))
+	{
+		func = resolved_func->def;
 	}
 	return func;
 }
@@ -896,11 +896,8 @@ namespace Birdee
 		return cls->GetUniqueName();
 	}
 
-	static void ParseRawTemplateArgs(vector<unique_ptr<ExprAST>>& raw_template_args, vector<TemplateArgument>& template_args)
+	static void ParseRawOneTemplateArg(unique_ptr<ExprAST>&& template_arg, vector<TemplateArgument>& this_template_args)
 	{
-		auto& this_template_args = template_args;
-		for (auto& template_arg : raw_template_args)
-		{
 			RunOnTemplateArg(template_arg.get(),
 				[&this_template_args](BasicTypeExprAST* ex) {
 				this_template_args.push_back(TemplateArgument(ResolvedType(*ex->type, ex->Pos)));
@@ -974,10 +971,32 @@ namespace Birdee
 				[&this_template_args, &template_arg](StringLiteralAST* ex) {
 				this_template_args.push_back(TemplateArgument(std::move(template_arg)));
 			},
+				[&this_template_args, &template_arg](ScriptAST* ex) {
+				ex->Phase1();
+				if (ex->stmt) // if the user called set_ast(), use ScriptAST as an expression
+				{
+					//if ex->resolved_type.isResolved(), then it's an expression. Otherwise, it's an general statement 
+					CompileAssert(ex->resolved_type.isResolved(), ex->Pos,
+						"The returned AST of this script must be an expression, because it is in a template argument");
+					ParseRawOneTemplateArg(unique_ptr_cast<ExprAST>(std::move(ex->stmt)), this_template_args); //recursively parse the expression
+				}
+				else
+				{
+					CompileAssert(ex->type_data.isResolved(), ex->Pos,
+						"This script must be either an expression or type, because it is in a template argument");
+					this_template_args.push_back(TemplateArgument(ex->type_data));
+				}
+			},
 				[&template_arg]() {
-				throw CompileError(template_arg->Pos,  "Invalid template argument expression type");
+				throw CompileError(template_arg->Pos, "Invalid template argument expression type");
 			}
 			);
+	}
+	static void ParseRawTemplateArgs(vector<unique_ptr<ExprAST>>& raw_template_args, vector<TemplateArgument>& template_args)
+	{
+		for (auto& arg : raw_template_args)
+		{
+			ParseRawOneTemplateArg(std::move(arg), template_args);
 		}
 	}
 
@@ -1076,7 +1095,7 @@ namespace Birdee
 		stream << v;
 		return stream.str();
 	}
-	static void ValidateOneTemplateArg(const vector<TemplateArgument>& args, const vector<TemplateParameter>& params, SourcePos& Pos, int i)
+	static void ValidateOneTemplateArg(const vector<TemplateArgument>& args, const vector<TemplateParameter>& params, const SourcePos& Pos, int i)
 	{
 		if (params[i].isTypeParameter())
 		{
@@ -1143,6 +1162,7 @@ namespace Birdee
 			void* globals, *locals;
 			GetPyScope(globals, locals);
 			Birdee_ScriptType_Resolve(this, static_cast<ScriptType*>(&type), pos, globals, locals);
+			this->index_level += type.index_level;
 			return;
 		}
 		if (type.type == tok_func)
@@ -1282,7 +1302,6 @@ namespace Birdee
 		}
 		if(this->type==tok_class)
 			CompileAssert(!this->class_ast->isTemplate(), pos, string("Cannot use template as a class instance: ") + this->class_ast->GetUniqueName());
-
 	}
 
 	void CompileUnit::Phase0()
@@ -1827,19 +1846,6 @@ If usage vararg name is "", match the closest vararg
 		return ret;
 	}
 
-
-
-	// void AddressOfExprAST::Phase1()
-	// {
-	// 	
-	// 	expr->Phase1();
-	// 	if (is_address_of)
-	// 		CompileAssert(expr->GetLValue(true), Pos, "The expression in addressof should be a LValue");			
-	// 	else
-	// 		CompileAssert(expr->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
-	// 	resolved_type.type = tok_pointer;
-	// }
-
 	bool IndexExprAST::isOverloaded()
 	{
 		if (!Expr->resolved_type.isResolved())
@@ -2102,6 +2108,25 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
+	static FunctionAST* FixFunctionForCall(unique_ptr<ExprAST>& Callee, std::vector<unique_ptr<ExprAST>>& Args, const SourcePos& Pos);
+
+	static FunctionAST* FixFunctionForNew(MemberFunctionDef* funcdef, vector<unique_ptr<ExprAST>>& args ,ClassAST* cls, SourcePos Pos)
+	{
+		FunctionAST* func;
+		if (!funcdef->decl->isTemplate())
+		{
+			func = funcdef->decl.get();
+		}
+		else
+		{
+			unique_ptr<ExprAST> memb = make_unique<ResolvedFuncExprAST>(funcdef->decl.get(), Pos);
+			//check for template
+			func = FixFunctionForCall(memb, args, Pos);
+			assert(func->Proto->cls == cls);
+		}
+		CheckFunctionCallParameters(func->Proto.get(), args, Pos);
+		return func;
+	}
 	void NewExprAST::Phase1()
 	{
 		if (!resolved_type.isResolved())
@@ -2125,9 +2150,9 @@ If usage vararg name is "", match the closest vararg
 			{
 				auto itr = cls->funcmap.find(method);
 				CompileAssert(itr != cls->funcmap.end(), Pos, "Cannot resolve name "+ method);
-				func = &cls->funcs[itr->second];
-				CompileAssert(func->access==access_public, Pos, "Accessing a private method");
-				CheckFunctionCallParameters(func->decl->Proto.get(), args, Pos);
+				auto funcdef = &cls->funcs[itr->second];
+				CompileAssert(funcdef->access==access_public, Pos, "Accessing a private method");
+				func = FixFunctionForNew(funcdef, args, resolved_type.class_ast, Pos);
 			} else { // no specifically calling __init__, complier tries to find one
 				string init_method = "__init__";
 				auto itr = cls->funcmap.find(init_method);
@@ -2136,9 +2161,9 @@ If usage vararg name is "", match the closest vararg
 					auto tfunc = &cls->funcs[itr->second];
 					CompileAssert(tfunc->access == access_public, Pos, string("__init__ function of class ")
 						+ resolved_type.class_ast->GetUniqueName() + " is defined, but is not public");
-					CompileAssert(tfunc->decl->Proto.get()->resolved_args.size() == 0, Pos, string("__init__ function of class ")
-						+ resolved_type.class_ast->GetUniqueName() + " is defined, but has more than zero arguments"); 
-					func = tfunc;
+					//CompileAssert(tfunc->decl->Proto.get()->resolved_args.size() == 0, Pos, string("__init__ function of class ")
+					//	+ resolved_type.class_ast->GetUniqueName() + " is defined, but has more than zero arguments"); 
+					func = FixFunctionForNew(tfunc, args, resolved_type.class_ast, Pos);
 				}
 			}
 		}
@@ -2150,7 +2175,9 @@ If usage vararg name is "", match the closest vararg
 		if (cu.is_corelib)
 			return &(cu.classmap.find(name)->second.get());
 		else
-			return cu.imported_classmap.find(name)->second;
+		{
+			return cu.imported_packages.FindName("birdee")->mod->classmap.find(name)->second.get();
+		}
 	}
 
 	// void TypeofExprAST::Phase1()
@@ -2312,7 +2339,14 @@ If usage vararg name is "", match the closest vararg
 		}
 		return string("type(")+type.GetString()+")";
 	}
-	void CallExprAST::Phase1()
+
+	//Deduce the template arguments & vararg. If this function sucessfully deduced the function template,
+	//it will return the template instance FunctionAST. Else, if the callee is a well defined function template instance,
+	//e.g. somefunc[int,float], the instance will be returned. Otherwise, null is returned.
+	//Param: 
+	//	- Callee: the callee. Will be modified to an approriate AST node if callee should be deduced to a template instance
+	//	- Args, Pos
+	static FunctionAST* FixFunctionForCall(unique_ptr<ExprAST>& Callee, std::vector<unique_ptr<ExprAST>>& Args, const SourcePos& Pos)
 	{
 		FunctionAST* func = nullptr;
 		unique_ptr<ExprAST>* preserved_member_obj = nullptr;
@@ -2323,9 +2357,9 @@ If usage vararg name is "", match the closest vararg
 			{
 				indexexpr->Phase1(true);
 				if (isa<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
-					func = static_cast<FunctionTemplateInstanceExprAST*>(indexexpr->instance.get())->instance;				
+					func = static_cast<FunctionTemplateInstanceExprAST*>(indexexpr->instance.get())->instance;
 			}
-			else if(auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
+			else if (auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
 			{
 				templexpr->Phase1(true);
 				func = templexpr->instance;
@@ -2346,8 +2380,7 @@ If usage vararg name is "", match the closest vararg
 				name2type[func->template_param->params[i].name] = std::move(e.args->at(i));
 			}
 		}
-		// if (func)
-		// 	CompileAssert(!func->isTemplate(), Pos, "Cannot call a template");
+
 		if (func && func->isTemplate()) {
 			// tries to derive template arguments from Args
 			auto args = func->Proto->Args.get();
@@ -2355,7 +2388,8 @@ If usage vararg name is "", match the closest vararg
 			if (isa<VariableSingleDefAST>(args)) {
 				auto singleArg = static_cast<VariableSingleDefAST*>(args);
 				singleArgs.push_back(singleArg);
-			} else {
+			}
+			else {
 				assert(isa<VariableMultiDefAST>(args));
 				auto multiArg = static_cast<VariableMultiDefAST*>(args);
 				for (auto & singleArg : multiArg->lst) {
@@ -2385,17 +2419,17 @@ If usage vararg name is "", match the closest vararg
 				if (singleArgs[i]->type->type == tok_identifier) {
 					auto identifierType = static_cast<IdentifierType*>(singleArgs[i]->type.get());
 					auto it = name2type.find(identifierType->name);
-					
+
 					if (it == name2type.end())
 						name2type[identifierType->name] = Args[i]->resolved_type;
-					else if ( it->second.kind!=TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == Args[i]->resolved_type))
-						CompileAssert(false, Pos, string("Cannot derive template parameter type ")+ identifierType->name 
+					else if (it->second.kind != TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == Args[i]->resolved_type))
+						CompileAssert(false, Pos, string("Cannot derive template parameter type ") + identifierType->name
 							+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
 				}
 			}
 			auto & params = func->template_param->params;
 			// construct FunctionTemplateInstanceAST to replace Callee
-			auto template_args=make_unique<vector<TemplateArgument>>();
+			auto template_args = make_unique<vector<TemplateArgument>>();
 			for (auto & param : params) {
 				//CompileAssert(param.isTypeParameter(), Pos, "Cannot derive the value template parameter: " + param.name);
 				auto itr = name2type.find(param.name);
@@ -2411,7 +2445,7 @@ If usage vararg name is "", match the closest vararg
 					template_args->emplace_back(TemplateArgument(Args[i]->resolved_type));
 				}
 			}
-			template_args = func->template_param->ValidateArguments(func,std::move(template_args), Pos, false);
+			template_args = func->template_param->ValidateArguments(func, std::move(template_args), Pos, false);
 			auto instance = func->template_param->GetOrCreate(std::move(template_args), func, Pos);
 			if (auto memb = dyncast_resolve_anno<MemberExprAST>(Callee.get()))
 			{
@@ -2435,7 +2469,12 @@ If usage vararg name is "", match the closest vararg
 			func = instance;
 			// do phase1 again
 		}
-		func_callee = func;
+		return func;
+	}
+
+	void CallExprAST::Phase1()
+	{
+		func_callee = FixFunctionForCall(Callee, Args, Pos);
 		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
 		// TODO: do not arg->Phase1 again
 		auto proto = Callee->resolved_type.proto_ast;

@@ -332,6 +332,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
 	json_cls["needs_rtti"] = cls.needs_rtti;
+	json_cls["is_struct"] = cls.is_struct;
 	if (cls.isTemplate())
 	{
 		assert(!cls.template_param->source.empty());

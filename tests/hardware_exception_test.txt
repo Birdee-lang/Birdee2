@@ -1,0 +1,44 @@
+func test()
+	dim a as string=null
+	println(a)
+end
+
+
+func wrapper1()
+	try
+		test()
+	catch e as mem_access_exception
+		println("Caught SEGV")
+	end
+end
+
+#declare function getchar() as int
+#getchar()
+wrapper1()
+wrapper1()
+wrapper1()
+
+func test2[T]() as T
+	dim a as T = 0
+	return 2/a
+end
+
+
+func wrapper2[T,STR as string]()
+	try
+		test2[T]()
+	catch e as div_zero_exception
+		println(STR)
+	end
+end
+
+wrapper2[int,"int"]()
+wrapper2[int,"int"]()
+wrapper2[int,"int"]()
+
+println("Test done")
+
+#on x86, the following code will not generate exceptions
+wrapper2[double,"double"]()
+wrapper2[double,"double"]()
+wrapper2[double,"double"]()

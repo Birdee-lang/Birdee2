@@ -485,6 +485,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 			auto type = make_unique<QualifiedIdentifierType>(ex->ToStringArray());
 			auto nexpr = make_unique<BasicTypeExprAST>();
 			nexpr->type = std::move(type);
+			nexpr->type->index_level = 1;
 			expr = std::move(nexpr);
 		},
 			[](FunctionTemplateInstanceExprAST* ex) {
@@ -498,6 +499,13 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 		},
 			[](StringLiteralAST* ex) {
 			throw CompileError("Cannot apply index on string");
+		},
+			[&expr](ScriptAST* ex) {
+			auto type = make_unique<ScriptType>(ex->script);
+			auto nexpr = make_unique<BasicTypeExprAST>();
+			nexpr->type = std::move(type);
+			nexpr->type->index_level = 1;
+			expr = std::move(nexpr);
 		},
 			[]() {
 			throw CompileError("Invalid template argument expression type for []");
@@ -625,7 +633,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		return nullptr;
 		break;
 	case tok_script:
-		push_expr(make_unique<ScriptAST>(tokenizer.IdentifierStr));
+		push_expr(make_unique<ScriptAST>(tokenizer.IdentifierStr, false));
 		tokenizer.GetNextToken();
 		break;
 	default:
@@ -1691,7 +1699,7 @@ void ParseImports(bool need_do_import)
 	}
 }
 
-BD_CORE_API unique_ptr<StatementAST> ParseStatement()
+BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 {
 	unique_ptr<StatementAST> ret;
 	switch (tokenizer.CurTok)
@@ -1725,6 +1733,19 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement()
 		tokenizer.GetNextToken();
 		ret = make_unique<ThrowAST>(ParseExpressionUnknown(), pos);
 		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after throw");
+		break;
+	}
+	case tok_declare:
+	{
+		tokenizer.GetNextToken(); //eat declare
+		CompileExpect(tok_func, "Expected a function after declare");
+		CompileAssert(is_top_level, "Can only parse function declaration in top-level");
+		std::unique_ptr<FunctionAST> funcast = ParseDeclareFunction(nullptr);
+		std::reference_wrapper<const string> funcname = funcast->GetName();
+		std::reference_wrapper<FunctionAST> funcref = *funcast;
+		CompileCheckGlobalConflict(funcast->Pos, funcname);
+		cu.funcmap.insert(std::make_pair(funcname, funcref));
+		ret = std::move(funcast);
 		break;
 	}
 	default:
@@ -1868,7 +1889,10 @@ BD_CORE_API int ParseTopLevel()
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after class definition");
 			break;
 		}
-
+		case tok_script:
+			push_expr(make_unique<ScriptAST>(tokenizer.IdentifierStr,true));
+			tokenizer.GetNextToken();
+			break;
 		default:
 			firstexpr = ParseExpressionUnknown();
 			BasicBlockCheckUnknownToken({ tok_eof,tok_newline });

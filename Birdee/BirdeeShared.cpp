@@ -484,6 +484,13 @@ Token Birdee::Tokenizer::gettok() {
 		Token ret = gettok();
 		if (ret != tok_identifier)
 			throw TokenizerError(line, pos, "Expected an identifier after \'@\'");
+		if (!isspace(LastChar) && LastChar != '\n') //if annotation is not followed by a " ", parse until the end of the line
+		{
+			do {
+				IdentifierStr += LastChar;
+				LastChar = GetChar();
+			} while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
+		}
 		return tok_annotation;
 	}
 	// Check for end of file.  Don't eat the EOF.

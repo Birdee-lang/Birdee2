@@ -258,9 +258,12 @@ static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	{
 		return itr->second;
 	}
+	string name;
+	MangleNameAndAppend(name, cls->GetUniqueName());
+	name += "0_typeinfo";
 	auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
 		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
-		cls->GetUniqueName() + "0_typeinfo", nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
 	gen_context.rtti_map[cls] = newv;
 	return newv;
 }
@@ -358,6 +361,23 @@ llvm::Type* BuildArrayType(llvm::Type* ty, DIType* & dty,string& name,DIType* & 
 
 }
 
+static void GenerateClosureTypes(llvm::Type* functy, DIType* funcdty, llvm::Type*& outbase, DIType*& outdtype, int lineno)
+{
+	outbase = StructType::create({ functy,builder.getInt8PtrTy() });
+	auto size = module->getDataLayout().getTypeAllocSizeInBits(outbase);
+	auto align = module->getDataLayout().getPrefTypeAlignment(outbase);
+
+	DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
+		dinfo.cu->getDirectory());
+	SmallVector<Metadata *, 8> dtypes = { 
+		DBuilder->createMemberType(dinfo.cu,"pfunc",Unit,1,64,align*8,0,DINode::DIFlags::FlagZero, funcdty) ,
+		DBuilder->createMemberType(dinfo.cu,"pclosure",Unit,1,64,align * 8,64,DINode::DIFlags::FlagZero,
+		DBuilder->createBasicType("pointer",64,dwarf::DW_ATE_address))
+	};
+	outdtype = DBuilder->createStructType(dinfo.cu, "", Unit, lineno, size, align * 8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+
+}
+
 void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* & base)
 {
 	if (type.index_level > 0)
@@ -425,7 +445,6 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	{
 		auto functy = type.proto_ast->GenerateFunctionType()->getPointerTo();
 		auto funcdty = type.proto_ast->GenerateDebugType();
-
 		if (!type.proto_ast->is_closure)
 		{
 			base = functy;
@@ -433,18 +452,7 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		}
 		else
 		{
-			base = StructType::create({ functy,builder.getInt8PtrTy() });
-			auto size = module->getDataLayout().getTypeAllocSizeInBits(base);
-			auto align = module->getDataLayout().getPrefTypeAlignment(base);
-
-			DIFile *Unit = DBuilder->createFile(dinfo.cu->getFilename(),
-				dinfo.cu->getDirectory());
-			SmallVector<Metadata *, 8> dtypes = { 
-				DBuilder->createMemberType(dinfo.cu,"pfunc",Unit,1,64,align*8,0,DINode::DIFlags::FlagZero, funcdty) ,
-				DBuilder->createMemberType(dinfo.cu,"pclosure",Unit,1,64,align * 8,64,DINode::DIFlags::FlagZero,
-					DBuilder->createBasicType("pointer",64,dwarf::DW_ATE_address))
-			};
-			dtype = DBuilder->createStructType(dinfo.cu, "", Unit, type.proto_ast->pos.line, size, align * 8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+			GenerateClosureTypes(functy, funcdty, base, dtype, type.proto_ast->pos.line);
 		}
 		break;
 	}
@@ -697,6 +705,12 @@ void Birdee::CompileUnit::Generate()
 		module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
 	}
 
+	//if is core lib, first generate type_info
+	if (cu.is_corelib)
+	{
+		string str = "type_info";
+		classmap.find(str)->second.get().PreGenerate();
+	}
 
 	//first generate the classes, as the functions may reference them
 	//this will generate the LLVM types for the classes
@@ -1066,7 +1080,8 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	else
 		linkage = Function::ExternalLinkage;
 	MangleNameAndAppend(prefix, Proto->GetName());
-	auto myfunc = Function::Create(Proto->GenerateFunctionType(), linkage, prefix, module);
+	auto ftype=Proto->GenerateFunctionType();
+	auto myfunc = Function::Create(ftype, linkage, prefix, module);
 	llvm_func = myfunc;
 	if (strHasEnding(cu.targetpath,".obj") && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
 	{
@@ -1074,7 +1089,22 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		myfunc->setDSOLocal(true);
 	}
 	DIType* ret = Proto->GenerateDebugType();
-	helper.typemap[resolved_type].dty = ret;
+	auto itr = helper.typemap.find(resolved_type);
+	if(itr==helper.typemap.end())
+	{
+		LLVMHelper::TypePair tynode;
+		if(resolved_type.proto_ast->is_closure)
+		{
+			GenerateClosureTypes(ftype->getPointerTo(),ret,tynode.llvm_ty, tynode.dty, Pos.line);
+		}
+		else
+		{
+			tynode.dty = ret;
+			tynode.llvm_ty = ftype->getPointerTo();
+		}
+		helper.typemap.insert(std::make_pair(resolved_type,tynode));
+	}
+
 	return ret;
 }
 
@@ -1180,7 +1210,7 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	}
 
 	if(func)
-		GenerateCall(func->decl->llvm_func, func->decl->Proto.get(), ret, args, this->Pos);
+		GenerateCall(func->llvm_func, func->Proto.get(), ret, args, this->Pos);
 	return ret;
 }
 
@@ -1255,7 +1285,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 	{
 		return nullptr;
 	}
-	
 	ImportedModule* mod = nullptr;
 	if (isTemplateInstance && template_source_func->template_param->mod)
 		mod = template_source_func->template_param->mod;
@@ -1326,10 +1355,11 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				auto var = v.second.get();
 				DIType* ty = helper.GetTypeNode(var->resolved_type).dty;
 				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
+				int impidx = v.second->capture_import_idx;
 				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
-					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }, var->name);
+					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }, var->name);
 				else
-					var->llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(idx) }), var->name);
+					var->llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }), var->name);
 				// Create a debug descriptor for the variable.
 				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
 					true);

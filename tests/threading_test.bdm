@@ -1,0 +1,9 @@
+import concurrent.threading:*
+
+function add(a as int, b as int)
+	println(int2str(a+b))
+end
+
+dim th = new thread(add, 1, 2)
+sleep(10000)
+println("end")
