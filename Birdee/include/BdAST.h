@@ -900,10 +900,8 @@ namespace Birdee {
 	/// which captures its name, and its argument names (thus implicitly the number
 	/// of arguments the function takes).
 	class BD_CORE_API PrototypeAST {
-	protected:
-		
-		std::unique_ptr<Type> RetType;
 	public:
+		std::unique_ptr<Type> RetType;
 		SourcePos pos;
 		std::string Name;
 		std::unique_ptr<PrototypeAST> Copy();

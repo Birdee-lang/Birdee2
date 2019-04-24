@@ -1,4 +1,5 @@
 import unsafe:ptr_cast
+import functional.option:*
 
 #intrinsic
 func get_type_info[T]() as type_info
@@ -37,4 +38,8 @@ else
 end
 ''')
 @}
+end
+
+function as_instance[T1,T2](ptr as T2) as option[T1]
+	return some(dyn_cast[T1,T2](ptr))
 end

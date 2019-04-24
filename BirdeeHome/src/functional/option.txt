@@ -1,0 +1,88 @@
+package functional
+
+@init_script
+{@
+from traits import *
+def check_option(cls):
+	targ = cls.template_instance_args[0]
+	assert(targ.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE)
+	type = targ.resolved_type
+	if type.index_level==0 and (type.base!=BasicType.CLASS or type.get_detail().is_struct):
+		raise RuntimeError("option can only hold references. However, T is {}".format(type))
+
+def check_if_is_option(type):
+	option_class = get_cur_func().proto.cls.template_source_class
+	cls=type.get_detail()
+	if not isinstance(cls,ClassAST):
+		raise RuntimeError("Expecting a function that returns an option. However, the return type is {}".format(cls.get_unique_name()))
+	chk_src_class = cls.template_source_class
+	if chk_src_class != option_class:
+		raise RuntimeError("Expecting a function that returns an option. However, the return type is {}".format(cls.get_unique_name()))
+@}
+
+@check_option
+struct option[T]
+	private obj as T
+	
+	public function set(o as T) => obj = o
+	public function get() as T => obj
+	public function or_else(other as T) as T
+		if obj===null then
+			return other
+		else
+			return obj
+		end
+	end
+
+	public function map[T2](map_func as closure(v as T) as T2) as option[T2]
+		dim ret as option[T2]
+		if obj!==null then
+			ret.set(map_func(obj))
+		else
+			ret.set(null)
+		end
+		return ret
+	end
+
+	public function flat_map[T2](map_func as closure(v as T) as option[T2]) as option[T2]
+		if obj!==null then
+			return map_func(obj)
+		end
+		dim ret as option[T2]
+		ret.set(null)
+		return ret
+	end
+
+	public function filter(predicate as closure (obj as T) as boolean) as option[T]
+		if obj!==null && predicate(obj) then
+			return this 
+		end
+		dim ret as option[T]
+		ret.set(null)
+		return ret
+	end
+
+end
+
+function some[T](v as T) as option[T]
+	dim ret as option[T]
+	ret.set(v)
+	return ret
+end
+
+function none[T]() as option[T]
+	dim ret as option[T]
+	ret.set(null)
+	return ret
+end
+
+##class String
+	public v as string
+	public func __init__(v as string) => this.v=v
+end##
+
+#dim vv = some("123").flat_map(func (str as string) as option[String] => some(new String(str+"sda"))).get()
+#println(vv.v)
+#option_of("123").filter(func (str as string) as boolean => str=="123" )
+#dim a as int[]
+#dim result as string  = option_of(a).map(func (a as int[]) as string => int2str(a[0]) ).map(func (str as string) as string => "hello"+str ).get()

@@ -194,7 +194,7 @@
   <ItemGroup>
     <Text Include="..\BirdeeHome2\src\rtti.txt" />
     <Text Include="..\BirdeeHome\pylib\bdutils.py" />
-    <Text Include="..\BirdeeHome\src\functional.txt" />
+    <Text Include="..\BirdeeHome\src\functional\option.txt" />
     <Text Include="..\BirdeeHome\src\unsafe.txt" />
     <Text Include="..\BirdeeHome\src\variant.txt" />
     <Text Include="..\BirdeeHome\src\vector.txt" />

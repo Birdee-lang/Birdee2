@@ -139,9 +139,6 @@
     <Text Include="..\tests\exception_test.txt">
       <Filter>资源文件\tests</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\functional.txt">
-      <Filter>资源文件\blib</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\unsafe.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
@@ -158,6 +155,9 @@
       <Filter>资源文件\pylib</Filter>
     </Text>
     <Text Include="..\BirdeeHome2\src\rtti.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\functional\option.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
   </ItemGroup>

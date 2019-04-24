@@ -1983,7 +1983,9 @@ If usage vararg name is "", match the closest vararg
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
+		auto old_f_scopes = std::move(scope_mgr.function_scopes);
 		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
+		scope_mgr.function_scopes = std::move(old_f_scopes);
 		if (annotation)
 		{
 			PushPyScope(mod);
@@ -2495,6 +2497,117 @@ If usage vararg name is "", match the closest vararg
 		return string("type(")+type.GetString()+")";
 	}
 
+	static void DeduceTemplateArgFromArg(Type* rawty, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos);
+	static void DeduceTemplateArgFromTemplateArgExpr(ExprAST* targ, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos);
+	static void DeduceTemplArgFromTemplArgExprList(vector<unique_ptr<ExprAST>>& raw_args, vector<TemplateArgument>&ty_args,
+		unordered_map<string, TemplateArgument>& name2type,  const SourcePos& Pos)
+	{
+		if (raw_args.size() != ty_args.size())
+			return;
+		for (int i = 0; i < ty_args.size(); i++)
+		{
+			if (ty_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
+			{
+				DeduceTemplateArgFromTemplateArgExpr(raw_args[i].get(), ty_args[i].type, name2type, Pos);
+			}
+		}
+	}
+
+	static void DeduceTemplateArgFromTemplateArgExpr(ExprAST* targ, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos)
+	{
+		RunOnTemplateArg(targ,
+			[&rty, &name2type, &Pos](BasicTypeExprAST* expr) {
+			DeduceTemplateArgFromArg(expr->type.get(), rty, name2type, Pos);
+		},
+			[&rty,&name2type,&Pos](IdentifierExprAST* iden){
+			IdentifierType ity(iden->Name);
+			DeduceTemplateArgFromArg(&ity, rty, name2type, Pos);
+		},
+			[](MemberExprAST*) {},
+			[&rty, &name2type, &Pos](FunctionTemplateInstanceExprAST* templ) {
+			if (rty.type != tok_class || !rty.class_ast->isTemplateInstance())
+				return;
+			DeduceTemplArgFromTemplArgExprList(templ->raw_template_args, 
+				*rty.class_ast->template_instance_args, name2type, Pos);		
+		},
+			[&rty, &name2type, &Pos](IndexExprAST* expr) {
+			if (rty.type != tok_class || !rty.class_ast->isTemplateInstance())
+				return;
+			if (rty.class_ast->template_instance_args->size() != 1)
+				return;
+			auto& ty_args = *rty.class_ast->template_instance_args;
+			if (ty_args[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
+				DeduceTemplateArgFromTemplateArgExpr(expr->Index.get(), ty_args[0].type, name2type, Pos);
+		},
+			[](NumberExprAST*) {},
+			[](StringLiteralAST*) {},
+			[](ScriptAST*) {},
+			[]() {}
+		);
+	}
+
+	static void DeduceTemplateArgFromArg(Type* rawty, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos)
+	{
+		assert(rawty);
+		if (rawty->index_level > rty.index_level)
+			return;
+		if (rawty->type == tok_identifier) {
+			auto identifierType = static_cast<IdentifierType*>(rawty);
+			if (identifierType->template_args)
+			{
+				//if arg is T[...]
+				if (rawty->index_level != rty.index_level)
+					return;
+				if (rty.type != tok_class || !rty.class_ast->isTemplateInstance())
+					return;
+				DeduceTemplArgFromTemplArgExprList(*identifierType->template_args, *rty.class_ast->template_instance_args, name2type, Pos);
+			}
+			else
+			{
+				//if arg is plain identifier
+				auto it = name2type.find(identifierType->name);
+				auto result = rty;
+				result.index_level -= rawty->index_level;
+				//T[] matches int[][], where T=int[]
+				if (it == name2type.end())
+					name2type[identifierType->name] = result;
+				else if (it->second.kind != TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == result))
+					CompileAssert(false, Pos, string("Cannot derive template parameter type ") + identifierType->name
+						+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + result.GetString());
+			}
+
+		}
+		else if (rawty->type == tok_func)
+		{
+			if (rawty->index_level != rty.index_level)
+				return;
+			auto proto = static_cast<PrototypeType*>(rawty)->proto.get();
+			if (rty.type != tok_func)
+				return;
+			DeduceTemplateArgFromArg(proto->RetType.get(), rty.proto_ast->resolved_type, name2type, Pos);
+			auto args = proto->Args.get();
+			auto param_size = rty.proto_ast->resolved_args.size();
+			if (isa<VariableMultiDefAST>(args))
+			{
+				auto& lst = static_cast<VariableMultiDefAST*>(args)->lst;
+				for (int i = 0; i < lst.size(); i++)
+				{
+					if (i >= param_size)
+						return;
+					DeduceTemplateArgFromArg(lst[i]->type.get(), rty.proto_ast->resolved_args[i]->resolved_type, name2type, Pos);
+				}
+			}
+			else
+			{
+				assert(isa<VariableSingleDefAST>(args));
+				if (param_size == 0)
+					return;
+				DeduceTemplateArgFromArg(static_cast<VariableSingleDefAST*>(args)->type.get(),
+					rty.proto_ast->resolved_args[0]->resolved_type, name2type, Pos);
+			}
+		}
+	}
+
 	//Deduce the template arguments & vararg. If this function sucessfully deduced the function template,
 	//it will return the template instance FunctionAST. Else, if the callee is a well defined function template instance,
 	//e.g. somefunc[int,float], the instance will be returned. Otherwise, null is returned.
@@ -2571,16 +2684,7 @@ If usage vararg name is "", match the closest vararg
 
 			for (int i = 0; i < singleArgs.size(); i++) {
 				Args[i]->Phase1();
-				if (singleArgs[i]->type->type == tok_identifier) {
-					auto identifierType = static_cast<IdentifierType*>(singleArgs[i]->type.get());
-					auto it = name2type.find(identifierType->name);
-
-					if (it == name2type.end())
-						name2type[identifierType->name] = Args[i]->resolved_type;
-					else if (it->second.kind != TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == Args[i]->resolved_type))
-						CompileAssert(false, Pos, string("Cannot derive template parameter type ") + identifierType->name
-							+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
-				}
+				DeduceTemplateArgFromArg(singleArgs[i]->type.get(), Args[i]->resolved_type, name2type, Pos);
 			}
 			auto & params = func->template_param->params;
 			// construct FunctionTemplateInstanceAST to replace Callee
