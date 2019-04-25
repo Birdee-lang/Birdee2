@@ -2,6 +2,10 @@
 
 MKDIR_P = mkdir -p
 
+PREFIX ?= /usr/bin
+VERSION ?=0.1
+INSTALL_PATH = ${PREFIX}/birdee${VERSION}/
+
 ##
 PWD_DIR=$(shell pwd)
 COMPILER_DIR=$(PWD_DIR)/Birdee
@@ -9,8 +13,8 @@ RUNTIME_DIR=$(PWD_DIR)/BirdeeRuntime
 BLIB_DIR=$(PWD_DIR)/BirdeeHome/src
 INC_DIR=$(PWD_DIR)/Birdee/include
 INC_DIR2=$(PWD_DIR)/dependency/include
-BIN_DIR=$(PWD_DIR)/bin
-LIB_DIR=$(PWD_DIR)/lib
+BIN_DIR=$(PWD_DIR)/BirdeeHome/bin
+LIB_DIR=$(PWD_DIR)/BirdeeHome/lib
 
 PYLIBS = $(shell python3-config --libs)
 CXX ?= g++
@@ -40,6 +44,13 @@ runtime:
 libraries: compiler runtime
 	$(MAKE) -C $(BLIB_DIR)
 
+install:
+	cp -rf $(PWD_DIR)/BirdeeHome $(INSTALL_PATH)
+	ln $(INSTALL_PATH)/bin/birdeec $(PREFIX)/birdeec
+
+uninstall:
+	rm -r $(INSTALL_PATH)
+	rm  $(PREFIX)/birdeec
 ##
 clean:
 	$(MAKE)  -C $(COMPILER_DIR) clean
