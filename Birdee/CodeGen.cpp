@@ -23,6 +23,10 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/IPO/StripDeadPrototypes.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 
 #include "CompileError.h"
 #include "BdAST.h"
@@ -895,12 +899,14 @@ bool Birdee::CompileUnit::Generate()
 	//module->print(errs(), nullptr);
 
 	//verifyModule(*module);
-	legacy::PassManager pass;
+
 	llvm::ModulePassManager mpm;
 	llvm::ModuleAnalysisManager mam;
 	mpm.addPass(StripDeadPrototypesPass());
 	mpm.addPass(GlobalDCEPass());
 	mpm.run(*module, mam);
+
+
 
 	if(cu.is_print_ir)
 		module->print(errs(), nullptr);
@@ -914,6 +920,30 @@ bool Birdee::CompileUnit::Generate()
 	}
 	else
 	{
+		PassManagerBuilder passbuilder;
+		passbuilder.OptLevel = (CodeGenOpt::Level)((int)CodeGenOpt::None + cu.optimize_level);
+		legacy::PassManager MPM;
+		legacy::FunctionPassManager FPM(module);
+		TheTargetMachine->adjustPassManager(passbuilder);
+
+		if (cu.optimize_level > 1) {
+			passbuilder.Inliner = createFunctionInliningPass(cu.optimize_level, cu.size_optimize_level, false);
+		}
+		else {
+			passbuilder.Inliner = createAlwaysInlinerLegacyPass();
+		}
+
+		passbuilder.populateFunctionPassManager(FPM);
+		passbuilder.populateModulePassManager(MPM);
+		MPM.add(createTargetTransformInfoWrapperPass(TheTargetMachine->getTargetIRAnalysis()));
+		FPM.add(createTargetTransformInfoWrapperPass(TheTargetMachine->getTargetIRAnalysis()));
+		passbuilder.populateLTOPassManager(MPM);
+
+		FPM.doInitialization();
+		for (Function &F : *module)
+			FPM.run(F);
+		FPM.doFinalization();
+
 		auto Filename = cu.targetpath;
 		std::error_code EC;
 		raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
@@ -921,13 +951,14 @@ bool Birdee::CompileUnit::Generate()
 		if (EC) {
 			throw CompileError(string("Could not open file: ") + EC.message());
 		}
-
+		assert(cu.optimize_level >= 0 && cu.optimize_level <= 3);
+		TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.optimize_level));
 		auto FileType = TargetMachine::CGFT_ObjectFile;
-		if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
+		if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
 			throw CompileError("TheTargetMachine can't emit a file of this type");
 		}
 
-		pass.run(*module);
+		MPM.run(*module);
 		dest.flush();
 		return false;
 	}

@@ -135,6 +135,32 @@ void ParseParameters(int argc, char** argv)
 					str.push_back('/');
 				cu.search_path.push_back(std::move(str));
 			}
+			else if (cmd == "-O" || cmd == "--optimize")
+			{
+				if (!args.HasNext())
+					goto fail;
+				string str = args.Get();
+				int opt = std::stoi(str);
+				if (opt < 0 || opt>4)
+				{
+					std::cerr << "Bad optimization level. Should be within 0 to 3\n";
+					goto fail;
+				}
+				cu.optimize_level = opt;
+			}
+			else if (cmd == "-Z" || cmd == "--size-optimize")
+			{
+				if (!args.HasNext())
+					goto fail;
+				string str = args.Get();
+				int zopt = std::stoi(str);
+				if (zopt < 0 || zopt>3)
+				{
+					std::cerr << "Bad optimization level. Should be within 0 to 2\n";
+					goto fail;
+				}
+				cu.size_optimize_level = zopt;
+			}
 			else
 				goto fail;
 		}
