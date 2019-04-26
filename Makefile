@@ -46,11 +46,15 @@ libraries: compiler runtime
 
 install:
 	cp -rf $(PWD_DIR)/BirdeeHome $(INSTALL_PATH)
-	ln $(INSTALL_PATH)/bin/birdeec $(PREFIX)/birdeec
-
+	ln -s -r $(INSTALL_PATH)/bin/birdeec $(PREFIX)/birdeec
+	ln -s -r $(INSTALL_PATH)/lib/libBirdeeCompilerCore.so $(PREFIX)/../lib/libBirdeeCompilerCore.so
+	ln -s -r $(INSTALL_PATH)/lib/libBirdeeBinding.so $(PREFIX)/../lib/libBirdeeBinding.so
+        
 uninstall:
 	rm -r $(INSTALL_PATH)
-	rm  $(PREFIX)/birdeec
+	rm $(PREFIX)/birdeec
+	rm $(PREFIX)/../lib/libBirdeeCompilerCore.so
+	rm $(PREFIX)/../lib/libBirdeeBinding.so
 ##
 clean:
 	$(MAKE)  -C $(COMPILER_DIR) clean
