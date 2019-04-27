@@ -77,6 +77,16 @@ class type_info
 	private parent as type_info
 	public function get_name() as string => name
 	public function get_parent() as type_info => parent
+	public function is_parent_of(child as type_info) as boolean
+		dim cur = child
+		while cur!==null
+			if cur === this then
+				return true
+			end
+			cur=cur.get_parent()
+		end
+		return false
+	end
 end
 
 declare function BirdeeI2S (i as int) as string
