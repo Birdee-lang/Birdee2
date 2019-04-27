@@ -169,6 +169,7 @@
     <ClInclude Include="include\BindingUtil.h" />
     <ClInclude Include="include\CastAST.h" />
     <ClInclude Include="include\CompileError.h" />
+    <ClInclude Include="include\CompilerOptions.h" />
     <ClInclude Include="include\LibDef.h" />
     <ClInclude Include="include\Metadata.h" />
     <ClInclude Include="include\NameMangling.h" />

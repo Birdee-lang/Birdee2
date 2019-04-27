@@ -33,6 +33,7 @@
 #include <cassert>
 #include "CastAST.h"
 #include "NameMangling.h"
+#include <CompilerOptions.h>
 
 using namespace llvm;
 using Birdee::CompileError;
@@ -807,7 +808,7 @@ bool Birdee::CompileUnit::Generate()
 	FunctionType *FT =
 		FunctionType::get(llvm::Type::getVoidTy(context), false);
 
-	Function *F = Function::Create(FT, Function::ExternalLinkage, cu.expose_main ? "main" : GetMangledSymbolPrefix() + "_1main", module);
+	Function *F = Function::Create(FT, Function::ExternalLinkage, cu.options->expose_main ? "main" : GetMangledSymbolPrefix() + "_1main", module);
 	BasicBlock *BB = BasicBlock::Create(context, "entry", F);
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
@@ -908,7 +909,7 @@ bool Birdee::CompileUnit::Generate()
 
 
 
-	if(cu.is_print_ir)
+	if(cu.options->is_print_ir)
 		module->print(errs(), nullptr);
 
 	llvm::Instruction* second_last_inst = &(*--(--BF->getInstList().end()));
@@ -920,14 +921,25 @@ bool Birdee::CompileUnit::Generate()
 	}
 	else
 	{
+		int llvm_argc = cu.options->llvm_options.size();
+		if (llvm_argc > 1)
+		{
+			vector<const char*> argv(llvm_argc);
+			for (int i = 0; i < llvm_argc; i++)
+				argv[i] = cu.options->llvm_options[i].c_str();
+			cl::ParseCommandLineOptions(llvm_argc, argv.data(),"Birdee compiler llvm options parser\n");
+		}
+
+
 		PassManagerBuilder passbuilder;
-		passbuilder.OptLevel = (CodeGenOpt::Level)((int)CodeGenOpt::None + cu.optimize_level);
+		passbuilder.OptLevel = (CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level);
+		passbuilder.SizeLevel = cu.options->size_optimize_level;
 		legacy::PassManager MPM;
 		legacy::FunctionPassManager FPM(module);
 		TheTargetMachine->adjustPassManager(passbuilder);
 
-		if (cu.optimize_level > 1) {
-			passbuilder.Inliner = createFunctionInliningPass(cu.optimize_level, cu.size_optimize_level, false);
+		if (cu.options->optimize_level > 1) {
+			passbuilder.Inliner = createFunctionInliningPass(cu.options->optimize_level, cu.options->size_optimize_level, false);
 		}
 		else {
 			passbuilder.Inliner = createAlwaysInlinerLegacyPass();
@@ -951,8 +963,8 @@ bool Birdee::CompileUnit::Generate()
 		if (EC) {
 			throw CompileError(string("Could not open file: ") + EC.message());
 		}
-		assert(cu.optimize_level >= 0 && cu.optimize_level <= 3);
-		TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.optimize_level));
+		assert(cu.options->optimize_level >= 0 && cu.options->optimize_level <= 3);
+		TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level));
 		auto FileType = TargetMachine::CGFT_ObjectFile;
 		if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
 			throw CompileError("TheTargetMachine can't emit a file of this type");

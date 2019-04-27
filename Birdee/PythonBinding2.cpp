@@ -6,6 +6,7 @@
 #include "OpEnums.h"
 #include <CastAST.h>
 #include <Util.h>
+#include <CompilerOptions.h>
 
 using namespace Birdee;
 
@@ -372,7 +373,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("top_level", CompileTopLevel);
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 		m.def("generate", []() {cu.Generate(); });
-		m.def("set_print_ir", [](bool printir) {cu.is_print_ir = printir; });
+		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
 	m.def("get_os_name", []()->std::string {

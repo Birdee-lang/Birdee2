@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <CompilerOptions.h>
 using namespace Birdee;
 
 extern int ParseTopLevel();
@@ -101,7 +102,7 @@ void ParseParameters(int argc, char** argv)
 			}
 			else if (cmd == "-e")
 			{
-				cu.expose_main = true;
+				cu.options->expose_main = true;
 			}
 			else if (cmd == "-p")
 			{
@@ -120,7 +121,7 @@ void ParseParameters(int argc, char** argv)
 			}
 			else if (cmd == "--printir")
 			{
-				cu.is_print_ir = true;
+				cu.options->is_print_ir = true;
 			}
 			else if (cmd == "--corelib")
 			{
@@ -146,7 +147,22 @@ void ParseParameters(int argc, char** argv)
 					std::cerr << "Bad optimization level. Should be within 0 to 3\n";
 					goto fail;
 				}
-				cu.optimize_level = opt;
+				cu.options->optimize_level = opt;
+			}
+			else if (cmd == "--llvm-opt-start")
+			{
+				for (;;)
+				{
+					if (!args.HasNext())
+					{
+						std::cerr << "No --llvm-opt-end matches --llvm-opt-start\n";
+						goto fail;
+					}
+					string str = args.Get();
+					if (str == "--llvm-opt-end")
+						break;
+					cu.options->llvm_options.push_back(std::move(str));
+				}
 			}
 			else if (cmd == "-Z" || cmd == "--size-optimize")
 			{
@@ -159,7 +175,7 @@ void ParseParameters(int argc, char** argv)
 					std::cerr << "Bad optimization level. Should be within 0 to 2\n";
 					goto fail;
 				}
-				cu.size_optimize_level = zopt;
+				cu.options->size_optimize_level = zopt;
 			}
 			else
 				goto fail;

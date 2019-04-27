@@ -78,6 +78,9 @@
     <ClInclude Include="include\PyWrapper.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\CompilerOptions.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">

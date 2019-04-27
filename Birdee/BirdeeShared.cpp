@@ -1,6 +1,7 @@
 #include <BdAST.h>
 #include <CompileError.h>
 #include <Tokenizer.h>
+#include <CompilerOptions.h>
 
 using namespace Birdee;
 CompileError CompileError::last_error;
@@ -10,6 +11,14 @@ namespace Birdee
 {
 	BD_CORE_API std::vector<std::string> source_paths;
 	CompileUnit cu;
+
+	unique_ptr<CompilerOptions> DefaultCompilerOptions()
+	{
+		return make_unique<CompilerOptions>();
+	}
+	CompileUnit::~CompileUnit() {}
+	CompileUnit::CompileUnit() {}
+
 	BD_CORE_API std::map<int, Token> Tokenizer::single_operator_map = {
 		{ '+',tok_add },
 		{'-',tok_minus},
