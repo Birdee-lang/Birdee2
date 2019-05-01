@@ -285,8 +285,11 @@ Birdee::Tokenizer& Birdee::Tokenizer::operator =(Tokenizer&& old_t)
 }
 
 Token Birdee::Tokenizer::gettok() {
+	static_assert(TOKENIZER_PENDING_CHAR != EOF, "expecting TOKENIZER_PENDING_CHAR != EOF");
 	if (!f)
 		return tok_error;
+	if (LastChar == TOKENIZER_PENDING_CHAR)
+		LastChar = GetChar();
 	// Skip any whitespace.
 	while (isspace(LastChar) && LastChar != '\n')
 		LastChar = GetChar();

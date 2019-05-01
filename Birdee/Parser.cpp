@@ -1798,17 +1798,17 @@ BD_CORE_API void ParseTopLevelImportsOnly()
 	ParseImports(/*need_do_import*/false);
 }
 
-BD_CORE_API int ParseTopLevel()
+BD_CORE_API int ParseTopLevel(bool autoimport)
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
 	std::unique_ptr<ExprAST> firstexpr;
 	tokenizer.GetNextToken();
 	while (tokenizer.CurTok == tok_newline)
 		tokenizer.GetNextToken();
-
-	if(!cu.is_corelib)
+	if(autoimport &&!cu.is_corelib)
 		AddAutoImport();
-	ParsePackage();
+	if(autoimport)
+		ParsePackage();
 	ParseImports(/*need_do_import*/true);
 	
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
@@ -1934,6 +1934,7 @@ BD_CORE_API int ParseTopLevel()
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");
 			push_expr(std::move(firstexpr));
 		}
+		tokenizer.SetCanEOF();
 	}
 
 	return 0;
