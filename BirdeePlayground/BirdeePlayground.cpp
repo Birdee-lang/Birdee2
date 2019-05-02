@@ -9,11 +9,21 @@
 #include <CompilerOptions.h>
 #include <iostream>
 #include <Util.h>
+#include <KaleidoscopeJIT.h>
+#include "BirdeeIncludes.h"
 
 using namespace Birdee;
 extern int ParseTopLevel(bool autoimport);
 BD_CORE_API extern Tokenizer tokenizer;
 BD_CORE_API llvm::TargetMachine* GetAndSetTargetMachine();
+BD_CORE_API extern llvm::Module* GetLLVMModuleRef();
+BD_CORE_API extern unique_ptr<llvm::Module> GetLLVMModule();
+
+#ifdef _WIN32
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT
+#endif
 
 //a line-cached stdin stream
 class StdinStream : public Birdee::Stream
@@ -55,11 +65,21 @@ int main()
 	cu.is_compiler_mode = true;
 	cu.name = "birdeerepl";
 	cu.InitForGenerate();
-	cu.options->is_print_ir = true;
+	std::unique_ptr < llvm::orc::KaleidoscopeJIT> TheJIT = make_unique<llvm::orc::KaleidoscopeJIT>();
+	AddFunctions(TheJIT.get());
+	//cu.options->is_print_ir = true;
 	bool is_first = true;
 	cu.symbol_prefix = "__repl";
 	Birdee::source_paths.push_back("(REPL)");
-	std::cout << "Birdee playground. You can try and see Birdee programs here. Type \":q\" to exit.\n";
+	std::cout << R"(Birdee Playground
+    ____  _          __        
+   / __ )(_)________/ /__  ___ 
+  / __  / / ___/ __  / _ \/ _ \
+ / /_/ / / /  / /_/ /  __/  __/
+/_____/_/_/   \__,_/\___/\___/ 
+                               
+You can try and see Birdee codes here. Type ":q" to exit.
+)";
 	for (;;)
 	{
 		auto f = std::make_unique<StdinStream>();
@@ -75,12 +95,18 @@ int main()
 		
 		try
 		{
-			GetAndSetTargetMachine();
+			auto m = GetLLVMModuleRef();
+			TheJIT->setTargetMachine(m);
 			ParseTopLevel(is_first);
 			is_first = false;
 			cu.Phase0();
 			cu.Phase1();
 			cu.GenerateIR(true, false);
+			TheJIT->addModule(GetLLVMModule());
+			auto func = TheJIT->findSymbol("__anoy_func_main");
+			assert(func && "Function not found");
+			void(*pfunc)() = (void(*)())func.getAddress().get();
+			pfunc();
 			cu.SwitchModule();
 			cu.ClearParserAndProprocessing();
 		}

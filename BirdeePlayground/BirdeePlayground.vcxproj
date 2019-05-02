@@ -72,7 +72,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(SolutionDir)dependency\pyinclude;$(SolutionDir)dependency\include;$(SolutionDir)Birdee\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)Birdee\include;$(SolutionDir)\dependency\llvm-include;$(SolutionDir)\dependency\llvm-build-include;$(SolutionDir)dependency\pyinclude;$(SolutionDir)dependency\include;$(IncludePath)</IncludePath>
+    <PreBuildEventUseInBuild>true</PreBuildEventUseInBuild>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
@@ -97,9 +98,14 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)\blib\birdee.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\birdee.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/Debug</AdditionalLibraryDirectories>
+      <ForceSymbolReferences>birdee_0pointer2str;birdee_0breakpoint;birdee_0print;birdee_0int2str;birdee_0bool2str;birdee_0println;birdee_0____create__basic__exception__no__call;birdee_0genericarray_0length;birdee_0genericarray_0getRaw;birdee_0string_0length;birdee_0string_0____add____;birdee_0string_0____init____;birdee_0string_0____hash____;birdee_0string_0____eq____;birdee_0string_0____ne____;birdee_0string_0getRaw;birdee_0type__info_0get__name;birdee_0type__info_0get__parent;birdee_0type__info_0is__parent__of;birdee_0_1main;%(ForceSymbolReferences)</ForceSymbolReferences>
     </Link>
+    <PreBuildEvent>
+      <Command>python3 gentable.py</Command>
+      <Message>Generate birdee header</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -165,6 +171,9 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="gentable.py" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

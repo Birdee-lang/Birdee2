@@ -27,4 +27,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="gentable.py">
+      <Filter>源文件</Filter>
+    </None>
+  </ItemGroup>
 </Project>

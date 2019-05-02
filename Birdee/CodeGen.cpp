@@ -168,7 +168,7 @@ extern IRBuilder<> builder;
 struct GeneratorContext
 {
 	LLVMContext context;
-	Module* module = nullptr;
+	unique_ptr<Module> _module = nullptr;
 	std::unique_ptr<DIBuilder> DBuilder = nullptr;
 	string mangled_symbol_prefix;
 
@@ -180,7 +180,6 @@ struct GeneratorContext
 
 	~GeneratorContext()
 	{
-		delete module;
 	}
 	TargetMachine* target_machine = nullptr;
 	Function* malloc_obj_func = nullptr;
@@ -221,7 +220,7 @@ DIBuilder* GetDBuilder()
 #define context (gen_context.context)
 //#define builder (gen_context.builder)
 #define helper (gen_context.helper)
-#define module (gen_context.module)
+#define module (gen_context._module.get())
 #define DBuilder (gen_context.DBuilder)
 #define ty_int (gen_context.ty_int)
 #define ty_long (gen_context.ty_long)
@@ -814,8 +813,7 @@ void Birdee::CompileUnit::SwitchModule()
 		}
 	}
 
-	delete module;
-	module = new Module(name, context);
+	gen_context._module = std::make_unique<Module>(name, context);
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
 		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
@@ -855,7 +853,7 @@ void Birdee::CompileUnit::InitForGenerate()
 	InitializeNativeTargetAsmParser();
 	InitializeNativeTargetAsmPrinter();
 
-	module = new Module(name, context);
+	gen_context._module = std::make_unique<Module>(name, context);
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
 		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
@@ -867,6 +865,16 @@ void Birdee::CompileUnit::AbortGenerate()
 	gen_context.~GeneratorContext();
 	new (&gen_context) GeneratorContext();
 	cu.InitForGenerate();
+}
+
+BD_CORE_API Module* GetLLVMModuleRef()
+{
+	return module;
+}
+
+BD_CORE_API unique_ptr<Module> GetLLVMModule()
+{
+	return std::move(gen_context._module);
 }
 
 BD_CORE_API TargetMachine* GetAndSetTargetMachine()
