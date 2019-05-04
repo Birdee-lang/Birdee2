@@ -2,6 +2,12 @@
 
 #include <stdint.h>
 
+#ifdef _WIN32
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT
+#endif
+
 struct GenericArray
 {
 	union {

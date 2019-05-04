@@ -80,7 +80,7 @@ void Init()
 }
 #endif
 
-extern "C" void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
+extern "C" DLLEXPORT void* BirdeeMallocObj(uint32_t sz, GC_finalization_proc proc)
 {
 	void* ret= GC_malloc(sz);
 	if(proc)
@@ -119,7 +119,7 @@ static void* BirdeeAllocArr(va_list args, uint32_t sz,uint32_t cur, uint32_t par
 
 }
 
-extern "C" void* BirdeeMallocArr(uint32_t sz,uint32_t param_sz,...)
+extern "C" DLLEXPORT void* BirdeeMallocArr(uint32_t sz,uint32_t param_sz,...)
 {
 	va_list args;
 	va_start(args, param_sz);
@@ -128,13 +128,13 @@ extern "C" void* BirdeeMallocArr(uint32_t sz,uint32_t param_sz,...)
 	return ret;
 }
 
-extern "C" void prints(char* i)
+extern "C" DLLEXPORT void prints(char* i)
 {
 	fputs(i, stdout);
 }
 
 
-extern "C" BirdeeString* BirdeeP2S(void* i)
+extern "C" DLLEXPORT BirdeeString* BirdeeP2S(void* i)
 {
 	BirdeeString* ret = (BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString),nullptr);
 	int sz = snprintf(nullptr, 0, "%p", i) + 1;
@@ -145,7 +145,7 @@ extern "C" BirdeeString* BirdeeP2S(void* i)
 	return ret;
 }
 
-extern "C" BirdeeString* BirdeeI2S(int i)
+extern "C" DLLEXPORT BirdeeString* BirdeeI2S(int i)
 {
 	BirdeeString* ret=(BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString), nullptr);
 	int sz = snprintf(nullptr, 0, "%i", i) + 1;

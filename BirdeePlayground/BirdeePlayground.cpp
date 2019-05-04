@@ -10,7 +10,10 @@
 #include <iostream>
 #include <Util.h>
 #include <KaleidoscopeJIT.h>
+
+#ifdef _WIN32
 #include "BirdeeIncludes.h"
+#endif
 
 using namespace Birdee;
 extern int ParseTopLevel(bool autoimport);
@@ -66,7 +69,9 @@ int main()
 	cu.name = "birdeerepl";
 	cu.InitForGenerate();
 	std::unique_ptr < llvm::orc::KaleidoscopeJIT> TheJIT = make_unique<llvm::orc::KaleidoscopeJIT>();
+#ifdef _WIN32
 	AddFunctions(TheJIT.get());
+#endif
 	//cu.options->is_print_ir = true;
 	bool is_first = true;
 	cu.symbol_prefix = "__repl";

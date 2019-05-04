@@ -1805,10 +1805,10 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 	tokenizer.GetNextToken();
 	while (tokenizer.CurTok == tok_newline)
 		tokenizer.GetNextToken();
+	if (autoimport)
+		ParsePackage();
 	if(autoimport &&!cu.is_corelib)
 		AddAutoImport();
-	if(autoimport)
-		ParsePackage();
 	ParseImports(/*need_do_import*/true);
 	
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)

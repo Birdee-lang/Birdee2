@@ -28,20 +28,30 @@ def get_code(name):
 	return template.format(a =name)
 
 
-f=open(os.path.join(os.environ['BIRDEE_HOME'],'blib','birdee.bmm'))
-data = json.load(f)
 outf=open('BirdeeIncludes.h','w')
 outf.write("extern \"C\"{\nvoid AddFunctions(llvm::orc::KaleidoscopeJIT* jit){\n")
-for func in data['Functions']:
-	fstr=mangle_func("birdee."+func['name'])
-	print(fstr)
-	outf.write(get_code(fstr))
-for clazz in data['Classes']:
-		for funcdef in clazz['funcs']:
-			func=funcdef['def']
-			fstr=mangle_func("birdee."+clazz['name']+'.'+func['name'])
+
+def parse_bmm(*pkg):
+	with open(os.path.join(os.environ['BIRDEE_HOME'],'blib',*pkg) + '.bmm') as f:
+		data = json.load(f)
+		pkgname = '.'.join(pkg) + '.'
+		for func in data['Functions']:
+			fstr=mangle_func(pkgname+func['name'])
 			print(fstr)
 			outf.write(get_code(fstr))
+		for clazz in data['Classes']:
+			if 'funcs' in clazz:
+				for funcdef in clazz['funcs']:
+					if 'def' in funcdef:
+						func=funcdef['def']
+						fstr=mangle_func(pkgname+clazz['name']+'.'+func['name'])
+						print(fstr)
+						outf.write(get_code(fstr))
+
+
+parse_bmm('hash_map')
+parse_bmm('concurrent','threading')
+parse_bmm('birdee')
 print("birdee_0_1main")
 outf.write(get_code("birdee_0_1main"))
 outf.write("}}\n")

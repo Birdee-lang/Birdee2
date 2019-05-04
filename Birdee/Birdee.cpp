@@ -9,7 +9,7 @@
 #include <CompilerOptions.h>
 using namespace Birdee;
 
-extern int ParseTopLevel(bool autoimport=false);
+extern int ParseTopLevel(bool autoimport=true);
 extern void SeralizeMetadata(std::ostream& out, bool is_empty);
 extern void ParseTopLevelImportsOnly();
 extern string GetModuleNameByArray(const vector<string>& package);

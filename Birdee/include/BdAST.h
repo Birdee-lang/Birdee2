@@ -336,7 +336,7 @@ namespace Birdee {
 		string homepath;
 		bool is_corelib = false;
 		bool is_script_mode = false;
-		unique_ptr<CompilerOptions> options = DefaultCompilerOptions();
+		unique_ptr<CompilerOptions> options;
 
 		bool is_compiler_mode = false; //if the Birdee Compiler Core is called by birdeec, it should be set true; if called & loaded by python, remain false
 		bool is_intrinsic = false; //if the current module is an intrinsic module

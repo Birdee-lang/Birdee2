@@ -1,5 +1,17 @@
 extern "C"{
 void AddFunctions(llvm::orc::KaleidoscopeJIT* jit){
+extern void hash__map_0int__hash();
+jit->addNative("hash__map_0int__hash",hash__map_0int__hash);
+
+extern void concurrent_0threading_0sleep();
+jit->addNative("concurrent_0threading_0sleep",concurrent_0threading_0sleep);
+
+extern void concurrent_0threading_0do__exit__thread();
+jit->addNative("concurrent_0threading_0do__exit__thread",concurrent_0threading_0do__exit__thread);
+
+extern void concurrent_0threading_0do__create__thread();
+jit->addNative("concurrent_0threading_0do__create__thread",concurrent_0threading_0do__create__thread);
+
 extern void birdee_0pointer2str();
 jit->addNative("birdee_0pointer2str",birdee_0pointer2str);
 

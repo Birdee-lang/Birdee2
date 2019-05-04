@@ -93,12 +93,12 @@ extern "C" {
 	}
 
 
-	BirdeeRTTIObject* __Birdee_BeginCatch(EmptyExceptionStruct* exp)
+	DLLEXPORT BirdeeRTTIObject* __Birdee_BeginCatch(EmptyExceptionStruct* exp)
 	{
 		return exp->pobj;
 	}
 
-	void __Birdee_Throw(BirdeeRTTIObject* obj) {
+	DLLEXPORT void __Birdee_Throw(BirdeeRTTIObject* obj) {
 		_Unwind_RaiseException(__Birdee_CreateException(obj));
 		return;
 	}
@@ -589,7 +589,7 @@ extern "C" {
 		PCONTEXT, PDISPATCHER_CONTEXT,
 		_Unwind_Personality_Fn);
 
-	EXCEPTION_DISPOSITION
+	DLLEXPORT EXCEPTION_DISPOSITION
 		__Birdee_Personality(PEXCEPTION_RECORD ms_exc, void *this_frame,
 			PCONTEXT ms_orig_context, PDISPATCHER_CONTEXT ms_disp)
 	{

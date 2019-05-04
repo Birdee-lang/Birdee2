@@ -17,7 +17,9 @@ namespace Birdee
 		return make_unique<CompilerOptions>();
 	}
 	CompileUnit::~CompileUnit() {}
-	CompileUnit::CompileUnit() {}
+	CompileUnit::CompileUnit() {
+		options = DefaultCompilerOptions();
+	}
 
 	BD_CORE_API std::map<int, Token> Tokenizer::single_operator_map = {
 		{ '+',tok_add },

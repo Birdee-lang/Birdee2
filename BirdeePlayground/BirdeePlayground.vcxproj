@@ -98,7 +98,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\birdee.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\birdee.obj;$(BIRDEE_HOME)blib\hash_map.obj;$(BIRDEE_HOME)blib\concurrent\threading.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/Debug</AdditionalLibraryDirectories>
       <ForceSymbolReferences>birdee_0pointer2str;birdee_0breakpoint;birdee_0print;birdee_0int2str;birdee_0bool2str;birdee_0println;birdee_0____create__basic__exception__no__call;birdee_0genericarray_0length;birdee_0genericarray_0getRaw;birdee_0string_0length;birdee_0string_0____add____;birdee_0string_0____init____;birdee_0string_0____hash____;birdee_0string_0____eq____;birdee_0string_0____ne____;birdee_0string_0getRaw;birdee_0type__info_0get__name;birdee_0type__info_0get__parent;birdee_0type__info_0is__parent__of;birdee_0_1main;%(ForceSymbolReferences)</ForceSymbolReferences>
     </Link>
