@@ -145,6 +145,17 @@ extern "C" DLLEXPORT BirdeeString* BirdeeP2S(void* i)
 	return ret;
 }
 
+extern "C" DLLEXPORT BirdeeString* BirdeeD2S(double i)
+{
+	BirdeeString* ret = (BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString), nullptr);
+	int sz = snprintf(nullptr, 0, "%f", i) + 1;
+	ret->arr = (GenericArray*)BirdeeMallocArr(1, 1, sz);
+	ret->sz = sz - 1;
+	int retp = snprintf(ret->arr->packed.cbuf, sz, "%f", i);
+	assert(retp > 0 && retp < sz);
+	return ret;
+}
+
 extern "C" DLLEXPORT BirdeeString* BirdeeI2S(int i)
 {
 	BirdeeString* ret=(BirdeeString*)BirdeeMallocObj(sizeof(BirdeeString), nullptr);

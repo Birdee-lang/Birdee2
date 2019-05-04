@@ -147,11 +147,18 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 	ths->stmt = std::move(outexpr);
 	if (ths->stmt)
 	{
-		ths->stmt->Phase1();
 		if (instance_of<ExprAST>(ths->stmt.get()))
-			ths->resolved_type = ((ExprAST*)ths->stmt.get())->resolved_type;
+		{
+			auto expr_ptr = (ExprAST*)ths->stmt.get();
+			if(!expr_ptr->resolved_type.isResolved())
+				ths->stmt->Phase1();
+			ths->resolved_type = expr_ptr->resolved_type;
+		}
 		else
+		{
+			ths->stmt->Phase1();
 			ths->resolved_type.type = tok_error;
+		}
 	}
 	else
 	{

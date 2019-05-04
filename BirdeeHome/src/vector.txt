@@ -32,7 +32,8 @@ class vector[T]
 	end
 
 	public func size() as uint => len
-	
+	public func buffer() as byte[] => buf
+
 	public func capacity() as uint => buf.length()
 
 	public func push_back(itm as T)
@@ -41,6 +42,16 @@ class vector[T]
 		end
 		buf[len]=itm
 		len = len + 1
+	end
+
+	public func push_chunk(itms as T[], start as uint, length as uint)
+		if len + length > buf.length() then
+			reserve_n(length)
+		end
+		for dim i as uint=0 till length
+			buf[i+len]= itms[i+start]
+		end
+		len = len + length
 	end
 
 	public func __setitem__ (idx as uint,value as T)

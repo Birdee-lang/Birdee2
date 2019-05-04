@@ -47,12 +47,13 @@ def parse_bmm(*pkg):
 						fstr=mangle_func(pkgname+clazz['name']+'.'+func['name'])
 						print(fstr)
 						outf.write(get_code(fstr))
-
+		
+	main_name = mangle_func(pkgname)+"_1main"
+	outf.write(get_code(main_name))
 
 parse_bmm('hash_map')
 parse_bmm('concurrent','threading')
+parse_bmm('string_buffer')
 parse_bmm('birdee')
-print("birdee_0_1main")
-outf.write(get_code("birdee_0_1main"))
 outf.write("}}\n")
 print("done")

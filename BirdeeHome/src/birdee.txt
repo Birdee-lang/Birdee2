@@ -14,7 +14,7 @@ class genericarray
 	public function length() as uint
 		return len
 	end
-	public function getRaw() as pointer
+	public function get_raw() as pointer
 		return addressof(dummy)
 	end
 end
@@ -67,7 +67,20 @@ class string
 		end
 	end
 
-	public function getRaw() as pointer
+	public function copy_bytes(buffer as byte[], start as uint, length as uint)
+		len=length
+		buf=new byte * (length+1)
+		buf[length]=0
+		for dim i as uint=0 till length
+			buf[i] = buffer[i]
+		end
+	end
+
+	public function get_bytes() as byte[]
+		return buf
+	end
+
+	public function get_raw() as pointer
 		return addressof(buf[0])
 	end
 end class
@@ -91,6 +104,7 @@ end
 
 declare function BirdeeI2S (i as int) as string
 declare function BirdeeP2S (i as pointer) as string
+declare function BirdeeD2S (i as double) as string
 
 function int2str(i as int) as string
 	return BirdeeI2S(i)
@@ -108,12 +122,16 @@ function pointer2str(i as pointer) as string
 	return BirdeeP2S(i)
 end
 
+function double2str(i as double) as string
+	return BirdeeD2S(i)
+end
+
 function print(str as string)
-	prints(str.getRaw())
+	prints(str.get_raw())
 end
 
 function println(str as string)
-	puts(str.getRaw())
+	puts(str.get_raw())
 end
 
 

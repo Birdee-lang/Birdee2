@@ -2822,6 +2822,8 @@ If usage vararg name is "", match the closest vararg
 
 	void BinaryExprAST::Phase1()
 	{
+		if (resolved_type.isResolved())
+			return;
 		auto& LHS = this->LHS;//just for lambda capture
 		auto& RHS = this->RHS;
 		auto& resolved_type = this->resolved_type;

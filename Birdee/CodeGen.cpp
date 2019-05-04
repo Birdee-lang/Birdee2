@@ -518,7 +518,10 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 			base = StructType::create(context, name);
 
 			DIFile *Unit;
-			if (type.class_ast->isTemplateInstance() && type.class_ast->template_source_class->template_param->mod) //if is templ instance and is imported
+			if (type.class_ast->isTemplateInstance() && 
+				type.class_ast->template_source_class && 
+				//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
+				type.class_ast->template_source_class->template_param->mod) //if is templ instance and is imported
 			{
 				auto mod = type.class_ast->template_source_class->template_param->mod;
 				Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
@@ -1248,7 +1251,10 @@ void Birdee::ClassAST::PreGenerate()
 	}
 
 	DIFile *Unit;
-	if (isTemplateInstance() && template_source_class->template_param->mod) //if is templ instance and is imported
+	if (isTemplateInstance() 
+		&& template_source_class
+		//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
+		&& template_source_class->template_param->mod) //if is templ instance and is imported
 	{
 		auto mod = template_source_class->template_param->mod;
 		Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
@@ -1660,9 +1666,14 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		return nullptr;
 	}
 	ImportedModule* mod = nullptr;
-	if (isTemplateInstance && template_source_func->template_param->mod)
+	if (isTemplateInstance
+		&& template_source_func
+		//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
+		&& template_source_func->template_param->mod)
 		mod = template_source_func->template_param->mod;
 	else if (Proto->cls && Proto->cls->isTemplateInstance()
+		&& Proto->cls->template_source_class
+		//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
 		&& Proto->cls->template_source_class->template_param->mod)
 		mod = Proto->cls->template_source_class->template_param->mod;
 

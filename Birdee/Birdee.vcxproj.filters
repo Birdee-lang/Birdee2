@@ -163,6 +163,9 @@
     <Text Include="..\BirdeeHome\src\functional\option.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\src\string_buffer.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">

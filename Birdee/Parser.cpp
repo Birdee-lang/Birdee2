@@ -1514,7 +1514,7 @@ BD_CORE_API string GetModuleNameByArray(const vector<string>& package)
 	return ret;
 }
 
-ImportedModule* DoImportPackage(const vector<string>& package)
+BD_CORE_API ImportedModule* DoImportPackage(const vector<string>& package)
 {
 	auto prv = cu.imported_packages.Contains(package);
 	if(prv)
@@ -1601,7 +1601,7 @@ bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
 	return false;
 }
 
-void DoImportName(const vector<string>& package, const string& name)
+BD_CORE_API void DoImportName(const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
@@ -1614,7 +1614,7 @@ void DoImportName(const vector<string>& package, const string& name)
 
 static vector<vector<string>> auto_import_packages = { {"birdee"} };
 
-void AddAutoImport()
+BD_CORE_API void AddAutoImport()
 {
 	for(auto& imp:auto_import_packages)
 		DoImportPackageAll(imp);
@@ -1779,6 +1779,21 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 		CompileCheckGlobalConflict(funcast->Pos, funcname);
 		cu.funcmap.insert(std::make_pair(funcname, funcref));
 		ret = std::move(funcast);
+		break;
+	}
+	case tok_return:
+	{
+		tokenizer.GetNextToken(); //eat return
+		auto pos = tokenizer.GetSourcePos();
+		if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
+		{
+			ret = make_unique<ReturnAST>(pos);
+		}
+		else
+		{
+			ret = make_unique<ReturnAST>(ParseExpressionUnknown(), pos);
+		}
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
 		break;
 	}
 	default:
