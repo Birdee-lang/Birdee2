@@ -1514,7 +1514,7 @@ BD_CORE_API string GetModuleNameByArray(const vector<string>& package)
 	return ret;
 }
 
-ImportedModule* DoImportPackage(const vector<string>& package)
+BD_CORE_API ImportedModule* DoImportPackage(const vector<string>& package)
 {
 	auto prv = cu.imported_packages.Contains(package);
 	if(prv)
@@ -1601,7 +1601,7 @@ bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
 	return false;
 }
 
-void DoImportName(const vector<string>& package, const string& name)
+BD_CORE_API void DoImportName(const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
@@ -1614,7 +1614,7 @@ void DoImportName(const vector<string>& package, const string& name)
 
 static vector<vector<string>> auto_import_packages = { {"birdee"} };
 
-void AddAutoImport()
+BD_CORE_API void AddAutoImport()
 {
 	for(auto& imp:auto_import_packages)
 		DoImportPackageAll(imp);
@@ -1781,6 +1781,21 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 		ret = std::move(funcast);
 		break;
 	}
+	case tok_return:
+	{
+		tokenizer.GetNextToken(); //eat return
+		auto pos = tokenizer.GetSourcePos();
+		if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
+		{
+			ret = make_unique<ReturnAST>(pos);
+		}
+		else
+		{
+			ret = make_unique<ReturnAST>(ParseExpressionUnknown(), pos);
+		}
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
+		break;
+	}
 	default:
 		ret = ParseExpressionUnknown();
 		BasicBlockCheckUnknownToken({ tok_eof,tok_newline });
@@ -1798,17 +1813,17 @@ BD_CORE_API void ParseTopLevelImportsOnly()
 	ParseImports(/*need_do_import*/false);
 }
 
-BD_CORE_API int ParseTopLevel()
+BD_CORE_API int ParseTopLevel(bool autoimport)
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
 	std::unique_ptr<ExprAST> firstexpr;
 	tokenizer.GetNextToken();
 	while (tokenizer.CurTok == tok_newline)
 		tokenizer.GetNextToken();
-
-	if(!cu.is_corelib)
+	if (autoimport)
+		ParsePackage();
+	if(autoimport &&!cu.is_corelib)
 		AddAutoImport();
-	ParsePackage();
 	ParseImports(/*need_do_import*/true);
 	
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
@@ -1934,6 +1949,7 @@ BD_CORE_API int ParseTopLevel()
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");
 			push_expr(std::move(firstexpr));
 		}
+		tokenizer.SetCanEOF();
 	}
 
 	return 0;

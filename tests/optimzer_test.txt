@@ -1,0 +1,21 @@
+class Father
+	@virtual public func p(a as int) => println("A"+int2str(a))
+end
+
+class Son : Father
+	@virtual public func p(a as int) => println("B"+int2str(a+2))
+end
+
+function add(a as int, b as int) as int => a+b
+
+declare function getchar() as int
+getchar()
+breakpoint()
+dim a as Father = new Son
+a.p(add(3,4))
+
+function printit(f as closure(a as int,b as int) as int, a as int, b as int)
+	println(int2str(f(a,b)))
+end
+
+printit(func(a as int,b as int)as int=>a+b, 23,45)

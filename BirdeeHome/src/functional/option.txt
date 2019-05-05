@@ -44,6 +44,12 @@ struct option[T]
 		return ret
 	end
 
+	public function for_each(map_func as closure(v as T))
+		if obj!==null then
+			map_func(obj)
+		end
+	end
+
 	public function flat_map[T2](map_func as closure(v as T) as option[T2]) as option[T2]
 		if obj!==null then
 			return map_func(obj)

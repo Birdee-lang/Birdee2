@@ -15,6 +15,7 @@ INC_DIR=$(PWD_DIR)/Birdee/include
 INC_DIR2=$(PWD_DIR)/dependency/include
 BIN_DIR=$(PWD_DIR)/BirdeeHome/bin
 LIB_DIR=$(PWD_DIR)/BirdeeHome/lib
+PLAYGROUND_DIR=$(PWD_DIR)/BirdeePlayground
 
 PYLIBS = $(shell python3-config --libs)
 CXX ?= g++
@@ -22,10 +23,10 @@ CPPFLAGS ?= -g -DBIRDEE_USE_DYN_LIB -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(s
 LIBS ?= -pthread
 
 ##
-export PWD_DIR CXX CPPFLAGS LIBS COMPILER_DIR INC_DIR BIN_DIR PYLIBS LIB_DIR
+export PWD_DIR CXX CPPFLAGS LIBS COMPILER_DIR INC_DIR BIN_DIR PYLIBS LIB_DIR BLIB_DIR
 
 ##
-all: directories compiler runtime libraries
+all: directories compiler runtime libraries playground
 
 directories: ${BIN_DIR} ${LIB_DIR}
 
@@ -44,15 +45,20 @@ runtime:
 libraries: compiler runtime
 	$(MAKE) -C $(BLIB_DIR)
 
+playground: libraries
+	$(MAKE)  -C $(PLAYGROUND_DIR)
+	
 install:
 	cp -rf $(PWD_DIR)/BirdeeHome $(INSTALL_PATH)
 	ln -s -r $(INSTALL_PATH)/bin/birdeec $(PREFIX)/birdeec
+	ln -s -r $(INSTALL_PATH)/bin/birdeeplay $(PREFIX)/birdeeplay
 	ln -s -r $(INSTALL_PATH)/lib/libBirdeeCompilerCore.so $(PREFIX)/../lib/libBirdeeCompilerCore.so
 	ln -s -r $(INSTALL_PATH)/lib/libBirdeeBinding.so $(PREFIX)/../lib/libBirdeeBinding.so
         
 uninstall:
 	rm -r $(INSTALL_PATH)
 	rm $(PREFIX)/birdeec
+	rm $(PREFIX)/birdeeplay
 	rm $(PREFIX)/../lib/libBirdeeCompilerCore.so
 	rm $(PREFIX)/../lib/libBirdeeBinding.so
 ##
