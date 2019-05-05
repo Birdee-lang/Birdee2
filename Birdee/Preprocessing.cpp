@@ -1181,6 +1181,19 @@ namespace Birdee
 		return DoTemplateValidateArguments(nullptr, is_vararg, params, std::move(args), Pos, throw_if_vararg);
 	}
 
+	//force specialize these two functions to make them exported in g++
+	template<>
+	FunctionAST * Birdee::TemplateParameters<FunctionAST>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, FunctionAST* source_template, SourcePos pos)
+	{
+		return GetOrCreateImpl(std::move(v), source_template, pos);
+	}
+
+	template<>
+	ClassAST * Birdee::TemplateParameters<ClassAST>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, ClassAST* source_template, SourcePos pos)
+	{
+		return GetOrCreateImpl(std::move(v), source_template, pos);
+	}
+
 	void ResolvedType::ResolveType(Type& type, SourcePos pos)
 	{
 		if (type.type == tok_script)
@@ -1973,7 +1986,7 @@ If usage vararg name is "", match the closest vararg
 	}
 
 	template<typename T>
-	T * Birdee::TemplateParameters<T>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos)
+	T * Birdee::TemplateParameters<T>::GetOrCreateImpl(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(*v);
 		if (ins != instances.end())
@@ -1996,6 +2009,8 @@ If usage vararg name is "", match the closest vararg
 		}
 		return ret;
 	}
+
+
 
 	bool IndexExprAST::isOverloaded()
 	{

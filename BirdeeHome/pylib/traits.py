@@ -15,11 +15,11 @@ def is_pointer(rtype):
 def is_boolean(rtype):
 	return rtype.index_level==0 and rtype.base==BasicType.BOOLEAN 
 
-def is_class(rtype):
+def is_a_class(rtype):
 	return rtype.index_level==0 and rtype.base==BasicType.CLASS and  not rtype.get_detail().is_struct
 
 def is_reference(rtype):
-	return rtype.index_level>0 or is_class(rtype)
+	return rtype.index_level>0 or is_a_class(rtype)
 
 def get_boolean_type():
 	a = ResolvedType()

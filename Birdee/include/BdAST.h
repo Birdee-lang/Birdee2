@@ -207,7 +207,6 @@ namespace Birdee {
 		}
 	};
 
-	class ClassAST;
 	class PrototypeAST;
 	BD_CORE_API extern string GetClassASTName(ClassAST*);
 	BD_CORE_API extern bool operator ==(const PrototypeAST& ,const PrototypeAST& );
@@ -1036,6 +1035,7 @@ namespace Birdee {
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
+		T* GetOrCreateImpl(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos);
 		BD_CORE_API T* GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos);
 		T* Get(vector<TemplateArgument>& v)
 		{

@@ -110,7 +110,7 @@ elif is_float_point(T):
 	set_stmt("return double2str(v)")
 elif T.index_level>0:
 	set_stmt("return array_to_str(v)")
-elif is_class(T):
+elif is_a_class(T):
 	set_stmt('''return "<{} object at "+ pointer2str(pointerof(v)) +">"'''.format(str(T)))
 else:
 	raise RuntimeError("Cannot convert {} to string".format(str(T)))
