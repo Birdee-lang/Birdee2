@@ -743,8 +743,11 @@ static void ResetLLVMValuesForFunctionsAndGV(ImportTree* tree)
 
 }
 
+extern void ClearTemplateInstancesRollbackLogs();
+
 void Birdee::CompileUnit::SwitchModule()
 {
+	ClearTemplateInstancesRollbackLogs();
 	//move the current ASTs to a imported module
 	auto mod = imported_packages.FindName("!repl");
 	if (!mod)

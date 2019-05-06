@@ -642,6 +642,11 @@ struct PreprocessingState
 	FunctionAST* _cur_func = nullptr;
 	ClassAST* array_cls = nullptr;
 	ClassAST* string_cls = nullptr;
+
+	using ClassTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<ClassAST>>;
+	using FuncTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<FunctionAST>>;
+	std::vector<std::pair<ClassTemplateInstMap*, typename ClassTemplateInstMap::key_type>> class_templ_inst_rollback;
+	std::vector<std::pair<FuncTemplateInstMap*, typename FuncTemplateInstMap::key_type>> func_templ_inst_rollback;
 };
 
 #define scope_mgr (preprocessing_state._scope_mgr)
@@ -670,6 +675,34 @@ BD_CORE_API void PopClass()
 	return scope_mgr.PopClass();
 }
 
+void ClearTemplateInstancesRollbackLogs()
+{
+	preprocessing_state.func_templ_inst_rollback.clear();
+	preprocessing_state.class_templ_inst_rollback.clear();
+}
+
+BD_CORE_API void RollbackTemplateInstances()
+{
+	//erase the instances in reversed order, because they may depend on previous ones
+	auto& funcs = preprocessing_state.func_templ_inst_rollback;
+	for(auto itr = funcs.rbegin();itr!=funcs.rend();++itr)
+	{
+		auto& the_map = *itr->first;
+		auto arg = itr->second;
+		auto mapitr = the_map.find(arg);
+		if(mapitr!=the_map.end())
+			the_map.erase(mapitr);
+	}
+	auto& clazzes = preprocessing_state.class_templ_inst_rollback;
+	for(auto itr = clazzes.rbegin();itr!=clazzes.rend();++itr)
+	{
+		auto& the_map = *itr->first;
+		auto arg = itr->second;
+		auto mapitr = the_map.find(arg);
+		if(mapitr!=the_map.end())
+			the_map.erase(mapitr);
+	}
+}
 
 void ClearPreprocessingState()
 {
@@ -1926,6 +1959,9 @@ If usage vararg name is "", match the closest vararg
 	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
+		preprocessing_state.func_templ_inst_rollback.push_back(
+			std::make_pair(&src_func->template_param->instances, 
+			std::reference_wrapper<const std::vector<TemplateArgument>>(*v)));
 		func->Proto->Name += GetTemplateArgumentString(*v);
 		ClassAST* cls_template=nullptr;
 		if (func->Proto->cls) 
@@ -1969,6 +2005,9 @@ If usage vararg name is "", match the closest vararg
 	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
+		preprocessing_state.class_templ_inst_rollback.push_back(
+			std::make_pair(&src_cls->template_param->instances, 
+			std::reference_wrapper<const std::vector<TemplateArgument>>(*v)));
 		auto& args = *v;
 		cls->template_instance_args = std::move(v);
 		cls->template_source_class = src_cls;

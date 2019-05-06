@@ -102,6 +102,8 @@ end
 {@
 if is_boolean(T):
 	set_stmt("return bool2str(v)")
+elif is_pointer(T):
+	set_stmt("return pointer2str(v)")	
 elif T == ty_str:
 	set_stmt("return v")
 elif is_integer(T):

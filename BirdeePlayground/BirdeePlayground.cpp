@@ -24,6 +24,7 @@ BD_CORE_API extern unique_ptr<llvm::Module> GetLLVMModule();
 BD_CORE_API extern void AddAutoImport();
 BD_CORE_API extern void DoImportName(const vector<string>& package, const string& name);
 BD_CORE_API extern ImportedModule* DoImportPackage(const vector<string>& package);
+BD_CORE_API extern void RollbackTemplateInstances();
 
 #ifdef _WIN32
 #define DLLEXPORT __declspec(dllexport)
@@ -65,6 +66,18 @@ public:
 		can_eof = true;
 	}
 };
+
+template<typename Derived>
+Derived* dyncast_resolve_anno(StatementAST* p)
+{
+	if (typeid(*p) == typeid(AnnotationStatementAST)) {
+		return dyncast_resolve_anno<Derived>( static_cast<AnnotationStatementAST*>(p)->impl.get() );
+	}
+	if (typeid(*p) == typeid(Derived)) {
+		return static_cast<Derived*>(p);
+	}
+	return nullptr;
+}
 
 int main()
 {
@@ -138,7 +151,13 @@ You can try and see Birdee codes here. Type ":q" to exit.
 				auto stmt = cu.toplevel.back().get();
 				if (auto expr = dynamic_cast<ExprAST*>(stmt))
 				{
-					if (expr->resolved_type.type != tok_void)
+					if(auto funcast = dyncast_resolve_anno<FunctionAST>(expr))
+					{
+						prompt = expr->resolved_type.GetString();
+						prompt += ": Function ";
+						prompt += funcast->Proto->GetName();
+					}
+					else if (expr->resolved_type.type != tok_void)
 					{
 						//if the expression has a value, make a call to fmt.printast
 						//first, get an instance of printast[T]
@@ -157,6 +176,7 @@ You can try and see Birdee codes here. Type ":q" to exit.
 							);
 
 						prompt = expr->resolved_type.GetString();
+						prompt += ": ";
 					}
 				}
 			}
@@ -169,7 +189,7 @@ You can try and see Birdee codes here. Type ":q" to exit.
 			void(*pfunc)() = (void(*)())func.getAddress().get();
 
 			if (!prompt.empty())
-				std::cout << prompt << ": ";
+				std::cout << prompt;
 			pfunc();
 			if (!prompt.empty())
 				std::cout << std::endl;
@@ -180,11 +200,15 @@ You can try and see Birdee codes here. Type ":q" to exit.
 		catch (CompileError& e)
 		{
 			e.print();
+			std::cout << std::endl;
+			RollbackTemplateInstances();
 			cu.ClearParserAndProprocessing();
 		}
 		catch (TokenizerError& e)
 		{
 			e.print();
+			std::cout << std::endl;
+			RollbackTemplateInstances();
 			cu.ClearParserAndProprocessing();
 		}
 	}
