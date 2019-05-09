@@ -112,9 +112,6 @@
     <Text Include="..\BirdeeHome\src\template_test.txt">
       <Filter>资源文件\template</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\list.txt">
-      <Filter>资源文件\blib</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\hash_map.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
@@ -185,6 +182,12 @@
     </None>
     <None Include="..\BirdeeHome\pylib\traits.py">
       <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\hash_set.bdm">
+      <Filter>资源文件\blib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\list.bdm">
+      <Filter>资源文件\blib</Filter>
     </None>
   </ItemGroup>
 </Project>

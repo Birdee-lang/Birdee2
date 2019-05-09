@@ -110,7 +110,7 @@ def is_type_templ_arg(arg,idx):
 		lambda:"The {}-th template argument is expected to be a type".format(idx))
 
 def is_expr_templ_arg(args,idx):
-	return (args[idx].kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_EXPR , 
+	return (args.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_EXPR , 
 		lambda:"The {}-th template argument is expected to be an expression".format(idx))
 
 '''

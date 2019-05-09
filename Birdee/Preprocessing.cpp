@@ -1982,6 +1982,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
+		vector<ClassAST*> clsstack = std::move(scope_mgr.class_stack);
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
@@ -1989,6 +1990,7 @@ If usage vararg name is "", match the closest vararg
 		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
+		scope_mgr.class_stack = std::move(clsstack);
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.function_scopes = std::move(basic_blocks_backup);
