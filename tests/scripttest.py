@@ -43,6 +43,27 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_generate_ok('''
+func get() as int => 3
+dim a as int[] = [1,2,get()]
+
+closure theclosure() as int
+dim f1 as theclosure
+dim b as theclosure[] = [f1, get]
+
+class A
+end
+
+class B:A
+end
+
+class C:A
+end
+dim c as A[] = [new B, new C]
+
+dim d as int[][]=[[1,2,3],[4,5,6],]
+''')
+
+assert_generate_ok('''
 import rtti:dyn_cast
 
 @enable_rtti

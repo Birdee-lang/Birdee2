@@ -852,7 +852,14 @@ bool Birdee::ClassAST::HasParent(Birdee::ClassAST* checkparent)
 	return true;
 }
 
-
+inline bool IsClosure(const ResolvedType& v)
+{
+	return v.index_level == 0 && v.type == tok_func && v.proto_ast->is_closure;
+}
+inline bool IsFunctype(const ResolvedType& v)
+{
+	return v.index_level == 0 && v.type == tok_func && !v.proto_ast->is_closure;
+}
 
 unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAST>&& val,SourcePos pos)
 {
@@ -860,8 +867,7 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	{
 		return std::move(val);
 	}
-	if (target.type == tok_func && val->resolved_type.type == tok_func
-		&& target.proto_ast->is_closure && !val->resolved_type.proto_ast->is_closure)
+	if (IsClosure(target) && IsFunctype(val->resolved_type))
 	{
 		//if both types are functions and target is closure & source value is not closure
 		if (target.proto_ast->IsSamePrototype(*val->resolved_type.proto_ast))
@@ -909,18 +915,88 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	return nullptr;
 }
 
+static unordered_map<Token, int> promotion_map = {
+{ tok_byte,-1 },
+{ tok_int,0 },
+{tok_uint,1},
+{tok_long,2},
+{tok_ulong,3},
+{tok_float,4},
+{tok_double,5},
+};
+
+
+
+static ResolvedType GetMoreGeneralType(ResolvedType& v1, ResolvedType& v2)
+{
+	if (v1 == v2)
+	{
+		return v1;
+	}
+	else if (IsClosure(v1) && IsFunctype(v2)) //v1 is closure, v2 is functype
+	{
+		//if both types are functions and target is closure & source value is not closure
+		if (v1.proto_ast->IsSamePrototype(*v2.proto_ast))
+			return v1;
+	}
+	else if (IsClosure(v2) && IsFunctype(v1)) //v2 is closure, v1 is functype
+	{
+		//if both types are functions and target is closure & source value is not closure
+		if (v2.proto_ast->IsSamePrototype(*v1.proto_ast))
+			return v2;
+	}
+	else if (v1.isReference())
+	{
+		if (v2.isNull())
+			return v1;
+		if (IsResolvedTypeClass(v2)
+			&& IsResolvedTypeClass(v1)) // find the most recent shared ancestor class
+		{
+			vector<ClassAST*> parents1{v1.class_ast};
+			ClassAST* cur = v1.class_ast->parent_class;
+			while (cur)
+			{
+				parents1.push_back(cur);
+				cur = cur->parent_class;
+			}
+
+			vector<ClassAST*> parents2{ v2.class_ast };
+			cur = v2.class_ast->parent_class;
+			while (cur)
+			{
+				parents2.push_back(cur);
+				cur = cur->parent_class;
+			}
+			ClassAST* result = nullptr;
+			for (auto itr1 = parents1.rbegin(), itr2 = parents2.rbegin();
+				itr1 != parents1.rend() && itr2 != parents2.rend();
+				itr1++, itr2++)
+			{
+				if (*itr1 != *itr2)
+					break;
+				result = *itr1;
+			}
+			if(!result)
+				return ResolvedType();
+			return ResolvedType(result);
+		}
+	}
+	else if (v1.isNumber() && v1.isNumber())
+	{
+		int p1 = promotion_map[v1.type];
+		int p2 = promotion_map[v2.type];
+		if (p1 == p2)
+			return v1;
+		else if (p1 > p2)
+			return v1;
+		else
+			return v2;
+	}
+	return ResolvedType();
+}
 
 Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,bool isBool, SourcePos pos)
 {
-	static unordered_map<Token, int> promotion_map = {
-	{ tok_byte,-1 },
-	{ tok_int,0 },
-	{tok_uint,1},
-	{tok_long,2},
-	{tok_ulong,3},
-	{tok_float,4},
-	{tok_double,5},
-	};
 	int p1 = promotion_map[v1->resolved_type.type];
 	int p2 = promotion_map[v2->resolved_type.type];
 	if (p1 == p2)
@@ -1590,6 +1666,34 @@ namespace Birdee
 		return GetLValueNoCheckExpr(checkHas);
 	}
 
+	void ArrayInitializerExprAST::Phase1()
+	{
+		CompileAssert(values.size(), Pos, "Empty initializer for the array is not allowed");
+		ResolvedType rty;
+		int idx = 1;
+		for (auto& v : values)
+		{
+			v->Phase1();
+			if (rty.isResolved())
+			{
+				auto ret = GetMoreGeneralType(rty, v->resolved_type);
+				CompileAssert(ret.isResolved(), Pos, string("Cannot infer the type of the array: Given the array type ")
+					+ rty.GetString() + ", and the " + std::to_string(idx) + "-th element's type " + v->resolved_type.GetString());
+				rty = ret;
+			}
+			else
+			{
+				rty = v->resolved_type;
+			}
+			idx += 1;
+		}
+		for (auto& v : values)
+		{
+			v = FixTypeForAssignment(rty, std::move(v), v->Pos);
+		}
+		rty.index_level++;
+		resolved_type = rty;
+	}
 
 	void Birdee::AnnotationStatementAST::Phase1()
 	{

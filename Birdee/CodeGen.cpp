@@ -1949,15 +1949,45 @@ llvm::Value * Birdee::LocalVarExprAST::Generate()
 	return builder.CreateLoad(def->GetLLVMValue());
 }
 
-// llvm::Value * Birdee::AddressOfExprAST::Generate()
-// {
-// 	dinfo.emitLocation(this);
-// 	if(!is_address_of)
-// 		return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
-// 	auto ret=expr->GetLValue(false);
-// 	assert(ret);
-// 	return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
-// }
+llvm::Value * Birdee::ArrayInitializerExprAST::Generate()
+{
+	auto arr_type = helper.GetType(resolved_type);
+	auto ety = resolved_type;
+	assert(resolved_type.index_level > 0);
+	ety.index_level--;
+	auto element_type = helper.GetType(ety);
+
+	vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(element_type, values.size()) };
+	auto cur_array_ty = StructType::create(context, types);
+
+	vector<Constant*> const_init;
+	vector<std::pair<int, Value*>> manually_init;
+	const_init.reserve(values.size());
+	int idx = 0;
+	for (auto& v : values)
+	{
+		Value* val = v->Generate();
+		if (llvm::isa<Constant>(*val))
+		{
+			auto cons = static_cast<Constant*>(val);
+			const_init.push_back(cons);
+		}
+		else
+		{
+			const_init.push_back(Constant::getNullValue(element_type));
+			manually_init.push_back(std::make_pair(idx,val));
+		}
+		idx++;
+	}
+	auto array_data = ConstantArray::get(ArrayType::get(element_type, values.size()), const_init);
+	GlobalVariable* vobj = new GlobalVariable(*module, cur_array_ty, false, GlobalValue::PrivateLinkage,
+		ConstantStruct::get(cur_array_ty, { builder.getInt32(values.size()), array_data }));
+	dinfo.emitLocation(this);
+	for (auto& init_v : manually_init)
+		builder.CreateStore(init_v.second, builder.CreateGEP(vobj, 
+			{ builder.getInt32(0), builder.getInt32(1), builder.getInt32(init_v.first) }));
+	return builder.CreatePointerCast(vobj, arr_type);
+}
 
 llvm::Value * Birdee::VariableMultiDefAST::Generate()
 {

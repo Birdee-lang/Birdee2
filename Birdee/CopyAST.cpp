@@ -339,12 +339,6 @@ namespace Birdee
 		return make_unique<TryBlockAST>(try_block.Copy(),std::move(vars),std::move(bbs),Pos);
 	}
 
-	// std::unique_ptr<StatementAST> TypeofExprAST::Copy()
-	// {
-	// 	auto ret = make_unique<TypeofExprAST>(ToExpr(arg->Copy()), Pos);
-	// 	return std::move(ret);
-	// }
-
 	std::unique_ptr<StatementAST> ThrowAST::Copy()
 	{
 		auto ret = make_unique<ThrowAST>(ToExpr(expr->Copy()), Pos);
@@ -419,5 +413,14 @@ namespace Birdee
 	unique_ptr<StatementAST> Birdee::FunctionToClosureAST::Copy()
 	{
 		return make_unique<FunctionToClosureAST>(ToExpr(func->Copy()));
+	}
+
+	std::unique_ptr<StatementAST> Birdee::ArrayInitializerExprAST::Copy()
+	{
+		vector<unique_ptr<ExprAST>> val;
+		val.reserve(values.size());
+		for (auto& v : values)
+			val.push_back(ToExpr(v->Copy()));
+		return make_unique<ArrayInitializerExprAST>(std::move(val), Pos);
 	}
 }

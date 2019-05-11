@@ -684,7 +684,7 @@ namespace Birdee {
 		Token Op;
 		FunctionAST* func = nullptr;
 		unique_ptr<ExprAST> arg;
-		std::unique_ptr<StatementAST> Copy();
+		unique_ptr<StatementAST> Copy();
 		//first resolve variables then resolve class names
 		void Phase1();
 		llvm::Value* Generate();
@@ -696,6 +696,25 @@ namespace Birdee {
 			ExprAST::print(level);
 			std::cout << "typeof \n";
 			arg->print(level + 1);
+		}
+	};
+
+	class BD_CORE_API ArrayInitializerExprAST : public ExprAST {
+	public:
+		vector<unique_ptr<ExprAST>> values;
+		unique_ptr<ExprAST> dummy; //MSVC shows an error here it we remove this line. I don't know why.
+		void Phase1();
+		llvm::Value* Generate();
+		unique_ptr<StatementAST> Copy();
+		ArrayInitializerExprAST(vector<unique_ptr<ExprAST>>&& values, SourcePos Pos)
+			:values(std::move(values)) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "array \n";
+			//for(auto& v: values)
+			//	v->print(level + 1);
 		}
 	};
 
