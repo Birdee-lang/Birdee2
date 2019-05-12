@@ -172,4 +172,5 @@ dim a = new quail
 dim b as bird =a
 b.say("asd")
 println("End")
+
 getchar()

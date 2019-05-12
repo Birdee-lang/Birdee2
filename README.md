@@ -130,31 +130,31 @@ Then fetch Birdee's source code and download other dependencies:
 ```bash
 git clone https://github.com/Menooker/Birdee2
 cd Birdee2
-mkdir depencency
-cd depencency
+mkdir dependency
+cd dependency
 git init
 git remote add -f origin https://github.com/pybind/pybind11
 git checkout origin/master include/pybind11
-mkdir -p dependency/include/nlohmann
-cd dependency/include/nlohmann
+mkdir -p include/nlohmann
+cd include/nlohmann
 wget https://raw.githubusercontent.com/nlohmann/json/develop/single_include/nlohmann/json.hpp
 wget https://raw.githubusercontent.com/nlohmann/fifo_map/master/src/fifo_map.hpp
 cd ../../../
 ```
 
-Finally, make Birdee!
-
-```bash
-make
-```
-
 One more step, set some required environment variables. You can add something like (assuming that the root directory of Birdee source code is /home/menooker/Birdee2):
 ```bash
 export BIRDEE_HOME=/home/menooker/Birdee2/BirdeeHome/
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/menooker/Birdee2/lib
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BIRDEE_HOME/lib
 ```
 
 to your /etc/profile or ~/.bashrc.
+
+Finally, make Birdee!
+
+```bash
+make -j4
+```
 
 ## Building Birdee on with Visual Studio
 

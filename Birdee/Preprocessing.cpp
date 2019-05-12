@@ -1795,7 +1795,7 @@ namespace Birdee
 		done_phase = 1;
 		if (isTemplate())
 			return;
-
+    
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
 			if (template_source_class->template_param->mod)
@@ -1807,6 +1807,7 @@ namespace Birdee
 				}
 			}
 		}
+    
 		static std::vector<ClassAST*> loop_checker;
 		if (std::find(loop_checker.begin(), loop_checker.end(), this) != loop_checker.end())
 		{
@@ -1841,6 +1842,7 @@ namespace Birdee
 				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
 				+ " but they have different prototypes");
 		};
+    
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
