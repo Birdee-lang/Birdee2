@@ -395,6 +395,9 @@ void RegisiterClassForBinding(py::module& m)
 	m.def("get_target_bits", []()->int {
 		return 64;
 	});
+	m.def("get_cur_script", []()->std::reference_wrapper<ScriptAST> {
+		return GetRef(cur_script_ast);
+	});
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
 	m.def("size_of", GetTypeSize);

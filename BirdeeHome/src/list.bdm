@@ -30,7 +30,7 @@ class list[T]
 	public function insert_back(v as T) as list_iterator[T] => do_insert_before(head, v)
 
 	public function front() as list_iterator[T] => mk_list_iterator[T](head.next)
-	public function last() as list_iterator[T] => mk_list_iterator[T](head.prev)
+	public function back() as list_iterator[T] => mk_list_iterator[T](head.prev)
 	public function ends() as list_iterator[T] => mk_list_iterator[T](static_cast[list_node[T]](head))
 
 	public function insert_before(next_node as list_iterator[T], v as T) as list_iterator[T] => do_insert_before(next_node._node, v)

@@ -14,40 +14,64 @@ end
 
 {@
 from bdutils import *
+def line_pos():
+	strpos = str(get_cur_script().pos)
+	set_ast(StringLiteralAST.new(strpos))
 @}
 
-function assert(v as boolean)
+function assert(v as boolean, msg as string)
 	if !v then
+		println("Assertion failed :" + msg)
 		throw new assertion_exception
 	end
 end
 
-function check_list[values as string](lst as list[uint])
+function check_list[T](lst as list[T], chk as T[], pos as string)
 	dim itr = lst.front()
-{@
-values = get_func_expr_templ_at(0).value.split(',')
-body = get_cur_func().body
-for v in values:
-	body.push_back(expr('''assert({}==itr.get())'''.format(v)))
-	body.push_back(expr('''itr.forward()'''.format(v)))
-body.push_back(expr('''assert(itr==lst.ends())'''))
-@}
+	println("Checking " + pos)
+	assert(lst.size() == chk.length(), {@line_pos()@})
+	for dim i=0 till chk.length()
+		assert(itr!=lst.ends(), {@line_pos()@})
+		assert(itr.get() == chk[i], {@line_pos()@})
+		itr.forward()
+	end
+	assert(itr == lst.ends(), {@line_pos()@})
 end
 
 # test list
-dim lst = new list[uint]
+dim lst = new list[int]
 
-assert(lst.size()==0)
-assert(lst.empty())
+assert(lst.size()==0 , {@line_pos()@})
+assert(lst.empty(), {@line_pos()@})
 
 lst.insert_back(123)
 lst.insert_back(234)
 lst.insert_back(345)
 
-check_list["123,234,345"](lst)
+check_list(lst,[123,234,345], {@line_pos()@})
+assert(!lst.empty(), {@line_pos()@})
 
-assert(lst.size()==3)
-assert(!lst.empty())
+lst.remove(lst.front())
+check_list(lst,[234,345], {@line_pos()@})
+
+lst.remove(lst.back())
+check_list(lst,[234], {@line_pos()@})
+
+lst.insert_front(2)
+check_list(lst,[2,234],{@line_pos()@})
+
+dim itr = lst.front().next()
+lst.insert_after(itr, 32)
+check_list(lst,[2,234,32],{@line_pos()@})
+
+lst.insert_before(itr, 44)
+check_list(lst,[2,44,234,32],{@line_pos()@})
+
+assert(lst.back() == itr.next(), {@line_pos()@})
+lst.remove(lst.back())
+assert(lst.back() == itr, {@line_pos()@})
+assert(lst.ends() == itr.next(), {@line_pos()@})
+lst.remove(lst.back())
 
 println("Done")
 getchar()
