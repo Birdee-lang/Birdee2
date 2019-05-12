@@ -52,7 +52,7 @@ def resolve_set_type(s):
 #utilities for templates
 def get_cls_templ_at(idx):
 	thecls = get_cur_class()
-	require_(is_cls_template_inst(thecls), index_within(idx,0,len(thecls.template_instance_args)))
+	require_(is_template_inst(thecls), index_within(idx,0,len(thecls.template_instance_args)))
 	return thecls.template_instance_args[idx]
 
 def get_cls_type_templ_at(idx):
@@ -72,7 +72,29 @@ def cls_templ_expr_at(idx):
 	set_ast(get_cls_expr_templ_at(idx))
 
 #utilities for functions
-def get_function_arg_at(func,idx):
+def get_func_arg_at(func,idx):
 	args = func.proto.args
 	require_(index_within(idx,0,len(args)))
 	return args[idx]
+
+
+def get_func_templ_at(idx):
+	thecls = get_cur_func()
+	require_(is_template_inst(thecls), index_within(idx,0,len(thecls.template_instance_args)))
+	return thecls.template_instance_args[idx]
+
+def get_func_type_templ_at(idx):
+	arg = get_func_templ_at(idx)
+	require_(is_type_templ_arg(arg,idx))
+	return arg.resolved_type
+
+def get_func_expr_templ_at(idx):
+	arg = get_func_templ_at(idx)
+	require_(is_expr_templ_arg(arg,idx))
+	return arg.expr
+
+def func_templ_type_at(idx):
+	set_type(get_func_type_templ_at(idx))
+
+def func_templ_expr_at(idx):
+	set_ast(get_func_expr_templ_at(idx))

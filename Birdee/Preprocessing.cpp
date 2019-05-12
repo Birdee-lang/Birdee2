@@ -16,6 +16,8 @@ using namespace Birdee;
 
 //fix-me: show template stack on error
 
+#define type_is_class(_rty) (_rty.type==tok_class && !_rty.class_ast->is_struct)
+
 template <typename T>
 T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
 	const string& name)
@@ -49,6 +51,7 @@ namespace Birdee
 			src_template(src_template), args(std::move(args)), CompileError(pos,_msg)
 		{}
 	};
+	extern bool IsResolvedTypeClass(const ResolvedType& r);
 }
 
 #ifdef BIRDEE_USE_DYN_LIB
@@ -639,6 +642,11 @@ struct PreprocessingState
 	FunctionAST* _cur_func = nullptr;
 	ClassAST* array_cls = nullptr;
 	ClassAST* string_cls = nullptr;
+
+	using ClassTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<ClassAST>>;
+	using FuncTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<FunctionAST>>;
+	std::vector<std::pair<ClassTemplateInstMap*, typename ClassTemplateInstMap::key_type>> class_templ_inst_rollback;
+	std::vector<std::pair<FuncTemplateInstMap*, typename FuncTemplateInstMap::key_type>> func_templ_inst_rollback;
 };
 
 #define scope_mgr (preprocessing_state._scope_mgr)
@@ -667,6 +675,34 @@ BD_CORE_API void PopClass()
 	return scope_mgr.PopClass();
 }
 
+void ClearTemplateInstancesRollbackLogs()
+{
+	preprocessing_state.func_templ_inst_rollback.clear();
+	preprocessing_state.class_templ_inst_rollback.clear();
+}
+
+BD_CORE_API void RollbackTemplateInstances()
+{
+	//erase the instances in reversed order, because they may depend on previous ones
+	auto& funcs = preprocessing_state.func_templ_inst_rollback;
+	for(auto itr = funcs.rbegin();itr!=funcs.rend();++itr)
+	{
+		auto& the_map = *itr->first;
+		auto arg = itr->second;
+		auto mapitr = the_map.find(arg);
+		if(mapitr!=the_map.end())
+			the_map.erase(mapitr);
+	}
+	auto& clazzes = preprocessing_state.class_templ_inst_rollback;
+	for(auto itr = clazzes.rbegin();itr!=clazzes.rend();++itr)
+	{
+		auto& the_map = *itr->first;
+		auto arg = itr->second;
+		auto mapitr = the_map.find(arg);
+		if(mapitr!=the_map.end())
+			the_map.erase(mapitr);
+	}
+}
 
 void ClearPreprocessingState()
 {
@@ -804,14 +840,34 @@ void FixNull(ExprAST* v, ResolvedType& target)
 	expr->resolved_type = target;
 }
 
+bool Birdee::ClassAST::HasParent(Birdee::ClassAST* checkparent)
+{
+	ClassAST* cur = this;
+	while (cur != checkparent)
+	{
+		cur = cur->parent_class;
+		if (cur == nullptr)
+			return false;
+	}
+	return true;
+}
+
+inline bool IsClosure(const ResolvedType& v)
+{
+	return v.index_level == 0 && v.type == tok_func && v.proto_ast->is_closure;
+}
+inline bool IsFunctype(const ResolvedType& v)
+{
+	return v.index_level == 0 && v.type == tok_func && !v.proto_ast->is_closure;
+}
+
 unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAST>&& val,SourcePos pos)
 {
 	if (target == val->resolved_type)
 	{
 		return std::move(val);
 	}
-	if (target.type == tok_func && val->resolved_type.type == tok_func
-		&& target.proto_ast->is_closure && !val->resolved_type.proto_ast->is_closure)
+	if (IsClosure(target) && IsFunctype(val->resolved_type))
 	{
 		//if both types are functions and target is closure & source value is not closure
 		if (target.proto_ast->IsSamePrototype(*val->resolved_type.proto_ast))
@@ -819,10 +875,19 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 			return make_unique<FunctionToClosureAST>(std::move(val));
 		}
 	}
-	if ( target.isReference() && val->resolved_type.isNull())
+	if (target.isReference())
 	{
-		FixNull(val.get(), target);
-		return std::move(val);
+		if (val->resolved_type.isNull())
+		{
+			FixNull(val.get(), target);
+			return std::move(val);
+		}
+		if (IsResolvedTypeClass(val->resolved_type)
+			&& IsResolvedTypeClass(target)) // check for upcast
+		{
+			if (val->resolved_type.class_ast->HasParent(target.class_ast))
+				return make_unique<UpcastExprAST>(std::move(val), target.class_ast, pos);
+		}
 	}
 #define fix_type(typeto) FixTypeForAssignment2<typeto>(target,std::move(val),pos)
 	else if (target.isNumber() && val->resolved_type.index_level==0)
@@ -850,18 +915,88 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 	return nullptr;
 }
 
+static unordered_map<Token, int> promotion_map = {
+{ tok_byte,-1 },
+{ tok_int,0 },
+{tok_uint,1},
+{tok_long,2},
+{tok_ulong,3},
+{tok_float,4},
+{tok_double,5},
+};
+
+
+
+static ResolvedType GetMoreGeneralType(ResolvedType& v1, ResolvedType& v2)
+{
+	if (v1 == v2)
+	{
+		return v1;
+	}
+	else if (IsClosure(v1) && IsFunctype(v2)) //v1 is closure, v2 is functype
+	{
+		//if both types are functions and target is closure & source value is not closure
+		if (v1.proto_ast->IsSamePrototype(*v2.proto_ast))
+			return v1;
+	}
+	else if (IsClosure(v2) && IsFunctype(v1)) //v2 is closure, v1 is functype
+	{
+		//if both types are functions and target is closure & source value is not closure
+		if (v2.proto_ast->IsSamePrototype(*v1.proto_ast))
+			return v2;
+	}
+	else if (v1.isReference())
+	{
+		if (v2.isNull())
+			return v1;
+		if (IsResolvedTypeClass(v2)
+			&& IsResolvedTypeClass(v1)) // find the most recent shared ancestor class
+		{
+			vector<ClassAST*> parents1{v1.class_ast};
+			ClassAST* cur = v1.class_ast->parent_class;
+			while (cur)
+			{
+				parents1.push_back(cur);
+				cur = cur->parent_class;
+			}
+
+			vector<ClassAST*> parents2{ v2.class_ast };
+			cur = v2.class_ast->parent_class;
+			while (cur)
+			{
+				parents2.push_back(cur);
+				cur = cur->parent_class;
+			}
+			ClassAST* result = nullptr;
+			for (auto itr1 = parents1.rbegin(), itr2 = parents2.rbegin();
+				itr1 != parents1.rend() && itr2 != parents2.rend();
+				itr1++, itr2++)
+			{
+				if (*itr1 != *itr2)
+					break;
+				result = *itr1;
+			}
+			if(!result)
+				return ResolvedType();
+			return ResolvedType(result);
+		}
+	}
+	else if (v1.isNumber() && v1.isNumber())
+	{
+		int p1 = promotion_map[v1.type];
+		int p2 = promotion_map[v2.type];
+		if (p1 == p2)
+			return v1;
+		else if (p1 > p2)
+			return v1;
+		else
+			return v2;
+	}
+	return ResolvedType();
+}
 
 Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,bool isBool, SourcePos pos)
 {
-	static unordered_map<Token, int> promotion_map = {
-	{ tok_byte,-1 },
-	{ tok_int,0 },
-	{tok_uint,1},
-	{tok_long,2},
-	{tok_ulong,3},
-	{tok_float,4},
-	{tok_double,5},
-	};
 	int p1 = promotion_map[v1->resolved_type.type];
 	int p2 = promotion_map[v2->resolved_type.type];
 	if (p1 == p2)
@@ -1155,6 +1290,19 @@ namespace Birdee
 		return DoTemplateValidateArguments(nullptr, is_vararg, params, std::move(args), Pos, throw_if_vararg);
 	}
 
+	//force specialize these two functions to make them exported in g++
+	template<>
+	FunctionAST * Birdee::TemplateParameters<FunctionAST>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, FunctionAST* source_template, SourcePos pos)
+	{
+		return GetOrCreateImpl(std::move(v), source_template, pos);
+	}
+
+	template<>
+	ClassAST * Birdee::TemplateParameters<ClassAST>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, ClassAST* source_template, SourcePos pos)
+	{
+		return GetOrCreateImpl(std::move(v), source_template, pos);
+	}
+
 	void ResolvedType::ResolveType(Type& type, SourcePos pos)
 	{
 		if (type.type == tok_script)
@@ -1405,6 +1553,39 @@ namespace Birdee
 		return true;
 	}
 
+
+	bool IsSubResolvedType(const ResolvedType& parent, const ResolvedType& child)
+	{
+		if (type_is_class(parent))
+		{
+			if (!type_is_class(child))
+				return false;
+			return child.class_ast->HasParent(parent.class_ast);
+		}
+		return parent == child;
+	}
+
+	bool PrototypeAST::CanBeAssignedWith(const PrototypeAST& other) const
+	{
+		auto& ths = *this;
+		assert(ths.resolved_type.isResolved() && other.resolved_type.isResolved());
+		//check return type
+		if (!IsSubResolvedType(ths.resolved_type, other.resolved_type))
+			return false;
+		if (ths.resolved_args.size() != other.resolved_args.size())
+			return false;
+		auto itr1 = ths.resolved_args.begin();
+		auto itr2 = other.resolved_args.begin();
+		for (; itr1 != ths.resolved_args.end(); itr1++, itr2++)
+		{
+			ResolvedType& t1 = (*itr1)->resolved_type;
+			ResolvedType& t2 = (*itr2)->resolved_type;
+			assert(t1.isResolved() && t2.isResolved());
+			if (!IsSubResolvedType(t1, t2))
+				return false;
+		}
+		return true;
+	}
 	std::size_t PrototypeAST::rawhash() const
 	{
 		const PrototypeAST* proto = this;
@@ -1485,6 +1666,34 @@ namespace Birdee
 		return GetLValueNoCheckExpr(checkHas);
 	}
 
+	void ArrayInitializerExprAST::Phase1()
+	{
+		CompileAssert(values.size(), Pos, "Empty initializer for the array is not allowed");
+		ResolvedType rty;
+		int idx = 1;
+		for (auto& v : values)
+		{
+			v->Phase1();
+			if (rty.isResolved())
+			{
+				auto ret = GetMoreGeneralType(rty, v->resolved_type);
+				CompileAssert(ret.isResolved(), Pos, string("Cannot infer the type of the array: Given the array type ")
+					+ rty.GetString() + ", and the " + std::to_string(idx) + "-th element's type " + v->resolved_type.GetString());
+				rty = ret;
+			}
+			else
+			{
+				rty = v->resolved_type;
+			}
+			idx += 1;
+		}
+		for (auto& v : values)
+		{
+			v = FixTypeForAssignment(rty, std::move(v), v->Pos);
+		}
+		rty.index_level++;
+		resolved_type = rty;
+	}
 
 	void Birdee::AnnotationStatementAST::Phase1()
 	{
@@ -1581,18 +1790,12 @@ namespace Birdee
 
 	void ClassAST::Phase0()
 	{
-		scope_mgr.class_stack.push_back(this);
-		if (isTemplate())
-		{
-			scope_mgr.class_stack.pop_back();
+		if (done_phase >= 1)
 			return;
-		}
-		if (this->parent_type) {
-			// resolve parent type
-			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
-			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
-			parent_class = parent_resolved_type.class_ast;
-		}
+		done_phase = 1;
+		if (isTemplate())
+			return;
+    
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
 			if (template_source_class->template_param->mod)
@@ -1604,9 +1807,104 @@ namespace Birdee
 				}
 			}
 		}
+    
+		static std::vector<ClassAST*> loop_checker;
+		if (std::find(loop_checker.begin(), loop_checker.end(), this) != loop_checker.end())
+		{
+			std::stringstream buf;
+			buf << "A loop in the class inherience relations is detected:";
+			for (auto& itr : loop_checker)
+				buf << "->" << itr->GetUniqueName();
+			throw CompileError(Pos, buf.str());
+		}
+		scope_mgr.class_stack.push_back(this);
+		if (parent_type) //it is possible that parent_class!=null and parent_type==null, when the class is imported
+		{
+			// resolve parent type 
+			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
+			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
+			parent_type = nullptr;
+			parent_class = parent_resolved_type.class_ast;
+		}
+		if(parent_class) 
+		{
+			//call Phase0 on parent
+			loop_checker.push_back(this);
+			scope_mgr.class_stack.pop_back();
+			parent_class->Phase0();
+			scope_mgr.class_stack.push_back(this);
+			loop_checker.pop_back();
+			vtabledef = parent_class->vtabledef;
+		}
+		auto checkproto = [](FunctionAST* curfunc, FunctionAST* overriden) {
+			//make sure the overriden function has the same prototype
+			CompileAssert(overriden->Proto->CanBeAssignedWith(*curfunc->Proto), curfunc->Pos,
+				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
+				+ " but they have different prototypes");
+		};
+    
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
+			if (funcdef.virtual_idx == MemberFunctionDef::VIRT_NONE)
+			{
+				//if the function is not manually marked virtual, check if it overrides a virtual function
+				//if so, copy the virtual idx
+				ClassAST* cls = parent_class;
+				while (cls)
+				{
+					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
+					if (itr != cls->funcmap.end())
+					{
+						funcdef.virtual_idx = cls->funcs[itr->second].virtual_idx;
+						break;
+					}
+					cls = cls->parent_class;
+				}
+			}
+			//if it is marked a virtual function, set the virtual index and set the vtable
+			if (funcdef.virtual_idx != MemberFunctionDef::VIRT_NONE)
+			{
+				if (funcdef.virtual_idx != MemberFunctionDef::VIRT_UNRESOLVED)
+				{//if the virtual function is resolved (either is imported or overides a parent), the virtual function has already an index
+					if (funcdef.virtual_idx >= 0 && funcdef.virtual_idx < vtabledef.size())
+					{ //if it is an override function
+						CompileAssert(funcdef.decl->Proto->Name == vtabledef[funcdef.virtual_idx]->Proto->Name,
+							Pos, string("The virtual function ") + funcdef.decl->Proto->Name
+							+ " overrides a function with different name " + vtabledef[funcdef.virtual_idx]->Proto->Name);
+						checkproto(funcdef.decl.get(), vtabledef[funcdef.virtual_idx]);
+						vtabledef[funcdef.virtual_idx] = funcdef.decl.get();
+					}
+					else if (funcdef.virtual_idx ==  vtabledef.size())
+					{//if it is not overriding a parent function, the virtual idx should be same as the size of vtable
+						vtabledef.push_back(funcdef.decl.get());
+					}
+					else
+					{
+						std::stringstream buf;
+						buf << "The imported virtual function " << funcdef.decl->Proto->Name << " has a bad virtual index " << funcdef.virtual_idx;
+						throw CompileError(Pos, buf.str());
+					}
+				}
+				else //if the virtual function index has not been resolved
+				{
+					for (int i = 0; i < vtabledef.size(); i++)
+					{
+						if (funcdef.decl->Proto->Name == vtabledef[i]->Proto->Name)
+						{
+							checkproto(funcdef.decl.get(), vtabledef[i]);
+							vtabledef[i] = funcdef.decl.get();
+							funcdef.virtual_idx = i;
+						}
+					}
+					//if no overriding parent functions
+					if (funcdef.virtual_idx == MemberFunctionDef::VIRT_UNRESOLVED)
+					{
+						vtabledef.push_back(funcdef.decl.get());
+						funcdef.virtual_idx = vtabledef.size() - 1;
+					}
+				}
+			}
 		}
 		for (auto& fielddef : fields)
 		{
@@ -1615,7 +1913,7 @@ namespace Birdee
 		scope_mgr.class_stack.pop_back();
 	}
 
-	vector<string> Birdee::MemberExprAST::ToStringArray()
+	vector<string> MemberExprAST::ToStringArray()
 	{
 		vector<string*> reverse;
 		reverse.push_back(&member);
@@ -1767,6 +2065,9 @@ If usage vararg name is "", match the closest vararg
 	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
+		preprocessing_state.func_templ_inst_rollback.push_back(
+			std::make_pair(&src_func->template_param->instances, 
+			std::reference_wrapper<const std::vector<TemplateArgument>>(*v)));
 		func->Proto->Name += GetTemplateArgumentString(*v);
 		ClassAST* cls_template=nullptr;
 		if (func->Proto->cls) 
@@ -1787,6 +2088,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
+		vector<ClassAST*> clsstack = std::move(scope_mgr.class_stack);
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
@@ -1794,6 +2096,7 @@ If usage vararg name is "", match the closest vararg
 		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
+		scope_mgr.class_stack = std::move(clsstack);
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.function_scopes = std::move(basic_blocks_backup);
@@ -1810,6 +2113,9 @@ If usage vararg name is "", match the closest vararg
 	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
+		preprocessing_state.class_templ_inst_rollback.push_back(
+			std::make_pair(&src_cls->template_param->instances, 
+			std::reference_wrapper<const std::vector<TemplateArgument>>(*v)));
 		auto& args = *v;
 		cls->template_instance_args = std::move(v);
 		cls->template_source_class = src_cls;
@@ -1827,7 +2133,7 @@ If usage vararg name is "", match the closest vararg
 	}
 
 	template<typename T>
-	T * Birdee::TemplateParameters<T>::GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos)
+	T * Birdee::TemplateParameters<T>::GetOrCreateImpl(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos)
 	{
 		auto ins = instances.find(*v);
 		if (ins != instances.end())
@@ -1837,7 +2143,9 @@ If usage vararg name is "", match the closest vararg
 		unique_ptr<T> replica_func = source_template->CopyNoTemplate();
 		T* ret = replica_func.get();
 		instances.insert(std::make_pair(reference_wrapper<const vector<TemplateArgument>>(*v), std::move(replica_func)));
+		auto old_f_scopes = std::move(scope_mgr.function_scopes);
 		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
+		scope_mgr.function_scopes = std::move(old_f_scopes);
 		if (annotation)
 		{
 			PushPyScope(mod);
@@ -1848,6 +2156,8 @@ If usage vararg name is "", match the closest vararg
 		}
 		return ret;
 	}
+
+
 
 	bool IndexExprAST::isOverloaded()
 	{
@@ -2183,15 +2493,6 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
-	// void TypeofExprAST::Phase1()
-	// {
-	// 	arg->Phase1();
-	// 	CompileAssert(arg->resolved_type.type == tok_class
-	// 		&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
-	// 		Pos ,"typeof must be appiled on class references with runtime type info");
-	// 	resolved_type = ResolvedType(GetTypeInfoClass());
-	// }
-
 	ThrowAST::ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos) :expr(std::move(expr))
 	{
 		Pos = pos;
@@ -2218,6 +2519,9 @@ If usage vararg name is "", match the closest vararg
 
 	void ClassAST::Phase1()
 	{
+		if (done_phase >= 2)
+			return;
+		done_phase = 2;
 		if (isTemplate())
 			return;
 		Phase0();
@@ -2331,8 +2635,11 @@ If usage vararg name is "", match the closest vararg
 			auto func = cur_cls->funcmap.find(member);
 			if (func != cur_cls->funcmap.end())
 			{
-				kind = member_function;
 				this->func = &(cur_cls->funcs[func->second]);
+				if (dyncast_resolve_anno<SuperExprAST>(Obj.get())) //if the object is "super", do not generate virtual call here
+					kind = member_function;
+				else
+					kind = this->func->virtual_idx==MemberFunctionDef::VIRT_NONE? member_function : member_virtual_function;
 				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
 					throw CompileError(Pos, "Accessing a private member outside of a class");
 				resolved_type = this->func->decl->resolved_type;
@@ -2350,6 +2657,117 @@ If usage vararg name is "", match the closest vararg
 			return "expression()";
 		}
 		return string("type(")+type.GetString()+")";
+	}
+
+	static void DeduceTemplateArgFromArg(Type* rawty, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos);
+	static void DeduceTemplateArgFromTemplateArgExpr(ExprAST* targ, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos);
+	static void DeduceTemplArgFromTemplArgExprList(vector<unique_ptr<ExprAST>>& raw_args, vector<TemplateArgument>&ty_args,
+		unordered_map<string, TemplateArgument>& name2type,  const SourcePos& Pos)
+	{
+		if (raw_args.size() != ty_args.size())
+			return;
+		for (int i = 0; i < ty_args.size(); i++)
+		{
+			if (ty_args[i].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
+			{
+				DeduceTemplateArgFromTemplateArgExpr(raw_args[i].get(), ty_args[i].type, name2type, Pos);
+			}
+		}
+	}
+
+	static void DeduceTemplateArgFromTemplateArgExpr(ExprAST* targ, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos)
+	{
+		RunOnTemplateArg(targ,
+			[&rty, &name2type, &Pos](BasicTypeExprAST* expr) {
+			DeduceTemplateArgFromArg(expr->type.get(), rty, name2type, Pos);
+		},
+			[&rty,&name2type,&Pos](IdentifierExprAST* iden){
+			IdentifierType ity(iden->Name);
+			DeduceTemplateArgFromArg(&ity, rty, name2type, Pos);
+		},
+			[](MemberExprAST*) {},
+			[&rty, &name2type, &Pos](FunctionTemplateInstanceExprAST* templ) {
+			if (rty.type != tok_class || !rty.class_ast->isTemplateInstance())
+				return;
+			DeduceTemplArgFromTemplArgExprList(templ->raw_template_args, 
+				*rty.class_ast->template_instance_args, name2type, Pos);		
+		},
+			[&rty, &name2type, &Pos](IndexExprAST* expr) {
+			if (rty.type != tok_class || !rty.class_ast->isTemplateInstance())
+				return;
+			if (rty.class_ast->template_instance_args->size() != 1)
+				return;
+			auto& ty_args = *rty.class_ast->template_instance_args;
+			if (ty_args[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE)
+				DeduceTemplateArgFromTemplateArgExpr(expr->Index.get(), ty_args[0].type, name2type, Pos);
+		},
+			[](NumberExprAST*) {},
+			[](StringLiteralAST*) {},
+			[](ScriptAST*) {},
+			[]() {}
+		);
+	}
+
+	static void DeduceTemplateArgFromArg(Type* rawty, ResolvedType& rty, unordered_map<string, TemplateArgument>& name2type, const SourcePos& Pos)
+	{
+		assert(rawty);
+		if (rawty->index_level > rty.index_level)
+			return;
+		if (rawty->type == tok_identifier) {
+			auto identifierType = static_cast<IdentifierType*>(rawty);
+			if (identifierType->template_args)
+			{
+				//if arg is T[...]
+				if (rawty->index_level != rty.index_level)
+					return;
+				if (rty.type != tok_class || !rty.class_ast->isTemplateInstance())
+					return;
+				DeduceTemplArgFromTemplArgExprList(*identifierType->template_args, *rty.class_ast->template_instance_args, name2type, Pos);
+			}
+			else
+			{
+				//if arg is plain identifier
+				auto it = name2type.find(identifierType->name);
+				auto result = rty;
+				result.index_level -= rawty->index_level;
+				//T[] matches int[][], where T=int[]
+				if (it == name2type.end())
+					name2type[identifierType->name] = result;
+				else if (it->second.kind != TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == result))
+					CompileAssert(false, Pos, string("Cannot derive template parameter type ") + identifierType->name
+						+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + result.GetString());
+			}
+
+		}
+		else if (rawty->type == tok_func)
+		{
+			if (rawty->index_level != rty.index_level)
+				return;
+			auto proto = static_cast<PrototypeType*>(rawty)->proto.get();
+			if (rty.type != tok_func)
+				return;
+			DeduceTemplateArgFromArg(proto->RetType.get(), rty.proto_ast->resolved_type, name2type, Pos);
+			auto args = proto->Args.get();
+			auto param_size = rty.proto_ast->resolved_args.size();
+			if (isa<VariableMultiDefAST>(args))
+			{
+				auto& lst = static_cast<VariableMultiDefAST*>(args)->lst;
+				for (int i = 0; i < lst.size(); i++)
+				{
+					if (i >= param_size)
+						return;
+					DeduceTemplateArgFromArg(lst[i]->type.get(), rty.proto_ast->resolved_args[i]->resolved_type, name2type, Pos);
+				}
+			}
+			else
+			{
+				assert(isa<VariableSingleDefAST>(args));
+				if (param_size == 0)
+					return;
+				DeduceTemplateArgFromArg(static_cast<VariableSingleDefAST*>(args)->type.get(),
+					rty.proto_ast->resolved_args[0]->resolved_type, name2type, Pos);
+			}
+		}
 	}
 
 	//Deduce the template arguments & vararg. If this function sucessfully deduced the function template,
@@ -2428,16 +2846,7 @@ If usage vararg name is "", match the closest vararg
 
 			for (int i = 0; i < singleArgs.size(); i++) {
 				Args[i]->Phase1();
-				if (singleArgs[i]->type->type == tok_identifier) {
-					auto identifierType = static_cast<IdentifierType*>(singleArgs[i]->type.get());
-					auto it = name2type.find(identifierType->name);
-
-					if (it == name2type.end())
-						name2type[identifierType->name] = Args[i]->resolved_type;
-					else if (it->second.kind != TemplateArgument::TEMPLATE_ARG_TYPE || !(it->second.type == Args[i]->resolved_type))
-						CompileAssert(false, Pos, string("Cannot derive template parameter type ") + identifierType->name
-							+ " from given arguments: conflicting argument - " + it->second.GetString() + " and " + Args[i]->resolved_type.GetString());
-				}
+				DeduceTemplateArgFromArg(singleArgs[i]->type.get(), Args[i]->resolved_type, name2type, Pos);
 			}
 			auto & params = func->template_param->params;
 			// construct FunctionTemplateInstanceAST to replace Callee
@@ -2509,7 +2918,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		CompileAssert(scope_mgr.class_stack.size() > 0, Pos, "Cannot reference \"super\" outside of a class");
 		CompileAssert(!scope_mgr.class_stack.back()->is_struct, Pos, "Cannot reference \"super\" inside of a struct");
-		CompileAssert(scope_mgr.class_stack.back()->parent_type, Pos, "Class does not have a parent to reference");
+		CompileAssert(scope_mgr.class_stack.back()->parent_class, Pos, "Class does not have a parent to reference");
 		if (scope_mgr.function_scopes.size() > 1) //if we are in a lambda func
 		{
 			scope_mgr.function_scopes.back().func->captured_parent_super = (llvm::Value*)1;
@@ -2575,6 +2984,8 @@ If usage vararg name is "", match the closest vararg
 
 	void BinaryExprAST::Phase1()
 	{
+		if (resolved_type.isResolved())
+			return;
 		auto& LHS = this->LHS;//just for lambda capture
 		auto& RHS = this->RHS;
 		auto& resolved_type = this->resolved_type;
@@ -2637,7 +3048,7 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
 				string("Cannot find function ") + name + " in class " + LHS->resolved_type.class_ast->GetUniqueName());
 			auto member_def = &LHS->resolved_type.class_ast->funcs[itr->second];
-			func = LHS->resolved_type.class_ast->funcs[itr->second].decl.get();
+			func = member_def->decl.get();
 			auto memberexpr = make_unique<MemberExprAST>(std::move(LHS), member_def, Pos);
 			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(RHS));
 			LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
@@ -2724,14 +3135,20 @@ If usage vararg name is "", match the closest vararg
 
 	}
 
+	MemberExprAST::MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
+		MemberFunctionDef* member, SourcePos pos)
+		: Obj(std::move(Obj)), func(member),
+		kind(member->virtual_idx== MemberFunctionDef::VIRT_NONE? member_function:member_virtual_function) {
+		resolved_type = func->decl->resolved_type;
+		Pos = pos;
+	}
+
 	void UnaryExprAST::Phase1()
 	{
 		auto& arg = this->arg;
-
-		arg->Phase1();
-
 		if (Op == tok_not)
 		{
+			arg->Phase1();
 			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
 			{
 				const string name = "__not__";

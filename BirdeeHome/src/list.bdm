@@ -1,0 +1,104 @@
+import unsafe:static_cast
+
+class list[T]
+	public head as list_node_no_data[T]
+	public lsize as uint
+
+	private function do_insert_before(_next_node as list_node_no_data[T], v as T) as list_iterator[T]
+		dim node = new list_node[T]
+		node.v = v
+		node.next = _next_node
+		node.prev = _next_node.prev
+		_next_node.prev.next = node
+		_next_node.prev = node
+		lsize = lsize + 1
+		return mk_list_iterator[T](node)
+	end
+
+	private function do_insert_after(_prev_node as list_node_no_data[T], v as T) as list_iterator[T]
+		dim node = new list_node[T]
+		node.v = v
+		node.next = _prev_node.next
+		node.prev = _prev_node
+		_prev_node.next.prev = node
+		_prev_node.next = node
+		lsize = lsize + 1
+		return mk_list_iterator[T](node)
+	end
+
+	public function insert_front(v as T) as list_iterator[T] => do_insert_after(head, v)
+	public function insert_back(v as T) as list_iterator[T] => do_insert_before(head, v)
+
+	public function front() as list_iterator[T] => mk_list_iterator[T](head.next)
+	public function last() as list_iterator[T] => mk_list_iterator[T](head.prev)
+	public function ends() as list_iterator[T] => mk_list_iterator[T](static_cast[list_node[T]](head))
+
+	public function insert_before(next_node as list_iterator[T], v as T) as list_iterator[T] => do_insert_before(next_node._node, v)
+	public function insert_after(prev_node as list_iterator[T], v as T) as list_iterator[T] => do_insert_after(prev_node._node, v)
+	
+	public function __init__()
+		head = new list_node_no_data[T]
+		head.next = head
+		head.prev = head
+		lsize = 0
+	end
+
+	public function remove(node as list_iterator[T])
+		dim _node = node._node
+		if _node !== head then
+			_node.prev.next = _node.next
+			_node.next.prev = _node.prev
+			lsize = lsize - 1
+		end
+	end
+
+	public function clear()
+		head.next = head
+		head.prev = head
+		lsize = 0
+	end
+
+	public function empty() as boolean
+		return lsize == 0
+	end
+
+	public function size() as uint
+		return lsize
+	end
+end
+
+class list_node_no_data[T]
+	public prev as list_node_no_data[T]
+	public next as list_node_no_data[T]
+end
+
+class list_node[T] : list_node_no_data[T]
+	public v as T
+end
+
+struct list_iterator[T]
+	public _node as list_node_no_data[T]
+	public function get() as T => static_cast[list_node[T]](_node).v
+	public function get_ptr() as pointer => addressof(static_cast[list_node[T]](_node).v)
+	public function next() as list_iterator[T]
+		dim ret as list_iterator[T]
+		ret._node = _node.next
+		return ret
+	end 
+	public function forward() => _node = _node.next
+
+	public function prev() as list_iterator[T]
+		dim ret as list_iterator[T]
+		ret._node = _node.prev
+		return ret
+	end 
+	public function backward() => _node = _node.prev	
+	public function __eq__(other as list_iterator[T]) as boolean => _node === other._node
+	public function __ne__(other as list_iterator[T]) as boolean => _node !== other._node
+end
+
+function mk_list_iterator[T](node as list_node_no_data[T]) as list_iterator[T]
+	dim ret as list_iterator[T]
+	ret._node = node
+	return ret
+end

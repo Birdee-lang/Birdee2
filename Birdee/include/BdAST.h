@@ -60,6 +60,7 @@ namespace llvm
 	class FunctionType;
 	class StructType;
 	class DIType;
+	class TargetMachine;
 }
 namespace Birdee {
 	using std::string;
@@ -110,6 +111,7 @@ namespace Birdee {
 		PyHandle py_scope;
 		string source_dir;
 		string source_file;
+		bool is_header_only;
 		BD_CORE_API void HandleImport();
 		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
 	};
@@ -205,7 +207,6 @@ namespace Birdee {
 		}
 	};
 
-	class ClassAST;
 	class PrototypeAST;
 	BD_CORE_API extern string GetClassASTName(ClassAST*);
 	BD_CORE_API extern bool operator ==(const PrototypeAST& ,const PrototypeAST& );
@@ -320,7 +321,8 @@ namespace Birdee {
 
 	class PrototypeAST;
 	class ScriptAST;
-
+	struct CompilerOptions;
+	extern unique_ptr<CompilerOptions> DefaultCompilerOptions();
 	class BD_CORE_API CompileUnit
 	{
 	public:
@@ -331,12 +333,13 @@ namespace Birdee {
 		string targetmetapath;
 		string symbol_prefix;
 		string homepath;
-		bool is_corelib=false;
-		bool is_print_ir = false;
-		bool expose_main = false;
+		bool is_corelib = false;
 		bool is_script_mode = false;
+		unique_ptr<CompilerOptions> options;
+
 		bool is_compiler_mode = false; //if the Birdee Compiler Core is called by birdeec, it should be set true; if called & loaded by python, remain false
 		bool is_intrinsic = false; //if the current module is an intrinsic module
+
 		vector<string> search_path; //the search paths, with "/" at the end
 		vector<unique_ptr<StatementAST>> toplevel;
 		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
@@ -373,9 +376,19 @@ namespace Birdee {
 		void Clear();
 		void Phase0();
 		void Phase1();
+		//This method is for REPL. It clears all codegen states related to the
+		//current LLVM module, and prepares for the next statement generate from
+		//REPL. All GlobalValues in LLVM module will be changed to "extern".It 
+		//retains the AST in the CU 
+		void SwitchModule();
+		void ClearParserAndProprocessing();
 		void InitForGenerate();
-		void Generate();
+		//generate object file. returns if it is empty.
+		bool Generate();
+		bool GenerateIR(bool is_repl, bool needs_main_checking);
 		void AbortGenerate();
+		CompileUnit();
+		~CompileUnit();
 	};
 	BD_CORE_API extern  CompileUnit cu;
 
@@ -671,7 +684,7 @@ namespace Birdee {
 		Token Op;
 		FunctionAST* func = nullptr;
 		unique_ptr<ExprAST> arg;
-		std::unique_ptr<StatementAST> Copy();
+		unique_ptr<StatementAST> Copy();
 		//first resolve variables then resolve class names
 		void Phase1();
 		llvm::Value* Generate();
@@ -683,6 +696,25 @@ namespace Birdee {
 			ExprAST::print(level);
 			std::cout << "typeof \n";
 			arg->print(level + 1);
+		}
+	};
+
+	class BD_CORE_API ArrayInitializerExprAST : public ExprAST {
+	public:
+		vector<unique_ptr<ExprAST>> values;
+		unique_ptr<ExprAST> dummy; //MSVC shows an error here it we remove this line. I don't know why.
+		void Phase1();
+		llvm::Value* Generate();
+		unique_ptr<StatementAST> Copy();
+		ArrayInitializerExprAST(vector<unique_ptr<ExprAST>>&& values, SourcePos Pos)
+			:values(std::move(values)) {
+			this->Pos = Pos;
+		}
+		void print(int level) {
+			ExprAST::print(level);
+			std::cout << "array \n";
+			//for(auto& v: values)
+			//	v->print(level + 1);
 		}
 	};
 
@@ -794,10 +826,10 @@ namespace Birdee {
 
 
 	class BD_CORE_API VariableSingleDefAST : public VariableDefAST {
+		llvm::Value* llvm_value = nullptr;
 	public:
 		std::unique_ptr<Type> type;
 		std::unique_ptr<ExprAST> val;
-		llvm::Value* llvm_value = nullptr;
 		ResolvedType resolved_type;
 
 		//the capture index in the "context" object
@@ -833,7 +865,8 @@ namespace Birdee {
 				return;
 			resolved_type = ResolvedType(*type,Pos);
 		}
-
+		llvm::Value* GetLLVMValue();
+		void SetLLVMValue(llvm::Value*);
 		VariableSingleDefAST(const std::string& _name, const ResolvedType& _type) : name(_name), resolved_type(_type), val(nullptr) {}
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val) : name(_name), type(std::move(_type)), val(std::move(_val)) {}
 		VariableSingleDefAST(const std::string& _name, std::unique_ptr<Type>&& _type, std::unique_ptr<ExprAST>&& _val, SourcePos Pos) : name(_name), type(std::move(_type)), val(std::move(_val)) {
@@ -891,17 +924,15 @@ namespace Birdee {
 		LocalVarExprAST(VariableSingleDefAST* def, SourcePos pos) :def(def) { Pos = pos; Phase1(); }
 		void Phase1();
 		llvm::Value* Generate();
-		llvm::Value* GetLValue(bool checkHas) override { return checkHas? (llvm::Value*)1:def->llvm_value; };
+		llvm::Value* GetLValue(bool checkHas) override { return checkHas? (llvm::Value*)1:def->GetLLVMValue(); };
 	};
 
 	/// PrototypeAST - This class represents the "prototype" for a function,
 	/// which captures its name, and its argument names (thus implicitly the number
 	/// of arguments the function takes).
 	class BD_CORE_API PrototypeAST {
-	protected:
-		
-		std::unique_ptr<Type> RetType;
 	public:
+		std::unique_ptr<Type> RetType;
 		SourcePos pos;
 		std::string Name;
 		std::unique_ptr<PrototypeAST> Copy();
@@ -915,6 +946,8 @@ namespace Birdee {
 		std::size_t rawhash() const; 
 		//compare the arguments, return type and the belonging class, without comparing is_closure field
 		bool IsSamePrototype(const PrototypeAST&) const;
+		//Check if "this" can be assigned with "that". True if all types in "this" is parent class of "that"
+		bool CanBeAssignedWith(const PrototypeAST& that) const;
 		ResolvedType resolved_type;
 		std::unique_ptr<VariableDefAST> Args;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
@@ -1021,6 +1054,7 @@ namespace Birdee {
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
+		T* GetOrCreateImpl(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos);
 		BD_CORE_API T* GetOrCreate(unique_ptr<vector<TemplateArgument>>&& v, T* source_template, SourcePos pos);
 		T* Get(vector<TemplateArgument>& v)
 		{
@@ -1043,6 +1077,7 @@ namespace Birdee {
 
 	/// FunctionAST - This class represents a function definition itself.
 	class BD_CORE_API FunctionAST : public ExprAST {
+		llvm::Value* llvm_func = nullptr;
 	public:
 		ASTBasicBlock Body;
 		unique_ptr<TemplateParameters<FunctionAST>> template_param;
@@ -1068,7 +1103,6 @@ namespace Birdee {
 
 		llvm::Value* exported_capture_pointer;
 		llvm::Value* imported_capture_pointer;
-		llvm::Value* llvm_func = nullptr;
 		llvm::StructType* exported_capture_type = nullptr;
 		llvm::StructType* imported_capture_type = nullptr;
 
@@ -1086,6 +1120,7 @@ namespace Birdee {
 		//get the VariableSingleDefAST of imported captured var
 		VariableSingleDefAST* GetImportedCapturedVariable(const string& name);
 
+		llvm::Value* GetLLVMFunc();
 		llvm::DIType* PreGenerate();
 		llvm::Value* Generate();
 		std::unique_ptr<StatementAST> Copy();
@@ -1114,6 +1149,7 @@ namespace Birdee {
 		//we add a phase0 because we may reference a function before we parse the function in phase1
 		void Phase0();
 		void Phase1();
+		void ClearLLVMFunction();
 
 		bool isTemplate() { return template_param!=nullptr && (template_param->is_vararg || template_param->params.size() != 0); }
 
@@ -1160,6 +1196,12 @@ namespace Birdee {
 	{
 	public:
 		AccessModifier access;
+		static constexpr int VIRT_NONE = -1;
+		static constexpr int VIRT_UNRESOLVED = -2;
+		//the index in the vtable, or VIRT_NONE if is non-virtual
+		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
+		//only valid after Phase0
+		int virtual_idx = -1;
 		std::unique_ptr<FunctionAST> decl;
 		void print(int level)
 		{
@@ -1172,7 +1214,7 @@ namespace Birdee {
 			decl->print(level);
 		}
 		MemberFunctionDef Copy();
-		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl) :access(access), decl(std::move(decl)) {}
+		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl, int virtual_idx = -1) :access(access), decl(std::move(decl)), virtual_idx(virtual_idx){}
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
@@ -1200,10 +1242,15 @@ namespace Birdee {
 	public:
 		std::unique_ptr<StatementAST> Copy();
 		std::unique_ptr<ClassAST> CopyNoTemplate();
+		void ClearLLVMFunction();
 		llvm::Value* Generate();
 		std::string name;
 		bool needs_rtti = false;
 		bool is_struct = false;
+		int done_phase = 0;
+		//the table of virtual functions, including the inherited virt functions from parents
+		//valid after Phase0
+		vector<FunctionAST*> vtabledef;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
 		unique_ptr< vector<TemplateArgument>> template_instance_args;
@@ -1212,6 +1259,7 @@ namespace Birdee {
 		unordered_map<reference_wrapper<const string>, int> fieldmap;
 		unordered_map<reference_wrapper<const string>, int> funcmap;
 
+		//resolved after Phase0
 		ClassAST* parent_class = nullptr;
 		std::unique_ptr<Type> parent_type;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
@@ -1228,6 +1276,7 @@ namespace Birdee {
 		}
 		bool isTemplateInstance() { return template_instance_args != nullptr; }
 		bool isTemplate() { return template_param != nullptr && (template_param->params.size() != 0 || template_param->is_vararg); }
+		bool HasParent(ClassAST* checkparent);
 		string GetUniqueName();
 		void PreGenerate();
 		void PreGenerateFuncs();
@@ -1278,6 +1327,7 @@ namespace Birdee {
 			member_function,
 			member_imported_dim,
 			member_imported_function,
+			member_virtual_function,
 		}kind;
 		void Phase1();
 		bool isMutable() {
@@ -1295,11 +1345,8 @@ namespace Birdee {
 			const std::string& member)
 			: Obj(std::move(Obj)), member(member), kind(member_error), func(nullptr) {}
 		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
-			MemberFunctionDef* member,SourcePos pos)
-			: Obj(std::move(Obj)), func(member), kind(member_function) {
-			resolved_type = func->decl->resolved_type;
-			Pos = pos;
-		}
+			MemberFunctionDef* member, SourcePos pos);
+
 		MemberExprAST(std::unique_ptr<ExprAST> &&Obj,
 			FieldDef* member, SourcePos pos)
 			: Obj(std::move(Obj)), field(member), kind(member_field) {

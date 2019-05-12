@@ -169,6 +169,7 @@
     <ClInclude Include="include\BindingUtil.h" />
     <ClInclude Include="include\CastAST.h" />
     <ClInclude Include="include\CompileError.h" />
+    <ClInclude Include="include\CompilerOptions.h" />
     <ClInclude Include="include\LibDef.h" />
     <ClInclude Include="include\Metadata.h" />
     <ClInclude Include="include\NameMangling.h" />
@@ -192,8 +193,10 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <Text Include="..\BirdeeHome2\src\rtti.txt" />
     <Text Include="..\BirdeeHome\pylib\bdutils.py" />
-    <Text Include="..\BirdeeHome\src\functional.txt" />
+    <Text Include="..\BirdeeHome\src\functional\option.txt" />
+    <Text Include="..\BirdeeHome\src\string_buffer.txt" />
     <Text Include="..\BirdeeHome\src\unsafe.txt" />
     <Text Include="..\BirdeeHome\src\variant.txt" />
     <Text Include="..\BirdeeHome\src\vector.txt" />
@@ -201,7 +204,6 @@
     <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt" />
     <Text Include="..\BirdeeHome\src\fmt.txt" />
     <Text Include="..\BirdeeHome\src\hash_map.txt" />
-    <Text Include="..\BirdeeHome\src\list.txt" />
     <Text Include="..\BirdeeHome\src\templates.txt" />
     <Text Include="..\BirdeeHome\src\template_user_lib.txt" />
     <Text Include="..\BirdeeHome\src\test.txt" />
@@ -220,6 +222,8 @@
     <None Include="..\BirdeeHome\pylib\bbuild.py" />
     <None Include="..\BirdeeHome\pylib\getset.py" />
     <None Include="..\BirdeeHome\pylib\traits.py" />
+    <None Include="..\BirdeeHome\src\hash_set.bdm" />
+    <None Include="..\BirdeeHome\src\list.bdm" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\getset_test.py" />
     <None Include="..\tests\scripttest.py" />

@@ -196,6 +196,7 @@ def search_src(modu):
 		if os.path.exists(p) and os.path.isfile(p) :
 			return p
 
+#returns if is HeaderOnly
 def parse_bmm_dependency(bmm_path,self_cu):
 	with open(bmm_path) as f:
 		data = json.load(f)
@@ -204,6 +205,18 @@ def parse_bmm_dependency(bmm_path,self_cu):
 			if dep[-1][0]==':' or dep[-1][0]=='*':  #if it is a "name import"
 				dep.pop() #pop the imported name
 			self_cu.add_dependency(prepare_module(dep,False))
+		if 'HeaderOnly' in data:
+			return data['HeaderOnly']
+		else:
+			return False
+
+def parse_bmm_is_header_only(bmm_path):
+	with open(bmm_path) as f:
+		data = json.load(f)
+		if 'HeaderOnly' in data:
+			return data['HeaderOnly']
+		else:
+			return False
 
 def create_dirs(root,modu):
 	dirname=os.path.join(root,*modu[:-1])
@@ -220,8 +233,8 @@ def prepare_module(modu,is_main):
 		cu = compile_unit(False,None,tuple_modu)
 		prepared_mod[tuple_modu] = cu
 		update_max_bin_timestamp(bmm+".bmm")
-		link_path.append(bmm)
-		parse_bmm_dependency(bmm+".bmm", cu)
+		if not parse_bmm_dependency(bmm+".bmm", cu): #if is not header only
+			link_path.append(bmm)
 	else:
 		src=search_src(modu)
 		if not src:
@@ -271,7 +284,8 @@ def compile_module(modu,src,is_main):
 	ret=subprocess.run(cmdarr)
 	if ret.returncode!=0:
 		raise RuntimeError("Compile failed")
-	link_path.append(outfile)
+	if not parse_bmm_is_header_only(outfile + '.bmm'):
+		link_path.append(outfile)
 
 def init_path():
 	global bd_home,compiler_path

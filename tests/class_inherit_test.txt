@@ -1,3 +1,6 @@
+import unsafe:up_cast
+
+@init_script
 {@
 import bdutils
 @}
@@ -88,10 +91,14 @@ class TestFather[A, B, C, ...] : TestSon[A, C]
 end
 
 dim ts = new TestFather[int, double, boolean]:create()
+dim tb as TestBase[int] = ts
 
+println(int2str(tb.base1))
 println(int2str(ts.base1))
 println(int2str(ts.base2))
 println(ts.basestr)
+
+ts = up_cast[TestFather[int, double, boolean]](tb)
 
 println("=============")
 
@@ -144,4 +151,26 @@ println(ts.basestr)
 
 println(int2str(ts.pubget()))
 println(typeof(ts).get_name())
+
+class bird
+	@virtual
+	public func say(a as string) as int
+		println("bird"+a)
+		return 1
+	end
+end
+
+class quail : bird
+	@virtual
+	public func say(a as string) as int
+		println("quail"+a)
+		return 2
+	end
+end
+
+dim a = new quail
+dim b as bird =a
+b.say("asd")
+println("End")
+
 getchar()

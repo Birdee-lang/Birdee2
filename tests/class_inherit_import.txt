@@ -1,0 +1,7 @@
+import class_inherit_test:bird
+import class_inherit_test:quail
+
+println("import test")
+dim a = new quail
+dim b as bird=a
+b.say("hello")

@@ -27,4 +27,24 @@ namespace Birdee
 		}
 		llvm::Value* Generate();
 	};
+	class BD_CORE_API UpcastExprAST : public ExprAST
+	{
+	public:
+		ClassAST* target;
+		unique_ptr<ExprAST> expr;
+		void Phase1() override {};
+		unique_ptr<StatementAST> Copy();
+		void print(int level)
+		{
+			ExprAST::print(level); 
+			std::cout << "upcast " << expr->resolved_type.class_ast->GetUniqueName() << " -> " << target->GetUniqueName() << "\n";
+			expr->print(level + 1);
+		}
+		UpcastExprAST(unique_ptr<ExprAST>&& _expr, ClassAST* target, SourcePos pos) :expr(std::move(_expr)),target(target)
+		{
+			Pos = pos;
+			this->resolved_type = ResolvedType(target);
+		}
+		llvm::Value* Generate();
+	};
 }

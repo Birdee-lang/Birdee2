@@ -1,3 +1,5 @@
+import string_buffer:string_buffer
+
 @init_script
 {@
 ty_str=resolve_type("birdee.string")
@@ -5,6 +7,8 @@ ty_int=resolve_type("int")
 ty_double=resolve_type("double")
 ty_pointer=resolve_type("pointer")
 ty_bool=resolve_type("boolean")
+from bdutils import *
+from traits import *
 @}
 
 function fmtprint[fmt as string,...](...)
@@ -42,6 +46,9 @@ for i in range(len(fmt)):
 			elif fmt[i]=='s':
 				check_type(args,arg_idx,ty_str)
 				body.push_back(expr(f"print(___vararg{arg_idx})"))
+			elif fmt[i]=='f':
+				check_type(args,arg_idx,ty_str)
+				body.push_back(expr(f"print(double2str(___vararg{arg_idx}))"))
 			elif fmt[i]=='p':
 				check_type(args,arg_idx,ty_pointer)
 				body.push_back(expr(f"print(pointer2str(___vararg{arg_idx}))"))
@@ -63,3 +70,53 @@ if cur_str:
 	body.push_back(expr(f"print('''{cur_str}''')"))
 @}
 end
+
+
+function array_to_str[T](v as T[]) as string
+	if v===null then
+		return "(null array)"
+	end
+	dim buf as string_buffer = new string_buffer
+	buf.append("[")
+	for dim i =0u till v.length() - 1 
+		buf.append(to_str[T](v[i]))
+		buf.append(",")
+	end
+	if v.length()>0 then
+		buf.append(to_str[T](v[v.length()-1]))
+	end
+	buf.append("]")
+	return buf.to_str()
+end
+
+function to_str[T](v as T) as string
+{@
+T = get_func_type_templ_at(0)
+if is_reference(T):
+	set_stmt('''if v===null then
+	return "(null reference)"
+end
+''')
+@}
+
+{@
+if is_boolean(T):
+	set_stmt("return bool2str(v)")
+elif is_pointer(T):
+	set_stmt("return pointer2str(v)")	
+elif T == ty_str:
+	set_stmt("return v")
+elif is_integer(T):
+	set_stmt("return int2str(v)")
+elif is_float_point(T):
+	set_stmt("return double2str(v)")
+elif T.index_level>0:
+	set_stmt("return array_to_str(v)")
+elif is_a_class(T):
+	set_stmt('''return "<{} object at "+ pointer2str(pointerof(v)) +">"'''.format(str(T)))
+else:
+	raise RuntimeError("Cannot convert {} to string".format(str(T)))
+@}
+end
+
+function printany[T](v as T) => print(to_str[T](v))

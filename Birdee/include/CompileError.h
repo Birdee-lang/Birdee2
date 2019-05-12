@@ -19,12 +19,21 @@ namespace Birdee
 		CompileError(const std::string& _msg) : pos(GetCurrentSourcePos()), msg(_msg) {
 			last_error = *this;
 		}
-		void print()
+		std::string GetMessage() const
 		{
-			printf("Compile Error at %s : %s", pos.ToString().c_str(), msg.c_str());
+			std::string str = "Compile Error at ";
+			str += pos.ToString(); str += " : ";str += msg;
 			auto ret = GetTemplateStackTrace();
 			if (!ret.empty())
-				printf("\nTemplate stack trace:\n%s", ret.c_str());
+			{
+				str += "\nTemplate stack trace:\n";
+				str += ret;
+			}
+			return str;
+		}
+		void print()
+		{
+			printf("%s", GetMessage().c_str());
 		}
 	};
 	template<typename T>

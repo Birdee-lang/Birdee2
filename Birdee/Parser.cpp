@@ -553,25 +553,40 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	{
 	case tok_address_of:
 	case tok_pointer_of:
-	// {
-	// 	Token tok = tokenizer.CurTok;
-	// 	SourcePos pos = tokenizer.GetSourcePos();
-	// 	tokenizer.GetNextToken();
-	// 	CompileExpect(tok_left_bracket, "Expected \"(\" after addressof");
-	// 	firstexpr = ParseExpressionUnknown();
-	// 	CompileExpect(tok_right_bracket, "Expected \')\'");
-	// 	push_expr(make_unique<AddressOfExprAST>(std::move(firstexpr), tok == tok_address_of, pos));
-	// 	break;
-	// }
 	case tok_typeof:
 	{
 		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
-		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof");
+		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof/addressof/pointerof");
 		firstexpr = ParseExpressionUnknown();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		// push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
+		break;
+	}
+	case tok_left_index:
+	{
+		auto pos = tokenizer.GetSourcePos();
+		tokenizer.GetNextToken();
+		vector<unique_ptr<ExprAST>> values;
+		while (tokenizer.CurTok != tok_right_index)
+		{
+			CompileAssert(tokenizer.CurTok != tok_eof, "Unexpected end of file. Unmatched \'[\'.");
+			values.push_back(ParseExpressionUnknown());
+			if (tokenizer.CurTok != tok_comma)
+			{
+				CompileAssert(tokenizer.CurTok == tok_right_index, "Expecting \']\' for array initializer");
+				break;
+			}
+			else
+			{
+				//eat ","
+				tokenizer.GetNextToken();
+			}
+		}
+		//eat ]
+		tokenizer.GetNextToken();
+		push_expr(make_unique<ArrayInitializerExprAST>(std::move(values), pos));
 		break;
 	}
 	case tok_not:
@@ -828,7 +843,7 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=to
 		case tok_return:
 			tokenizer.GetNextToken(); //eat return
 			pos = tokenizer.GetSourcePos();
-			assert(current_func_proto && "Current func proto is empty!");
+			//assert(current_func_proto && "Current func proto is empty!");
 			if (tokenizer.CurTok == tok_newline)
 			{
 				push_expr(make_unique<ReturnAST>(pos));
@@ -1189,6 +1204,19 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 	return make_unique<FunctionAST>(std::move(funcproto), link_name, funcproto->pos);
 }
 
+//is_field: true for FieldDef, false for MemberFunctionDef
+//index: the index within fields/funcdef
+static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, int index)>> interal_class_annontation_map = {
+	{"virtual", [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
+		CompileAssert(!cls->is_struct, "The \'virtual\' annotation can only be applied on class functions");
+		CompileAssert(!cls->isTemplate(), "The \'virtual\' annotation cannot be applied on class templates");
+		cls->needs_rtti = true;
+		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
+		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
+	}}
+};
+
 BD_CORE_API bool ParseClassBody(ClassAST* ret)
 {
 	std::vector<FieldDef>& fields = ret->fields;
@@ -1209,11 +1237,26 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 	};
 	AccessModifier access;
+	while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
+	std::vector<string> anno;
+	while (tokenizer.CurTok == tok_annotation)
+	{
+		anno.emplace_back(std::move(tokenizer.IdentifierStr));
+		tokenizer.GetNextToken();
+		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
+	}
+	auto apply_annotations = [&anno, ret](bool is_field, int index)
+	{
+		for (auto& ano : anno)
+		{
+			auto itr = interal_class_annontation_map.find(ano);
+			CompileAssert(itr != interal_class_annontation_map.end(), string("Unrecognized annotation: ") 
+				+ ano + " ,note that class members only supports internal annotations. Python annotations are not supported");
+			itr->second(ret, is_field, index);
+		}
+	};
 	switch (tokenizer.CurTok)
 	{
-	case tok_newline:
-		tokenizer.GetNextToken(); //eat newline
-		break;
 	case tok_dim:
 		throw CompileError("You should use public/private to define a member variable in a class");
 		break;
@@ -1230,7 +1273,9 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 				fields.push_back(FieldDef(access, std::move(def), fields.size()));
 				fieldmap.insert(std::make_pair(reference_wrapper<const string>(fields.back().decl->name), fields.size() - 1));
 			});
+			apply_annotations(true, fields.size() - 1);
 			CompileExpect(tok_newline, "Expected a new line after variable definition");
+
 		}
 		else if (tokenizer.CurTok == tok_func)
 		{
@@ -1240,6 +1285,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
 			CompileExpect(tok_newline, "Expected a new line after function definition");
+			apply_annotations(false, funcs.size() - 1);
 		}
 		else
 		{
@@ -1253,6 +1299,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
 		CompileExpect({ tok_newline }, "Expected a new line after function definition");
+		apply_annotations(false, funcs.size() - 1);
 		break;
 	case tok_declare:
 		tokenizer.GetNextToken(); //eat declare
@@ -1261,6 +1308,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
+		apply_annotations(false, funcs.size() - 1);
 		break;
 	default :
 		return false;
@@ -1481,7 +1529,7 @@ BD_CORE_API string GetModuleNameByArray(const vector<string>& package)
 	return ret;
 }
 
-ImportedModule* DoImportPackage(const vector<string>& package)
+BD_CORE_API ImportedModule* DoImportPackage(const vector<string>& package)
 {
 	auto prv = cu.imported_packages.Contains(package);
 	if(prv)
@@ -1568,7 +1616,7 @@ bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
 	return false;
 }
 
-void DoImportName(const vector<string>& package, const string& name)
+BD_CORE_API void DoImportName(const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
@@ -1581,7 +1629,7 @@ void DoImportName(const vector<string>& package, const string& name)
 
 static vector<vector<string>> auto_import_packages = { {"birdee"} };
 
-void AddAutoImport()
+BD_CORE_API void AddAutoImport()
 {
 	for(auto& imp:auto_import_packages)
 		DoImportPackageAll(imp);
@@ -1748,6 +1796,21 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 		ret = std::move(funcast);
 		break;
 	}
+	case tok_return:
+	{
+		tokenizer.GetNextToken(); //eat return
+		auto pos = tokenizer.GetSourcePos();
+		if (tokenizer.CurTok == tok_newline || tokenizer.CurTok == tok_eof)
+		{
+			ret = make_unique<ReturnAST>(pos);
+		}
+		else
+		{
+			ret = make_unique<ReturnAST>(ParseExpressionUnknown(), pos);
+		}
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line");
+		break;
+	}
 	default:
 		ret = ParseExpressionUnknown();
 		BasicBlockCheckUnknownToken({ tok_eof,tok_newline });
@@ -1765,17 +1828,17 @@ BD_CORE_API void ParseTopLevelImportsOnly()
 	ParseImports(/*need_do_import*/false);
 }
 
-BD_CORE_API int ParseTopLevel()
+BD_CORE_API int ParseTopLevel(bool autoimport)
 {
 	std::vector<std::unique_ptr<StatementAST>>& out = cu.toplevel;
 	std::unique_ptr<ExprAST> firstexpr;
 	tokenizer.GetNextToken();
 	while (tokenizer.CurTok == tok_newline)
 		tokenizer.GetNextToken();
-
-	if(!cu.is_corelib)
+	if (autoimport)
+		ParsePackage();
+	if(autoimport &&!cu.is_corelib)
 		AddAutoImport();
-	ParsePackage();
 	ParseImports(/*need_do_import*/true);
 	
 	while (tokenizer.CurTok != tok_eof && tokenizer.CurTok != tok_error)
@@ -1901,6 +1964,7 @@ BD_CORE_API int ParseTopLevel()
 			CompileAssert(firstexpr != nullptr, "Compiler internal error: firstexpr=null");
 			push_expr(std::move(firstexpr));
 		}
+		tokenizer.SetCanEOF();
 	}
 
 	return 0;
