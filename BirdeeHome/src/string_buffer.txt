@@ -1,0 +1,12 @@
+import vector:vector
+
+class string_buffer
+	private buf as vector[byte]
+	public func to_str() as string => new string:copy_bytes(buf.buffer(),0,buf.size())
+	public func __init__() => buf = new vector[byte](0)
+	public func append(v as string) as string_buffer
+		dim b = v.get_bytes()
+		buf.push_chunk(b,0,v.length())
+		return this
+	end
+end

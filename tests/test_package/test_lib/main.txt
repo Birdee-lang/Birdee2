@@ -1,37 +1,58 @@
 import fmt
 import list:list
-import hash_set:hash_set
-import hash_map:hash_map
-import stack:stack
-import queue:queue
+#import hash_set:hash_set
+#import hash_map:hash_map
+#import stack:stack
+#import queue:queue
 
 declare function getchar() as int
+
+@enable_rtti
+class assertion_exception
+
+end
+
+{@
+from bdutils import *
+@}
+
+function assert(v as boolean)
+	if !v then
+		throw new assertion_exception
+	end
+end
+
+function check_list[values as string](lst as list[uint])
+	dim itr = lst.front()
+{@
+values = get_func_expr_templ_at(0).value.split(',')
+body = get_cur_func().body
+for v in values:
+	body.push_back(expr('''assert({}==itr.get())'''.format(v)))
+	body.push_back(expr('''itr.forward()'''.format(v)))
+body.push_back(expr('''assert(itr==lst.ends())'''))
+@}
+end
 
 # test list
 dim lst = new list[uint]
 
-println(int2str(lst.get_size()))
-if lst.empty() then
-	println("list is empty")
-end
+assert(lst.size()==0)
+assert(lst.empty())
 
 lst.insert_back(123)
 lst.insert_back(234)
 lst.insert_back(345)
 
-dim cur = lst.head.next
-while (cur !== lst.head)
-	println(int2str(cur.v))
-	cur = cur.next
-end
+check_list["123,234,345"](lst)
 
-println(int2str(lst.get_size()))
-if lst.empty() then
-	println("list is empty")
-end
+assert(lst.size()==3)
+assert(!lst.empty())
 
+println("Done")
 getchar()
 
+##
 # test queue
 dim q = new queue[uint]
 
@@ -149,3 +170,4 @@ end
 println(int2str(hs.get_size()))
 
 getchar()
+##

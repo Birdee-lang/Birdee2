@@ -2,6 +2,25 @@ from birdeec import *
 
 _ = []
 
+
+def is_float_point(rtype):
+	return rtype.index_level==0 and ( rtype.base==BasicType.FLOAT or rtype.base==BasicType.DOUBLE)
+
+def is_integer(rtype):
+	return rtype.is_integer()
+
+def is_pointer(rtype):
+	return rtype.index_level==0 and rtype.base==BasicType.POINTER 
+
+def is_boolean(rtype):
+	return rtype.index_level==0 and rtype.base==BasicType.BOOLEAN 
+
+def is_a_class(rtype):
+	return rtype.index_level==0 and rtype.base==BasicType.CLASS and  not rtype.get_detail().is_struct
+
+def is_reference(rtype):
+	return rtype.index_level>0 or is_a_class(rtype)
+
 def get_boolean_type():
 	a = ResolvedType()
 	a.set_detail(BasicType.BOOLEAN,None)
@@ -64,8 +83,12 @@ def	OR(pack1, pack2):
 		return (result1 or result2, and_str_func)
 	return (or_func,) + pack1[1:] + pack2[1:]	
 
-def is_cls_template_inst(scls):
-	return (scls.is_template_instance(), lambda:"The input class {} is expected to be a template instance".format(scls.get_unique_name()) )
+def is_template_inst(scls):
+	result = scls.is_template_instance
+	if not isinstance(result, bool):
+		result = result()
+	return (result, lambda:"The input class/function {} is expected to be a template instance".format(scls.get_unique_name()) )
+
 
 def index_within(index, st, ed):
 	return (st <= index <ed, lambda:"The index {index} is expected to be {st}<= index < {ed}".format(index=index, st= st, ed= ed) )
@@ -77,7 +100,7 @@ def is_cls_template(scls):
 	return (scls.is_template(), lambda:"The input class {} is expected to be a template".format(scls.get_unique_name()) )
 
 def is_type_templ_arg_in_class(clazz,idx):
-	require_(is_cls_template_inst(clazz), index_within(idx, 0, len(clazz.template_instance_args)))
+	require_(is_template_inst(clazz), index_within(idx, 0, len(clazz.template_instance_args)))
 	arg = clazz.template_instance_args[idx]
 	return (arg.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE , 
 		lambda:"The {}-th template argument of class {} is expected to be a type".format(idx, clazz.get_unique_name()))
@@ -87,7 +110,7 @@ def is_type_templ_arg(arg,idx):
 		lambda:"The {}-th template argument is expected to be a type".format(idx))
 
 def is_expr_templ_arg(args,idx):
-	return (args[idx].kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_EXPR , 
+	return (args.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_EXPR , 
 		lambda:"The {}-th template argument is expected to be an expression".format(idx))
 
 '''

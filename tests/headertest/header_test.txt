@@ -1,0 +1,5 @@
+package headertest
+import headertest.header
+
+dim a = new headertest.header.AAA[int]
+a.say()

@@ -1,5 +1,5 @@
 package test_package.a
 
-function func()
+function funct()
 	println("HAHA")
 end

@@ -78,6 +78,9 @@
     <ClInclude Include="include\PyWrapper.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="include\CompilerOptions.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -109,9 +112,6 @@
     <Text Include="..\BirdeeHome\src\template_test.txt">
       <Filter>资源文件\template</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\list.txt">
-      <Filter>资源文件\blib</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\hash_map.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
@@ -139,9 +139,6 @@
     <Text Include="..\tests\exception_test.txt">
       <Filter>资源文件\tests</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\functional.txt">
-      <Filter>资源文件\blib</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\unsafe.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
@@ -156,6 +153,15 @@
     </Text>
     <Text Include="..\BirdeeHome\pylib\bdutils.py">
       <Filter>资源文件\pylib</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome2\src\rtti.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\functional\option.txt">
+      <Filter>资源文件\blib</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\string_buffer.txt">
+      <Filter>资源文件\blib</Filter>
     </Text>
   </ItemGroup>
   <ItemGroup>
@@ -176,6 +182,12 @@
     </None>
     <None Include="..\BirdeeHome\pylib\traits.py">
       <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\hash_set.bdm">
+      <Filter>资源文件\blib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\list.bdm">
+      <Filter>资源文件\blib</Filter>
     </None>
   </ItemGroup>
 </Project>

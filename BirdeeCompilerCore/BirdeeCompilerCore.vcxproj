@@ -156,6 +156,7 @@
     <ClCompile Include="..\Birdee\CodeGen.cpp" />
     <ClCompile Include="..\Birdee\CopyAST.cpp" />
     <ClCompile Include="..\Birdee\Intrinsics.cpp" />
+    <ClCompile Include="..\Birdee\KaleidoscopeJIT.cpp" />
     <ClCompile Include="..\Birdee\MetadataDeserializer.cpp" />
     <ClCompile Include="..\Birdee\MetadataSerializer.cpp" />
     <ClCompile Include="..\Birdee\NumberCast.cpp" />
@@ -169,6 +170,7 @@
     <ClInclude Include="..\Birdee\include\BindingUtil.h" />
     <ClInclude Include="..\Birdee\include\CastAST.h" />
     <ClInclude Include="..\Birdee\include\CompileError.h" />
+    <ClInclude Include="..\Birdee\include\KaleidoscopeJIT.h" />
     <ClInclude Include="..\Birdee\include\LibDef.h" />
     <ClInclude Include="..\Birdee\include\Metadata.h" />
     <ClInclude Include="..\Birdee\include\OpEnums.h" />

@@ -45,6 +45,9 @@
     <ClCompile Include="..\Birdee\Intrinsics.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="..\Birdee\KaleidoscopeJIT.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Birdee\include\abort.h">
@@ -90,6 +93,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="..\Birdee\include\LibDef.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Birdee\include\KaleidoscopeJIT.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

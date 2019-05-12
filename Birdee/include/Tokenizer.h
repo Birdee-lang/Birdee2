@@ -36,6 +36,10 @@ namespace Birdee
 	public:
 		virtual ~Stream() {};
 		virtual int Getc() = 0;
+		//REPL input stream should override this function, the parser 
+		//will call this function to indicate that a top-level statement
+		//is parsed, and the input stream can emit EOF if the buffer is empty
+		virtual void SetCanEOF(){}
 	};
 
 	class FileStream: public Stream
@@ -74,6 +78,10 @@ namespace Birdee
 		}
 	};
 
+	//the input stream may return TOKENIZER_PENDING_CHAR if the input is pending
+	//TOKENIZER_PENDING_CHAR should only occur after a '\n'
+	//tokenizer may call Getc again to receive a normal char
+	constexpr int TOKENIZER_PENDING_CHAR = -23;
 	class BD_CORE_API Tokenizer
 	{
 
@@ -90,6 +98,10 @@ namespace Birdee
 		int GetChar();
 		void ParseString();
 	public:
+		//The parser will call this function to indicate that a top-level statement
+		//is parsed, and the input stream can emit EOF if the buffer is empty
+		//Useful for REPL input stream
+		virtual void SetCanEOF() { f->SetCanEOF(); }
 		void SetLine(int ln) { line = ln; }
 		void StartRecording(const std::string& s);
 		int GetTemplateSourcePosition()

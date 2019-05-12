@@ -6,10 +6,11 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <CompilerOptions.h>
 using namespace Birdee;
 
-extern int ParseTopLevel();
-extern void SeralizeMetadata(std::ostream& out);
+extern int ParseTopLevel(bool autoimport=true);
+extern void SeralizeMetadata(std::ostream& out, bool is_empty);
 extern void ParseTopLevelImportsOnly();
 extern string GetModuleNameByArray(const vector<string>& package);
 
@@ -101,7 +102,7 @@ void ParseParameters(int argc, char** argv)
 			}
 			else if (cmd == "-e")
 			{
-				cu.expose_main = true;
+				cu.options->expose_main = true;
 			}
 			else if (cmd == "-p")
 			{
@@ -120,7 +121,7 @@ void ParseParameters(int argc, char** argv)
 			}
 			else if (cmd == "--printir")
 			{
-				cu.is_print_ir = true;
+				cu.options->is_print_ir = true;
 			}
 			else if (cmd == "--corelib")
 			{
@@ -134,6 +135,47 @@ void ParseParameters(int argc, char** argv)
 				if (str.back() != '\\' && str.back() != '/')
 					str.push_back('/');
 				cu.search_path.push_back(std::move(str));
+			}
+			else if (cmd == "-O" || cmd == "--optimize")
+			{
+				if (!args.HasNext())
+					goto fail;
+				string str = args.Get();
+				int opt = std::stoi(str);
+				if (opt < 0 || opt>4)
+				{
+					std::cerr << "Bad optimization level. Should be within 0 to 3\n";
+					goto fail;
+				}
+				cu.options->optimize_level = opt;
+			}
+			else if (cmd == "--llvm-opt-start")
+			{
+				for (;;)
+				{
+					if (!args.HasNext())
+					{
+						std::cerr << "No --llvm-opt-end matches --llvm-opt-start\n";
+						goto fail;
+					}
+					string str = args.Get();
+					if (str == "--llvm-opt-end")
+						break;
+					cu.options->llvm_options.push_back(std::move(str));
+				}
+			}
+			else if (cmd == "-Z" || cmd == "--size-optimize")
+			{
+				if (!args.HasNext())
+					goto fail;
+				string str = args.Get();
+				int zopt = std::stoi(str);
+				if (zopt < 0 || zopt>3)
+				{
+					std::cerr << "Bad optimization level. Should be within 0 to 2\n";
+					goto fail;
+				}
+				cu.options->size_optimize_level = zopt;
 			}
 			else
 				goto fail;
@@ -205,7 +247,7 @@ int main(int argc,char** argv)
 		RunGenerativeScript();
 		return 0;
 	}
-
+	int is_empty = false;
 	try {
 		if (is_print_import_mode)
 		{
@@ -223,10 +265,9 @@ int main(int argc,char** argv)
 			ParseTopLevel();
 			cu.Phase0();
 			cu.Phase1();
-			cu.Generate();
+			is_empty = cu.Generate();
 		}
 	}
-
 	catch (CompileError& e)
 	{
 		e.print();
@@ -242,7 +283,7 @@ int main(int argc,char** argv)
 		node->print(0);
 	}*/
 	std::ofstream metaf(cu.targetmetapath, std::ios::out);
-	SeralizeMetadata(metaf);
+	SeralizeMetadata(metaf, is_empty);
     return 0;
 }
 

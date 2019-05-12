@@ -1,13 +1,15 @@
+import unsafe:up_cast
+
 @init_script
 {@
-def ty_vararg(idx):
-	set_type(get_cur_class().template_instance_args[idx].resolved_type)
+import bdutils
 @}
 
 println("Hello world")
 
 declare function getchar() as int
 
+@enable_rtti
 class TestBase[a]
 	public base1 as a
 	public base2 as int
@@ -32,7 +34,7 @@ class TestSon[T1, ...] : TestBase[T1]
 	private a as T1
 	private b as double
 	public pa as T1
-	public c as {@ty_vararg(1)@}
+	public c as {@bdutils.cls_templ_type_at(1)@}
 	public str as string
 	public function create()
 		super.create()
@@ -89,10 +91,14 @@ class TestFather[A, B, C, ...] : TestSon[A, C]
 end
 
 dim ts = new TestFather[int, double, boolean]:create()
+dim tb as TestBase[int] = ts
 
+println(int2str(tb.base1))
 println(int2str(ts.base1))
 println(int2str(ts.base2))
 println(ts.basestr)
+
+ts = up_cast[TestFather[int, double, boolean]](tb)
 
 println("=============")
 
@@ -144,5 +150,27 @@ println(int2str(ts.base1))
 println(ts.basestr)
 
 println(int2str(ts.pubget()))
+println(typeof(ts).get_name())
+
+class bird
+	@virtual
+	public func say(a as string) as int
+		println("bird"+a)
+		return 1
+	end
+end
+
+class quail : bird
+	@virtual
+	public func say(a as string) as int
+		println("quail"+a)
+		return 2
+	end
+end
+
+dim a = new quail
+dim b as bird =a
+b.say("asd")
+println("End")
 
 getchar()

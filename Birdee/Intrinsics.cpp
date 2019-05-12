@@ -14,10 +14,12 @@ do\
 	}\
 }while(0)\
 
+extern llvm::Constant* GetOrCreateTypeInfoGlobal(Birdee::ClassAST* cls);
 namespace Birdee
 {
 	extern llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty);
 	extern int GetLLVMTypeSizeInBit(llvm::Type* ty);
+	extern bool IsResolvedTypeClass(const ResolvedType& r);
 
 	static void CheckIntrinsic(FunctionAST* func, int arg_num, int targ_num)
 	{
@@ -131,10 +133,56 @@ namespace Birdee
 		return builder.CreateBitOrPointerCast(v, ty);
 	}
 
+	static void Intrinsic_UnsafeStaticCast_Phase1(FunctionAST* func)
+	{
+		CheckIntrinsic(func, 1, 2);
+		auto& targs = *func->template_instance_args;
+		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE && targs[1].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
+			func->Pos, "The 1st and 2nd template arguments for unsafe.static_cast should be a type");
+		CompileAssert(IsResolvedTypeClass(targs[0].type) && IsResolvedTypeClass(targs[1].type)
+			&& (targs[0].type.class_ast->HasParent(targs[1].type.class_ast) || targs[1].type.class_ast->HasParent(targs[0].type.class_ast)),
+			func->Pos,
+			string("Cannot static_cast from type ") + targs[1].type.GetString() + " to type " + targs[0].type.GetString());
+	}
+
+	static llvm::Value* Intrinsic_UnsafeStaticCast_Generate(FunctionAST* func, llvm::Value* obj, vector<unique_ptr<ExprAST>>& args)
+	{
+		assert(func->template_instance_args);
+		assert(func->template_instance_args->size() == 2);
+		assert(args.size() == 1);
+		auto& targs = *func->template_instance_args;
+		auto v = args[0]->Generate();
+		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
+		return builder.CreateBitOrPointerCast(v, ty);
+	}
+
+
+	static void Intrinsic_RttiGetTypeInfo_Phase1(FunctionAST* func)
+	{
+		CheckIntrinsic(func, 0, 1);
+		auto& targs = *func->template_instance_args;
+		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
+			func->Pos, "The 1st template argument for rtti.get_type_info should be a type");
+		CompileAssert(IsResolvedTypeClass(targs[0].type) && targs[0].type.class_ast->needs_rtti,
+			func->Pos,
+			string("Cannot get type info from class ") + targs[0].type.GetString() + " which has not enabled rtti");
+	}
+	
+	static llvm::Value* Intrinsic_RttiGetTypeInfo_Generate(FunctionAST* func, llvm::Value* obj, vector<unique_ptr<ExprAST>>& args)
+	{
+		assert(func->template_instance_args);
+		assert(func->template_instance_args->size() == 1);
+		assert(args.size() == 0);
+		auto& targs = *func->template_instance_args;
+		return GetOrCreateTypeInfoGlobal(targs[0].type.class_ast);
+	}
+
 	static IntrisicFunction unsafe_bit_cast = { Intrinsic_UnsafeBitCast_Generate , Intrinsic_UnsafeBitCast_Phase1 };
 	static IntrisicFunction unsafe_ptr_cast = { Intrinsic_UnsafePtrCast_Generate , Intrinsic_UnsafePtrCast_Phase1 };
 	static IntrisicFunction unsafe_ptr_load = { Intrinsic_UnsafePtrLoad_Generate , Intrinsic_UnsafePtrLoad_Phase1 };
 	static IntrisicFunction unsafe_ptr_store = { Intrinsic_UnsafePtrStore_Generate , Intrinsic_UnsafePtrStore_Phase1 };
+	static IntrisicFunction unsafe_static_cast = { Intrinsic_UnsafeStaticCast_Generate , Intrinsic_UnsafeStaticCast_Phase1 };
+	static IntrisicFunction rtti_get_type_info = { Intrinsic_RttiGetTypeInfo_Generate , Intrinsic_RttiGetTypeInfo_Phase1 };
 
 	static unordered_map<string, unordered_map<string, IntrisicFunction*>> intrinsic_module_names = {
 		{"unsafe",{
@@ -142,6 +190,11 @@ namespace Birdee
 			{"ptr_load",&unsafe_ptr_load},
 			{"ptr_store",&unsafe_ptr_store},
 			{"bit_cast",&unsafe_bit_cast},
+			{"static_cast",&unsafe_static_cast},
+			}
+		},
+		{"rtti",{
+			{"get_type_info",&rtti_get_type_info},
 			}
 		},
 	};

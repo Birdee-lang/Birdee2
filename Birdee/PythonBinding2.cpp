@@ -6,13 +6,14 @@
 #include "OpEnums.h"
 #include <CastAST.h>
 #include <Util.h>
+#include <CompilerOptions.h>
 
 using namespace Birdee;
 
 
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
-extern int ParseTopLevel();
+extern int ParseTopLevel(bool autoimport=false);
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
@@ -146,11 +147,18 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 	ths->stmt = std::move(outexpr);
 	if (ths->stmt)
 	{
-		ths->stmt->Phase1();
 		if (instance_of<ExprAST>(ths->stmt.get()))
-			ths->resolved_type = ((ExprAST*)ths->stmt.get())->resolved_type;
+		{
+			auto expr_ptr = (ExprAST*)ths->stmt.get();
+			if(!expr_ptr->resolved_type.isResolved())
+				ths->stmt->Phase1();
+			ths->resolved_type = expr_ptr->resolved_type;
+		}
 		else
+		{
+			ths->stmt->Phase1();
 			ths->resolved_type.type = tok_error;
+		}
 	}
 	else
 	{
@@ -372,7 +380,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("top_level", CompileTopLevel);
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 		m.def("generate", []() {cu.Generate(); });
-		m.def("set_print_ir", [](bool printir) {cu.is_print_ir = printir; });
+		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
 	m.def("get_os_name", []()->std::string {
@@ -406,7 +414,8 @@ void RegisiterClassForBinding(py::module& m)
 			if (p) std::rethrow_exception(p);
 		}
 		catch (const CompileError &e) {
-			CompileErrorExc(e.msg.c_str());
+			auto str = e.GetMessage();
+			CompileErrorExc(str.c_str());
 		}
 		catch (const TokenizerError &e) {
 			TokenizerErrorExc(e.msg.c_str());
@@ -501,6 +510,8 @@ void RegisiterClassForBinding(py::module& m)
 		.def("get_unique_name", &ClassAST::GetUniqueName)
 		.def_readwrite("needs_rtti", &ClassAST::needs_rtti)
 		.def_property_readonly("is_struct", [](ClassAST& ths) {return ths.is_struct; })
+		.def_readwrite("parent_class", &ClassAST::parent_class)
+		.def("has_parent", &ClassAST::HasParent)
 		.def("run", [](ClassAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
 //	unordered_map<reference_wrapper<const string>, int> fieldmap;
 //	unordered_map<reference_wrapper<const string>, int> funcmap;

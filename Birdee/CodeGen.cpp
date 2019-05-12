@@ -1,4 +1,3 @@
-
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
@@ -21,12 +20,19 @@
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Transforms/IPO/StripDeadPrototypes.h"
+#include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 
 #include "CompileError.h"
 #include "BdAST.h"
 #include <cassert>
 #include "CastAST.h"
 #include "NameMangling.h"
+#include <CompilerOptions.h>
 
 using namespace llvm;
 using Birdee::CompileError;
@@ -160,25 +166,20 @@ extern IRBuilder<> builder;
 struct GeneratorContext
 {
 	LLVMContext context;
-	Module* module = nullptr;
+	unique_ptr<Module> _module = nullptr;
 	std::unique_ptr<DIBuilder> DBuilder = nullptr;
 	string mangled_symbol_prefix;
 
-	llvm::Type* ty_int;
-	llvm::Type* ty_long;
-
 	GeneratorContext()
 	{
-		ty_int = IntegerType::getInt32Ty(context);
-		ty_long = IntegerType::getInt64Ty(context);
 		builder.~IRBuilder<>();
 		new (&builder)IRBuilder<>(context);
 	}
 
 	~GeneratorContext()
 	{
-		delete module;
 	}
+	TargetMachine* target_machine = nullptr;
 	Function* malloc_obj_func = nullptr;
 	Function* malloc_arr_func = nullptr;
 	Function* personality_func = nullptr;
@@ -190,12 +191,15 @@ struct GeneratorContext
 	unordered_map<StringRefOrHolder, GlobalVariable*> stringpool;
 	llvm::Type* byte_arr_ty = nullptr;
 	ClassAST* array_cls = nullptr;
+	int concrete_func_cnt = 0;
 	LLVMHelper helper;
 	FunctionAST* cur_func = nullptr;
 	//if landingpad!=null, we are in a try-block
 	llvm::BasicBlock* landingpad = nullptr;
 	StructType* landingpadtype = nullptr;
 	unordered_map<ClassAST*, GlobalVariable*> rtti_map;
+	//a map from virtual function number to {rtti,vtable...} type map
+	unordered_map<int, StructType*> vtable_type_map;
 
 	//the wrappers for raw functions, useful for conversion from functype to closure
 	unordered_map<Function*, Function*> function_wrapper_cache;
@@ -214,12 +218,11 @@ DIBuilder* GetDBuilder()
 #define context (gen_context.context)
 //#define builder (gen_context.builder)
 #define helper (gen_context.helper)
-#define module (gen_context.module)
+#define module (gen_context._module.get())
 #define DBuilder (gen_context.DBuilder)
 #define ty_int (gen_context.ty_int)
 #define ty_long (gen_context.ty_long)
 #define dinfo  (gen_context.dinfo)
-
 
 namespace Birdee
 {
@@ -251,7 +254,38 @@ static ClassAST* GetTypeInfoType()
 	return gen_context.cls_typeinfo;
 }
 
-static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
+static StructType* GetOrCreateVTableType(int vcnt)
+{
+	assert(vcnt > 0);
+	auto itr = gen_context.vtable_type_map.find(vcnt);
+	StructType* ty;
+	if (itr != gen_context.vtable_type_map.end())
+	{
+		ty = itr->second;
+	}
+	else
+	{
+		ty = StructType::create({ GetTypeInfoType()->llvm_type , ArrayType::get(builder.getInt8PtrTy(),vcnt) });
+		gen_context.vtable_type_map[vcnt] = ty;
+	}
+	return ty;
+}
+static GlobalVariable* CreateTypeInfoWithVTableGlobal(ClassAST* cls)
+{
+
+	string name;
+	MangleNameAndAppend(name, cls->GetUniqueName());
+	name += "0_typeinfo_vtable";
+	auto newv = new GlobalVariable(*module, GetOrCreateVTableType(cls->vtabledef.size()),
+		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
+		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+	gen_context.rtti_map[cls] = newv;
+	return newv;
+}
+
+//For virtual classes, a struct of { rtti, vtable } will be generated
+//For non-virtual classes, real rtti is generated
+static GlobalVariable* GetOrCreateTypeInfoGlobalRaw(ClassAST* cls)
 {
 	auto itr = gen_context.rtti_map.find(cls);
 	if (itr != gen_context.rtti_map.end())
@@ -261,11 +295,27 @@ static GlobalVariable* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	string name;
 	MangleNameAndAppend(name, cls->GetUniqueName());
 	name += "0_typeinfo";
-	auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
-		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
-		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
-	gen_context.rtti_map[cls] = newv;
-	return newv;
+
+	if (cls->vtabledef.empty())
+	{
+		auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
+			true, GlobalVariable::LinkOnceODRLinkage, nullptr,
+			name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+		gen_context.rtti_map[cls] = newv;
+		return newv;
+	}
+	else
+		return CreateTypeInfoWithVTableGlobal(cls);
+}
+
+//Get or create rtti global variable. If it is virtual class, 
+//automatically cast rtti-with-vtable to rtti
+Constant* GetOrCreateTypeInfoGlobal(ClassAST* cls)
+{
+	auto* ret = GetOrCreateTypeInfoGlobalRaw(cls);
+	if (cls->vtabledef.empty())
+		return ret;
+	return ConstantExpr::getPointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
 }
 
 template<typename Derived>
@@ -468,7 +518,10 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 			base = StructType::create(context, name);
 
 			DIFile *Unit;
-			if (type.class_ast->isTemplateInstance() && type.class_ast->template_source_class->template_param->mod) //if is templ instance and is imported
+			if (type.class_ast->isTemplateInstance() && 
+				type.class_ast->template_source_class && 
+				//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
+				type.class_ast->template_source_class->template_param->mod) //if is templ instance and is imported
 			{
 				auto mod = type.class_ast->template_source_class->template_param->mod;
 				Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
@@ -506,7 +559,7 @@ llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 {
 	dinfo.emitLocation(this);
 	expr->Generate();
-	return instance->llvm_func;
+	return instance->GetLLVMFunc();
 }
 
 void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& package_name)
@@ -577,6 +630,19 @@ void Birdee::VariableSingleDefAST::PreGenerateForArgument(llvm::Value* init,int 
 	builder.CreateStore(init, llvm_value);
 }
 
+llvm::Value * Birdee::VariableSingleDefAST::GetLLVMValue()
+{
+	if (llvm_value)
+		return llvm_value;
+	PreGenerateExternForGlobal(cu.symbol_prefix.substr(0, cu.symbol_prefix.size()-1));
+	return llvm_value;
+}
+
+void Birdee::VariableSingleDefAST::SetLLVMValue(llvm::Value * v)
+{
+	llvm_value = v;
+}
+
 llvm::Value* Birdee::VariableSingleDefAST::Generate()
 {
 	dinfo.emitLocation(this);
@@ -641,6 +707,148 @@ inline bool ends_with(std::string const & value, std::string const & ending)
 	return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
 }
 
+extern void ClearPreprocessingState();
+extern void ClearParserState();
+
+void Birdee::CompileUnit::ClearParserAndProprocessing()
+{
+	toplevel.clear();
+	classmap.clear();
+	funcmap.clear();
+	dimmap.clear();
+	functypemap.clear();
+	ClearPreprocessingState();
+	ClearParserState();
+}
+
+//reset all llvm_func and llvm_value for FunctionAST and VariableSingleDef
+static void ResetLLVMValuesForFunctionsAndGV(ImportTree* tree)
+{
+	if (tree->map.empty() && tree->mod)
+	{
+		auto mod = tree->mod.get();
+		for (auto& itr : mod->classmap)
+			itr.second->ClearLLVMFunction();
+		for (auto& itr : mod->dimmap)
+			itr.second->SetLLVMValue(nullptr);
+		for (auto& itr : mod->funcmap)
+			itr.second->ClearLLVMFunction();
+		return;
+	}
+	else
+	{
+		for (auto& itr : tree->map)
+			ResetLLVMValuesForFunctionsAndGV(itr.second.get());
+	}
+
+}
+
+extern void ClearTemplateInstancesRollbackLogs();
+
+void Birdee::CompileUnit::SwitchModule()
+{
+	ClearTemplateInstancesRollbackLogs();
+	//move the current ASTs to a imported module
+	auto mod = imported_packages.FindName("!repl");
+	if (!mod)
+	{
+		mod = imported_packages.Insert({ "!repl" });
+		mod->mod = make_unique<ImportedModule>();
+	}
+	for (auto& fty : functypemap)
+	{
+		mod->mod->functypemap[fty.first.get()] = std::move(fty.second);
+		imported_functypemap[fty.second->Name] = fty.second.get();
+	}
+	for (auto& stmt : toplevel)
+	{
+		if (auto cls = dyncast_resolve_anno<ClassAST>(stmt.get()))
+		{
+			mod->mod->classmap[cls->name] = unique_ptr_cast<ClassAST>(std::move(stmt));
+			imported_classmap[cls->name] = cls;
+			if (cls->isTemplate())
+				imported_class_templates.push_back(cls);
+		}
+		else if(auto mulvar = dyncast_resolve_anno<VariableMultiDefAST>(stmt.get()))
+		{
+			for (auto& itr : mulvar->lst)
+			{
+				mod->mod->dimmap[itr->name] = std::move(itr);
+				imported_dimmap[itr->name]= itr.get();
+			}
+		}
+		else if (auto singlevar = dyncast_resolve_anno<VariableSingleDefAST>(stmt.get()))
+		{
+			mod->mod->dimmap[singlevar->name] = unique_ptr_cast<VariableSingleDefAST>(std::move(stmt));
+			imported_dimmap[singlevar->name] = singlevar;
+		}
+		else if (auto funcdef = dyncast_resolve_anno<FunctionAST>(stmt.get()))
+		{
+			mod->mod->funcmap[funcdef->Proto->Name] = unique_ptr_cast<FunctionAST>(std::move(stmt));
+			imported_funcmap[funcdef->Proto->Name] = funcdef;
+			if (funcdef->isTemplate())
+				imported_func_templates.push_back(funcdef);
+		}
+	}
+
+	//now all variables & functionASTs are moved to imported_packages
+	//or orphan_class. We clear all llvm_func and llvm_value
+	for (auto& cls : orphan_class)
+		cls.second->ClearLLVMFunction();
+	ResetLLVMValuesForFunctionsAndGV(&cu.imported_packages);
+
+	for (auto& cls : imported_class_templates)
+	{
+		for (auto& inst : cls->template_param->instances)
+		{
+			for (auto& func : inst.second->funcs)
+			{
+				func.decl->isDeclare = true;
+				func.decl->isImported = true;
+			}
+		}
+	}
+	for (auto& func : imported_func_templates)
+	{
+		for (auto& inst : func->template_param->instances)
+		{
+			inst.second->isDeclare = true;
+			inst.second->isImported = true;
+		}
+	}
+
+	gen_context._module = std::make_unique<Module>(name, context);
+	DBuilder = llvm::make_unique<DIBuilder>(*module);
+	dinfo.cu = DBuilder->createCompileUnit(
+		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
+		"Birdee Compiler", 0, "", 0);
+	string mangled_symbol_prefix;
+	builder.~IRBuilder<>();
+	new (&builder)IRBuilder<>(context);
+
+	
+	gen_context.malloc_obj_func = nullptr;
+	gen_context.malloc_arr_func = nullptr;
+	gen_context.personality_func = nullptr;
+	gen_context.begin_catch_func = nullptr;
+	gen_context.throw_func = nullptr;
+	gen_context.stringpool.clear();
+	
+	dinfo.LexicalBlocks.clear();
+	helper.cur_class_ast = nullptr;
+	helper.cur_llvm_func = nullptr;
+	helper.cur_loop = LLVMHelper::LoopInfo{ nullptr,nullptr };
+	gen_context.cur_func = nullptr;
+
+	gen_context.landingpad = nullptr;
+	gen_context.landingpadtype = nullptr;
+	gen_context.rtti_map.clear();
+	gen_context.function_wrapper_cache.clear();
+	gen_context.function_ptr_wrapper_cache.clear();
+
+
+}
+
 void Birdee::CompileUnit::InitForGenerate()
 {
 	//InitializeNativeTargetInfo();
@@ -649,7 +857,7 @@ void Birdee::CompileUnit::InitForGenerate()
 	InitializeNativeTargetAsmParser();
 	InitializeNativeTargetAsmPrinter();
 
-	module = new Module(name, context);
+	gen_context._module = std::make_unique<Module>(name, context);
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
 	dinfo.cu = DBuilder->createCompileUnit(
 		dwarf::DW_LANG_C, DBuilder->createFile(filename, directory),
@@ -663,8 +871,17 @@ void Birdee::CompileUnit::AbortGenerate()
 	cu.InitForGenerate();
 }
 
+BD_CORE_API Module* GetLLVMModuleRef()
+{
+	return module;
+}
 
-void Birdee::CompileUnit::Generate()
+BD_CORE_API unique_ptr<Module> GetLLVMModule()
+{
+	return std::move(gen_context._module);
+}
+
+BD_CORE_API TargetMachine* GetAndSetTargetMachine()
 {
 	auto TargetTriple = sys::getDefaultTargetTriple();
 	module->setTargetTriple(TargetTriple);
@@ -676,8 +893,7 @@ void Birdee::CompileUnit::Generate()
 	// This generally occurs if we've forgotten to initialise the
 	// TargetRegistry or we have a bogus target triple.
 	if (!Target) {
-		errs() << Error;
-		return;
+		throw CompileError(Error);
 	}
 
 	auto CPU = "generic";
@@ -689,7 +905,11 @@ void Birdee::CompileUnit::Generate()
 		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
 
 	module->setDataLayout(TheTargetMachine->createDataLayout());
+	return TheTargetMachine;
+}
 
+bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
+{
 	if (ends_with(cu.targetpath, ".o"))
 	{
 		// Add the current debug info version into the module.
@@ -752,41 +972,78 @@ void Birdee::CompileUnit::Generate()
 	FunctionType *FT =
 		FunctionType::get(llvm::Type::getVoidTy(context), false);
 
-	Function *F = Function::Create(FT, Function::ExternalLinkage, cu.expose_main ? "main" : GetMangledSymbolPrefix() + "_1main", module);
+	std::string main_name;
+	if (is_repl)
+		main_name = "__anoy_func_main";
+	else
+		main_name = cu.options->expose_main ? "main" : GetMangledSymbolPrefix() + "_1main";
+	Function *F = Function::Create(FT, Function::ExternalLinkage, main_name, module);
 	BasicBlock *BB = BasicBlock::Create(context, "entry", F);
 	builder.SetInsertPoint(BB);
 	//SmallVector<Metadata *, 8> dargs{ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) };
 	DISubroutineType* functy = DBuilder->createSubroutineType(DBuilder->getOrCreateTypeArray({ DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address) }));
-	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(0,1, 1),nullptr);
+	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(0, 1, 1), nullptr);
 	dinfo.LexicalBlocks.push_back(dbginfo);
 
 	helper.cur_llvm_func = F;
 	// Push the current scope.
 
-	//check if I have initialized
-	GlobalVariable* check_init = new GlobalVariable(*module, builder.getInt1Ty(), false, GlobalValue::PrivateLinkage,
-		builder.getInt1(false), GetMangledSymbolPrefix() + "_1init");
-
-	BasicBlock *BT = BasicBlock::Create(context, "init", F);
-	BasicBlock *BF = BasicBlock::Create(context, "no_init", F);
-	builder.CreateCondBr(builder.CreateLoad(check_init), BT, BF);
-
-	builder.SetInsertPoint(BT);
-	builder.CreateRetVoid();
-
-	builder.SetInsertPoint(BF);
-	builder.CreateStore(builder.getInt1(true), check_init);
-
-	for (auto& name : cu.imported_module_names)
+	BasicBlock *BF;
+	llvm::Instruction* lastinst;
+	if (needs_main_checking)
 	{
-		string func_name;
-		MangleNameAndAppend(func_name, name);
-		func_name += "_0_1main";
-		Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, func_name, module);
-		builder.SetCurrentDebugLocation(DebugLoc::get(0, 0, F->getSubprogram()));
-		builder.CreateCall(OtherMain);
+		//check if I have initialized
+		GlobalVariable* check_init = new GlobalVariable(*module, builder.getInt1Ty(), false, GlobalValue::PrivateLinkage,
+			builder.getInt1(false), GetMangledSymbolPrefix() + "_1init");
+
+		BasicBlock *BT = BasicBlock::Create(context, "init", F);
+		BF = BasicBlock::Create(context, "no_init", F);
+		builder.CreateCondBr(builder.CreateLoad(check_init), BT, BF);
+
+		builder.SetInsertPoint(BT);
+		builder.CreateRetVoid();
+
+		builder.SetInsertPoint(BF);
+		lastinst = builder.CreateStore(builder.getInt1(true), check_init);
 	}
-	
+	else
+	{
+		lastinst = nullptr;	
+	}
+
+	 
+
+
+	std::function<void(ImportTree* tree, string& name)> gen_module_main_call;
+	gen_module_main_call = [&lastinst, FT, F, &gen_module_main_call](ImportTree* tree, string& name)
+	{
+		if (tree->map.empty() && tree->mod && !tree->mod->is_header_only)
+		{
+			if (name == "!repl.")
+				return;
+			string func_name;
+			MangleNameAndAppend(func_name, name);
+			func_name += "_1main";
+			Function *OtherMain = Function::Create(FT, Function::ExternalLinkage, func_name, module);
+			builder.SetCurrentDebugLocation(DebugLoc::get(0, 0, F->getSubprogram()));
+			lastinst = builder.CreateCall(OtherMain);
+			return;
+		}
+		else
+		{
+			auto sz = name.size();
+			for (auto& itr : tree->map)
+			{
+				name += itr.first;
+				name += '.';
+				gen_module_main_call(itr.second.get(), name);
+				name.resize(sz);
+			}
+		}
+	};
+	string strbuf;
+	gen_module_main_call(&cu.imported_packages, strbuf);
+
 	if (toplevel.size() > 0)
 	{
 		for (auto& stmt : toplevel)
@@ -826,31 +1083,91 @@ void Birdee::CompileUnit::Generate()
 
 	//verifyModule(*module);
 
-	if(cu.is_print_ir)
+	llvm::ModulePassManager mpm;
+	llvm::ModuleAnalysisManager mam;
+	mpm.addPass(StripDeadPrototypesPass());
+	mpm.addPass(GlobalDCEPass());
+	mpm.run(*module, mam);
+
+	if (cu.options->is_print_ir)
 		module->print(errs(), nullptr);
+
+	if (!needs_main_checking)
+		return false;
+	llvm::Instruction* second_last_inst = &(*--(--BF->getInstList().end()));
+	if (module->getGlobalList().size() == 1 //no other globals other than is_init
+		&& gen_context.concrete_func_cnt == 0 //no other functions other than top-level
+		&& second_last_inst == lastinst) //no top-level code
+	{
+		return true;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+bool Birdee::CompileUnit::Generate()
+{
+	//fix-me: do we need to release target machine?
+
+	TargetMachine* TheTargetMachine = GetAndSetTargetMachine();;
+	if (GenerateIR(false, true))
+		return true;
+
+	int llvm_argc = cu.options->llvm_options.size();
+	if (llvm_argc > 1)
+	{
+		vector<const char*> argv(llvm_argc);
+		for (int i = 0; i < llvm_argc; i++)
+			argv[i] = cu.options->llvm_options[i].c_str();
+		cl::ParseCommandLineOptions(llvm_argc, argv.data(), "Birdee compiler llvm options parser\n");
+	}
+
+
+	PassManagerBuilder passbuilder;
+	passbuilder.OptLevel = (CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level);
+	passbuilder.SizeLevel = cu.options->size_optimize_level;
+	legacy::PassManager MPM;
+	legacy::FunctionPassManager FPM(module);
+	TheTargetMachine->adjustPassManager(passbuilder);
+
+	if (cu.options->optimize_level > 1) {
+		passbuilder.Inliner = createFunctionInliningPass(cu.options->optimize_level, cu.options->size_optimize_level, false);
+	}
+	else {
+		passbuilder.Inliner = createAlwaysInlinerLegacyPass();
+	}
+
+	passbuilder.populateFunctionPassManager(FPM);
+	passbuilder.populateModulePassManager(MPM);
+	MPM.add(createTargetTransformInfoWrapperPass(TheTargetMachine->getTargetIRAnalysis()));
+	FPM.add(createTargetTransformInfoWrapperPass(TheTargetMachine->getTargetIRAnalysis()));
+	passbuilder.populateLTOPassManager(MPM);
+
+	FPM.doInitialization();
+	for (Function &F : *module)
+		FPM.run(F);
+	FPM.doFinalization();
 
 	auto Filename = cu.targetpath;
 	std::error_code EC;
 	raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
 
 	if (EC) {
-		errs() << "Could not open file: " << EC.message();
-		return;
+		throw CompileError(string("Could not open file: ") + EC.message());
 	}
-
-	legacy::PassManager pass;
+	assert(cu.options->optimize_level >= 0 && cu.options->optimize_level <= 3);
+	TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level));
 	auto FileType = TargetMachine::CGFT_ObjectFile;
-
-	if (TheTargetMachine->addPassesToEmitFile(pass, dest, FileType)) {
-		errs() << "TheTargetMachine can't emit a file of this type";
-		return;
+	if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
+		throw CompileError("TheTargetMachine can't emit a file of this type");
 	}
 
-	pass.run(*module);
+	MPM.run(*module);
 	dest.flush();
+	return false;
 
-	outs() << "Wrote " << Filename << "\n";
-	dest.flush();
 }
 
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
@@ -913,7 +1230,7 @@ void Birdee::ClassAST::PreGenerate()
 	if (llvm_type)
 		return;
 	// parent class should call PreGenerate() before
-	if (parent_type && !parent_class->llvm_type)
+	if (parent_class && !parent_class->llvm_type)
 		parent_class->PreGenerate();
 
 	vector<llvm::Type*> types;
@@ -921,7 +1238,7 @@ void Birdee::ClassAST::PreGenerate()
 
 	int field_offset = 0;
 	LLVMHelper::TypePair type_info_llvm_pair;
-	if (needs_rtti)
+	if (needs_rtti && !parent_class) //only generate rtti when it is not a sub-class
 	{
 		field_offset++;
 		ClassAST* type_info_ty = nullptr;
@@ -931,13 +1248,16 @@ void Birdee::ClassAST::PreGenerate()
 		type_info_llvm_pair = LLVMHelper::TypePair{ type_info_ty->llvm_type->getPointerTo(),
 			DBuilder->createPointerType(type_info_ty->llvm_dtype, 64) };
 	}
-	if (parent_type)
+	if (parent_class)
 	{
 		field_offset++;
 	}
 
 	DIFile *Unit;
-	if (isTemplateInstance() && template_source_class->template_param->mod) //if is templ instance and is imported
+	if (isTemplateInstance() 
+		&& template_source_class
+		//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
+		&& template_source_class->template_param->mod) //if is templ instance and is imported
 	{
 		auto mod = template_source_class->template_param->mod;
 		Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
@@ -946,14 +1266,14 @@ void Birdee::ClassAST::PreGenerate()
 		Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
 	vector<LLVMHelper::TypePair*> ty_nodes;
 	ty_nodes.reserve(fields.size() + field_offset);
-	if (needs_rtti)
+	if (needs_rtti && !parent_class)
 	{
 		types.push_back(type_info_llvm_pair.llvm_ty);
 		ty_nodes.push_back(&type_info_llvm_pair);
 	}
-	if (parent_type)
+	if (parent_class)
 	{
-		auto& node2 = helper.GetTypeNode(parent_resolved_type);
+		auto& node2 = helper.GetTypeNode(ResolvedType(parent_class));
 		types.push_back(node2.llvm_ty->getPointerElementType());
 		ty_nodes.push_back(&node2);
 	}
@@ -974,25 +1294,30 @@ void Birdee::ClassAST::PreGenerate()
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
 	auto align = module->getDataLayout().getPrefTypeAlignment(llvm_type);
 
-	if (parent_type)
 	{
-		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[field_offset-1]->llvm_ty);
-		auto memb = DBuilder->createMemberType(dinfo.cu, "__class_parent__", Unit, Pos.line, fsize, align,
-			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(field_offset - 1), DINode::DIFlags::FlagZero,
-			ty_nodes[field_offset - 1]->dty);
-		dtypes.push_back(memb);
+		auto& Pos = this->Pos;
+		auto& llvm_type = this->llvm_type;
+		auto push_dtype = [&dtypes, &ty_nodes, &Unit, &Pos, align, &llvm_type](const std::string& name, int idx)
+		{
+			auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[idx]->llvm_ty);
+			auto memb = DBuilder->createMemberType(dinfo.cu, name, Unit, Pos.line, fsize, align,
+				module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(idx), DINode::DIFlags::FlagZero,
+				ty_nodes[idx]->dty);
+			dtypes.push_back(memb);
+		};
+
+		if (needs_rtti && !parent_class)
+			push_dtype("__rtti_ptr__", 0);
+		if (parent_class)
+			push_dtype("__class_parent__", field_offset - 1);
+		int _idx = field_offset;
+		for (auto& field : fields)
+		{
+			push_dtype(field.decl->name, _idx);
+			_idx++;
+		}
 	}
 
-	int _idx = field_offset;
-	for (auto& field : fields)
-	{
-		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[_idx]->llvm_ty);
-		auto memb = DBuilder->createMemberType(dinfo.cu, field.decl->name, Unit, field.decl->Pos.line, fsize, align,
-			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(_idx), DINode::DIFlags::FlagZero,
-			ty_nodes[_idx]->dty);
-		dtypes.push_back(memb);
-		_idx++;
-	}
 	ty_nodes.clear();
 
 	auto new_dty=DBuilder->createStructType(dinfo.cu, llvm_type->getName(), Unit, Pos.line, size, align*8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
@@ -1001,9 +1326,9 @@ void Birdee::ClassAST::PreGenerate()
 	llvm_dtype = new_dty;
 	node.dty = is_struct ? llvm_dtype: DBuilder->createPointerType(llvm_dtype, 64);
 	
-	if (needs_rtti)
+	if (needs_rtti && !parent_class)
 	{
-		GetOrCreateTypeInfoGlobal(this);
+		GetOrCreateTypeInfoGlobalRaw(this);
 	}
 	//fix-me: now the debug info is not portable
 }
@@ -1022,6 +1347,43 @@ void Birdee::ClassAST::PreGenerateFuncs()
 	{
 		func.decl->PreGenerate();
 	}
+}
+
+void Birdee::ClassAST::ClearLLVMFunction()
+{
+	if (isTemplate())
+	{
+		for (auto& v : template_param->instances)
+		{
+			v.second->ClearLLVMFunction();
+		}
+		return;
+	}
+	for (auto& func : funcs)
+	{
+		func.decl->ClearLLVMFunction();
+	}
+}
+
+llvm::Value * Birdee::FunctionAST::GetLLVMFunc()
+{
+	if (!llvm_func)
+		PreGenerate();
+	return llvm_func;
+}
+
+void Birdee::FunctionAST::ClearLLVMFunction()
+{
+	if (isTemplate())
+	{
+		assert(template_param && "template_param should not be null");
+		for (auto& v : template_param->instances)
+		{
+			v.second->ClearLLVMFunction();
+		}
+		return;
+	}
+	llvm_func = nullptr;
 }
 DIType* Birdee::FunctionAST::PreGenerate()
 {
@@ -1197,20 +1559,27 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	auto itr = class_ast->funcmap.find(del_func);
 	Value* finalizer;
 	if (itr != class_ast->funcmap.end())
-		finalizer = builder.CreatePointerCast(class_ast->funcs[itr->second].decl->llvm_func, builder.getInt8PtrTy());
+		finalizer = builder.CreatePointerCast(class_ast->funcs[itr->second].decl->GetLLVMFunc(), builder.getInt8PtrTy());
 	else
 		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
-	int offset = 0;
+
 	if (resolved_type.class_ast->needs_rtti)
 	{
+		ClassAST* curcls = resolved_type.class_ast;
+		std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
+		while (curcls->parent_class)
+		{
+			gep.push_back(builder.getInt32(0));
+			curcls = curcls->parent_class;
+		}
 		builder.CreateStore(GetOrCreateTypeInfoGlobal(resolved_type.class_ast),
-			builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(offset++) }));
+			builder.CreateGEP(ret, gep));
 	}
 
 	if(func)
-		GenerateCall(func->llvm_func, func->Proto.get(), ret, args, this->Pos);
+		GenerateCall(func->GetLLVMFunc(), func->Proto.get(), ret, args, this->Pos);
 	return ret;
 }
 
@@ -1225,6 +1594,21 @@ bool Birdee::ASTBasicBlock::Generate()
 		return true;
 	}
 	return false;
+}
+
+llvm::Value * Birdee::UpcastExprAST::Generate()
+{
+	std::vector<Value*> gep = { builder.getInt32(0)};
+	auto val = expr->Generate();
+	assert(expr->resolved_type.type == tok_class && expr->resolved_type.index_level == 0);
+	auto curcls = expr->resolved_type.class_ast;
+	while (curcls != target)
+	{
+		gep.push_back(builder.getInt32(0)); //get the parent pointer
+		curcls = curcls->parent_class;
+		assert(curcls);
+	}
+	return builder.CreateGEP(val,gep);
 }
 
 llvm::Value * Birdee::ThisExprAST::Generate()
@@ -1263,9 +1647,8 @@ llvm::Value * Birdee::SuperExprAST::Generate()
 	else
 	{
 		assert(gen_context.cur_func->Proto->cls);
-		int offset = gen_context.cur_func->Proto->cls->needs_rtti ? 1 : 0;
 		auto this_llvm_obj = helper.cur_llvm_func->args().begin();
-		return builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(offset) });
+		return builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(0) });
 	}
 }
 
@@ -1286,9 +1669,14 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		return nullptr;
 	}
 	ImportedModule* mod = nullptr;
-	if (isTemplateInstance && template_source_func->template_param->mod)
+	if (isTemplateInstance
+		&& template_source_func
+		//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
+		&& template_source_func->template_param->mod)
 		mod = template_source_func->template_param->mod;
 	else if (Proto->cls && Proto->cls->isTemplateInstance()
+		&& Proto->cls->template_source_class
+		//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
 		&& Proto->cls->template_source_class->template_param->mod)
 		mod = Proto->cls->template_source_class->template_param->mod;
 
@@ -1298,6 +1686,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 
 	if (!isDeclare)
 	{
+		gen_context.concrete_func_cnt++;
 		assert(myfunc->getBasicBlockList().empty());
 		auto curfunc_backup = gen_context.cur_func;
 		auto landingpad_backup = gen_context.landingpad;
@@ -1347,8 +1736,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				} while (func);
 				assert(cls);
 				auto this_llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
-				int offset = cls->needs_rtti ? 1 : 0;
-				captured_parent_super = builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(offset) });
+				captured_parent_super = builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(0) });
 			}
 			for (auto& v : imported_captured_var)
 			{
@@ -1357,14 +1745,14 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
 				int impidx = v.second->capture_import_idx;
 				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
-					var->llvm_value = builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }, var->name);
+					var->SetLLVMValue( builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }, var->name));
 				else
-					var->llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }), var->name);
+					var->SetLLVMValue(builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }), var->name));
 				// Create a debug descriptor for the variable.
 				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
 					true);
 
-				DBuilder->insertDeclare(var->llvm_value, D, DBuilder->createExpression(),
+				DBuilder->insertDeclare(var->GetLLVMValue(), D, DBuilder->createExpression(),
 					DebugLoc::get(var->Pos.line, var->Pos.pos, dinfo.LexicalBlocks.back()),
 					builder.GetInsertBlock());
 				idx++;
@@ -1411,8 +1799,9 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				if (v->capture_export_type == VariableSingleDefAST::CAPTURE_REF)
 				{
 					//export the variables that are captured by reference from imported context
-					assert(v->capture_import_type != VariableSingleDefAST::CAPTURE_NONE && v->llvm_value);
-					builder.CreateStore(v->llvm_value,
+					auto llvm_val = v->GetLLVMValue();
+					assert(v->capture_import_type != VariableSingleDefAST::CAPTURE_NONE && llvm_val);
+					builder.CreateStore(llvm_val,
 						builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32((capture_this ? 1 : 0) + v->capture_export_idx) }));
 				}
 			}
@@ -1471,10 +1860,10 @@ llvm::Value * Birdee::ResolvedFuncExprAST::Generate()
 {
 	if (def->isTemplate())
 		return nullptr;
-	if (!def->llvm_func)
+	if (!def->GetLLVMFunc())
 		def->Generate();
 	dinfo.emitLocation(this);
-	return def->llvm_func;
+	return def->GetLLVMFunc();
 }
 
 
@@ -1557,18 +1946,48 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 llvm::Value * Birdee::LocalVarExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	return builder.CreateLoad(def->llvm_value);
+	return builder.CreateLoad(def->GetLLVMValue());
 }
 
-// llvm::Value * Birdee::AddressOfExprAST::Generate()
-// {
-// 	dinfo.emitLocation(this);
-// 	if(!is_address_of)
-// 		return builder.CreateBitOrPointerCast(expr->Generate(), llvm::Type::getInt8PtrTy(context));
-// 	auto ret=expr->GetLValue(false);
-// 	assert(ret);
-// 	return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
-// }
+llvm::Value * Birdee::ArrayInitializerExprAST::Generate()
+{
+	auto arr_type = helper.GetType(resolved_type);
+	auto ety = resolved_type;
+	assert(resolved_type.index_level > 0);
+	ety.index_level--;
+	auto element_type = helper.GetType(ety);
+
+	vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(element_type, values.size()) };
+	auto cur_array_ty = StructType::create(context, types);
+
+	vector<Constant*> const_init;
+	vector<std::pair<int, Value*>> manually_init;
+	const_init.reserve(values.size());
+	int idx = 0;
+	for (auto& v : values)
+	{
+		Value* val = v->Generate();
+		if (llvm::isa<Constant>(*val))
+		{
+			auto cons = static_cast<Constant*>(val);
+			const_init.push_back(cons);
+		}
+		else
+		{
+			const_init.push_back(Constant::getNullValue(element_type));
+			manually_init.push_back(std::make_pair(idx,val));
+		}
+		idx++;
+	}
+	auto array_data = ConstantArray::get(ArrayType::get(element_type, values.size()), const_init);
+	GlobalVariable* vobj = new GlobalVariable(*module, cur_array_ty, false, GlobalValue::PrivateLinkage,
+		ConstantStruct::get(cur_array_ty, { builder.getInt32(values.size()), array_data }));
+	dinfo.emitLocation(this);
+	for (auto& init_v : manually_init)
+		builder.CreateStore(init_v.second, builder.CreateGEP(vobj, 
+			{ builder.getInt32(0), builder.getInt32(1), builder.getInt32(init_v.first) }));
+	return builder.CreatePointerCast(vobj, arr_type);
+}
 
 llvm::Value * Birdee::VariableMultiDefAST::Generate()
 {
@@ -1674,10 +2093,29 @@ namespace Birdee
 {
 	extern ClassAST* GetArrayClass();
 }
+
+static Value* GenerateMemberParentGEP(Value* casade_llvm_obj, ClassAST* &curcls,  int casade_parents)
+{
+	if (casade_parents)
+	{
+		std::vector<Value*> gep = { builder.getInt32(0) };
+		for (int i = 0; i < casade_parents; i++)
+		{
+			gep.push_back(builder.getInt32(0));
+			curcls = curcls->parent_class;
+		}
+		return builder.CreateGEP(casade_llvm_obj, gep);
+	}
+	else
+	{
+		return casade_llvm_obj;
+	}
+}
+
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	int field_offset = 0;
+	int field_offset = 0;	
 	if (Obj)
 	{
 		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
@@ -1692,37 +2130,28 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
 		{
 			auto casade_llvm_obj = Obj->Generate();
-			for (auto offset : casade_offset)
-			{
-				casade_llvm_obj = builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) });
-			}
-			llvm_obj = casade_llvm_obj;
+			ClassAST* curcls = Obj->resolved_type.class_ast;
+			llvm_obj = GenerateMemberParentGEP(casade_llvm_obj, curcls, casade_parents);
+			//if current class is a subclass, add 1 to offset,
+			//because field 0 is always the embeded parent class object
+			if (curcls->parent_class)
+				field_offset++;
+			else if(curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+				field_offset++;
 		}
 		else
 		{
 			llvm_obj = Obj->Generate();
 			assert(llvm_obj);
 		}
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti)
-		{
-			field_offset++;
-		}
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->parent_type)
-		{
-			field_offset++;
-		}
+
 	}
 	dinfo.emitLocation(this);
 	if (kind == member_field)
 	{
 		if (llvm_obj)//if we have a pointer to the object
 		{
-			// auto casade_llvm_obj = llvm_obj;
-			// for (auto offset : casade_offset)
-			// {
-			// 	casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
-			// }
-			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) }));
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
 		} else //else, we only have a RValue of struct
 			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
 	}
@@ -1737,11 +2166,26 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			llvm_obj = builder.CreateAlloca(Obj->resolved_type.class_ast->llvm_type); //alloca temp memory for the value
 			builder.CreateStore(Obj->Generate(), llvm_obj); //store the obj to the alloca
 		}
-		return func->decl->llvm_func;
+		return func->decl->GetLLVMFunc();
+	}
+	else if (kind == member_virtual_function)
+	{
+		assert(Obj->resolved_type.type == tok_class);
+		//SomeClass* obj => RttiVtable** ppvtable
+		Value* v = builder.CreatePointerCast(llvm_obj,
+			GetOrCreateVTableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo()->getPointerTo());
+		//RttiVtable* pvtable = *ppvatable
+		v = builder.CreateLoad(v);
+		//char** pfunc = &(v[0].vtable[idx])
+		v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(func->virtual_idx) });
+		v = builder.CreateLoad(v);
+		//PFUNC func = (PFUNC)*pfunc
+		v = builder.CreatePointerCast(v, Obj->resolved_type.class_ast->vtabledef[func->virtual_idx]->GetLLVMFunc()->getType());
+		return v;
 	}
 	else if (kind == member_imported_dim)
 	{
-		return builder.CreateLoad(import_dim->llvm_value);
+		return builder.CreateLoad(import_dim->GetLLVMValue());
 	}
 	else if (kind == member_imported_function)
 	{
@@ -1752,7 +2196,7 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 			builder.CreateStore(Obj->Generate(), llvm_obj); //store the obj to the alloca
 		}
 
-		return import_func->llvm_func;
+		return import_func->GetLLVMFunc();
 	}
 	else if (kind == member_package)
 	{
@@ -1810,7 +2254,7 @@ llvm::Value * Birdee::ForBlockAST::Generate()
 	{
 		auto var = (VariableSingleDefAST*)init.get();
 		issigned=var->resolved_type.isSigned();
-		loopvar = var->llvm_value;
+		loopvar = var->GetLLVMValue();
 	}
 	else
 	{
@@ -1912,16 +2356,32 @@ llvm::Value * Birdee::ClassAST::Generate()
 
 	if (needs_rtti) //the class is instantiated in the current module, generate type_info
 	{
-		auto tyinfo = GetOrCreateTypeInfoGlobal(this);
+		auto tyinfo = GetOrCreateTypeInfoGlobalRaw(this);
 		tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
 		tyinfo->setExternallyInitialized(false);
 
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
 		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
-
+		Constant* parent_rtti = parent_class ? GetOrCreateTypeInfoGlobal(parent_class) : Constant::getNullValue(GetTypeInfoType()->llvm_type->getPointerTo());
 		auto val = ConstantStruct::get(GetTypeInfoType()->llvm_type, {
-				const_ptr_5
+				const_ptr_5,
+				parent_rtti,
 			});
+		//if the class has vtable, the rtti is wrapped in rtti-vtable struct
+		if (vtabledef.size())
+		{
+			vector<Constant*> table;
+			for (auto func : vtabledef)
+			{
+				auto llvm_func = func->GetLLVMFunc();
+				assert(llvm::isa<Function>(*llvm_func));
+				table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(llvm_func), builder.getInt8PtrTy()));
+			}
+			val = ConstantStruct::get(GetOrCreateVTableType(vtabledef.size()), {
+					val,
+					ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(),vtabledef.size()),table)
+				});
+		}
 		tyinfo->setInitializer(val);
 	}
 
@@ -1973,20 +2433,16 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 	else
 		llvm_obj = Obj->Generate();
 
-
-	if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti) //if the class has rtti, add 1 offset to the field index
-	{
-		offset = 1;
-	}
-
 	if (kind == member_field)
 	{
-		auto casade_llvm_obj = llvm_obj;
-		for (auto offset : casade_offset)
-		{
-			casade_llvm_obj = builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) });
-		}
-		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) });
+		assert(Obj->resolved_type.type == tok_class);
+		auto curcls = Obj->resolved_type.class_ast;
+		auto casade_llvm_obj = GenerateMemberParentGEP(llvm_obj, curcls, casade_parents);
+		if (curcls->parent_class)
+			offset++;
+		else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+			offset++;
+		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
 	}
 		
 	return nullptr;
@@ -2209,7 +2665,16 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 	else if (Op == tok_typeof)
 	{
 		auto val = arg->Generate();
-		return builder.CreateLoad(builder.CreateGEP(val, { builder.getInt32(0),builder.getInt32(0) }));
+		assert(arg->resolved_type.type == tok_class);
+		auto curcls = arg->resolved_type.class_ast;
+
+		std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
+		while (curcls->parent_class)
+		{
+			gep.push_back(builder.getInt32(0)); //get the parent pointer
+			curcls = curcls->parent_class;
+		}
+		return builder.CreateLoad(builder.CreateGEP(val, gep));
 	}
 
 	return nullptr;
@@ -2413,7 +2878,7 @@ llvm::Value * Birdee::TryBlockAST::Generate()
 		var->Generate();
 		Value* obj = builder.CreateCall(gen_context.begin_catch_func, expobj);
 		obj = builder.CreatePointerCast(obj, var->resolved_type.class_ast->llvm_type->getPointerTo());
-		builder.CreateStore(obj,var->llvm_value);
+		builder.CreateStore(obj,var->GetLLVMValue());
 		bool isterminator = catch_blocks[i].Generate();
 		if (!isterminator)
 			builder.CreateBr(cont);

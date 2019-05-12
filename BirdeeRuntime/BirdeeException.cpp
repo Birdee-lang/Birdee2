@@ -38,6 +38,8 @@ static const uint64_t MY_EXCEPTION_CLASS = MKINT('M', 7) | MKINT('N', 6) | MKINT
 #define  __builtin_eh_return_data_regno(A) (A)
 #endif
 
+extern "C" bool birdee_0type__info_0is__parent__of(BirdeeTypeInfo* parent, BirdeeTypeInfo* child);
+
 struct EmptyExceptionStruct
 {
 	_Unwind_Exception exp;
@@ -91,12 +93,12 @@ extern "C" {
 	}
 
 
-	BirdeeRTTIObject* __Birdee_BeginCatch(EmptyExceptionStruct* exp)
+	DLLEXPORT BirdeeRTTIObject* __Birdee_BeginCatch(EmptyExceptionStruct* exp)
 	{
 		return exp->pobj;
 	}
 
-	void __Birdee_Throw(BirdeeRTTIObject* obj) {
+	DLLEXPORT void __Birdee_Throw(BirdeeRTTIObject* obj) {
 		_Unwind_RaiseException(__Birdee_CreateException(obj));
 		return;
 	}
@@ -329,7 +331,7 @@ extern "C" {
 					"handleActionValue(...):actionValue <%d> <%s> found.\n",
 					i, ThisClassInfo->name->arr->packed.cbuf);
 #endif
-				if (ThisClassInfo == tyinfo) {
+				if (birdee_0type__info_0is__parent__of(ThisClassInfo, tyinfo)) {
 					*resultAction = typeOffset;
 					ret = true;
 					break;
@@ -587,7 +589,7 @@ extern "C" {
 		PCONTEXT, PDISPATCHER_CONTEXT,
 		_Unwind_Personality_Fn);
 
-	EXCEPTION_DISPOSITION
+	DLLEXPORT EXCEPTION_DISPOSITION
 		__Birdee_Personality(PEXCEPTION_RECORD ms_exc, void *this_frame,
 			PCONTEXT ms_orig_context, PDISPATCHER_CONTEXT ms_disp)
 	{

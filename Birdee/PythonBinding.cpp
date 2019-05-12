@@ -13,6 +13,11 @@ using namespace Birdee;
 extern void CompileExpr(char* cmd);
 extern BD_CORE_API Tokenizer tokenizer;
 
+namespace Birdee
+{
+	extern BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r);
+}
+
 void RegisiterClassForBinding2(py::module& m) {
 	// `m` is a `py::module` which is used to bind functions and classes
 	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "StatementAST_UniquePtr")
@@ -50,6 +55,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def("__str__", &ResolvedType::GetString)
 		.def_readonly("base",&ResolvedType::type)
 		.def_readwrite("index_level", &ResolvedType::index_level)
+		.def("is_class", &IsResolvedTypeClass)
 		.def("get_detail", [](ResolvedType& ths) {
 			if (ths.type == tok_class)
 				return py::cast(GetRef(ths.class_ast), py::return_value_policy::reference);

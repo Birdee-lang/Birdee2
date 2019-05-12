@@ -1,6 +1,7 @@
 #include <BdAST.h>
 #include <CompileError.h>
 #include <Tokenizer.h>
+#include <CompilerOptions.h>
 
 using namespace Birdee;
 CompileError CompileError::last_error;
@@ -10,6 +11,16 @@ namespace Birdee
 {
 	BD_CORE_API std::vector<std::string> source_paths;
 	CompileUnit cu;
+
+	unique_ptr<CompilerOptions> DefaultCompilerOptions()
+	{
+		return make_unique<CompilerOptions>();
+	}
+	CompileUnit::~CompileUnit() {}
+	CompileUnit::CompileUnit() {
+		options = DefaultCompilerOptions();
+	}
+
 	BD_CORE_API std::map<int, Token> Tokenizer::single_operator_map = {
 		{ '+',tok_add },
 		{'-',tok_minus},
@@ -94,6 +105,11 @@ namespace Birdee
 	{"catch",tok_catch},
 	{"throw",tok_throw},
 	};
+
+	BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r)
+	{
+		return r.type == tok_class && r.index_level == 0 && !r.class_ast->is_struct;
+	}
 }
 
 extern void ClearPreprocessingState();
@@ -248,7 +264,7 @@ int Birdee::Tokenizer::GetChar()
 	return c;
 }
 
-string Birdee::SourcePos::ToString()
+string Birdee::SourcePos::ToString() const
 {
 	std::stringstream buf;
 	buf << "File: " << (source_idx == -1 ? cu.directory+"/"+cu.filename : source_paths[source_idx]) << " Line: " << line << " Pos: " << pos;
@@ -271,8 +287,11 @@ Birdee::Tokenizer& Birdee::Tokenizer::operator =(Tokenizer&& old_t)
 }
 
 Token Birdee::Tokenizer::gettok() {
+	static_assert(TOKENIZER_PENDING_CHAR != EOF, "expecting TOKENIZER_PENDING_CHAR != EOF");
 	if (!f)
 		return tok_error;
+	if (LastChar == TOKENIZER_PENDING_CHAR)
+		LastChar = GetChar();
 	// Skip any whitespace.
 	while (isspace(LastChar) && LastChar != '\n')
 		LastChar = GetChar();
