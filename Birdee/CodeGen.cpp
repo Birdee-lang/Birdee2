@@ -921,7 +921,7 @@ void Birdee::ClassAST::PreGenerate()
 
 	int field_offset = 0;
 	LLVMHelper::TypePair type_info_llvm_pair;
-	if (needs_rtti)
+	if (needs_rtti && !parent_class) //only generate rtti when it is not a sub-class
 	{
 		field_offset++;
 		ClassAST* type_info_ty = nullptr;
@@ -931,7 +931,7 @@ void Birdee::ClassAST::PreGenerate()
 		type_info_llvm_pair = LLVMHelper::TypePair{ type_info_ty->llvm_type->getPointerTo(),
 			DBuilder->createPointerType(type_info_ty->llvm_dtype, 64) };
 	}
-	if (parent_type)
+	if (parent_class)
 	{
 		field_offset++;
 	}
@@ -946,14 +946,14 @@ void Birdee::ClassAST::PreGenerate()
 		Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
 	vector<LLVMHelper::TypePair*> ty_nodes;
 	ty_nodes.reserve(fields.size() + field_offset);
-	if (needs_rtti)
+	if (needs_rtti && !parent_class)
 	{
 		types.push_back(type_info_llvm_pair.llvm_ty);
 		ty_nodes.push_back(&type_info_llvm_pair);
 	}
-	if (parent_type)
+	if (parent_class)
 	{
-		auto& node2 = helper.GetTypeNode(parent_resolved_type);
+		auto& node2 = helper.GetTypeNode(ResolvedType(parent_class));
 		types.push_back(node2.llvm_ty->getPointerElementType());
 		ty_nodes.push_back(&node2);
 	}
@@ -974,25 +974,30 @@ void Birdee::ClassAST::PreGenerate()
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
 	auto align = module->getDataLayout().getPrefTypeAlignment(llvm_type);
 
-	if (parent_type)
 	{
-		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[field_offset-1]->llvm_ty);
-		auto memb = DBuilder->createMemberType(dinfo.cu, "__class_parent__", Unit, Pos.line, fsize, align,
-			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(field_offset - 1), DINode::DIFlags::FlagZero,
-			ty_nodes[field_offset - 1]->dty);
-		dtypes.push_back(memb);
+		auto& Pos = this->Pos;
+		auto& llvm_type = this->llvm_type;
+		auto push_dtype = [&dtypes, &ty_nodes, &Unit, &Pos, align, &llvm_type](const std::string& name, int idx)
+		{
+			auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[idx]->llvm_ty);
+			auto memb = DBuilder->createMemberType(dinfo.cu, name, Unit, Pos.line, fsize, align,
+				module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(idx), DINode::DIFlags::FlagZero,
+				ty_nodes[idx]->dty);
+			dtypes.push_back(memb);
+		};
+
+		if (needs_rtti && !parent_class)
+			push_dtype("__rtti_ptr__", 0);
+		if (parent_type)
+			push_dtype("__class_parent__", field_offset - 1);
+		int _idx = field_offset;
+		for (auto& field : fields)
+		{
+			push_dtype(field.decl->name, _idx);
+			_idx++;
+		}
 	}
 
-	int _idx = field_offset;
-	for (auto& field : fields)
-	{
-		auto fsize = module->getDataLayout().getTypeAllocSizeInBits(ty_nodes[_idx]->llvm_ty);
-		auto memb = DBuilder->createMemberType(dinfo.cu, field.decl->name, Unit, field.decl->Pos.line, fsize, align,
-			module->getDataLayout().getStructLayout((StructType*)llvm_type)->getElementOffsetInBits(_idx), DINode::DIFlags::FlagZero,
-			ty_nodes[_idx]->dty);
-		dtypes.push_back(memb);
-		_idx++;
-	}
 	ty_nodes.clear();
 
 	auto new_dty=DBuilder->createStructType(dinfo.cu, llvm_type->getName(), Unit, Pos.line, size, align*8, DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
@@ -1001,7 +1006,7 @@ void Birdee::ClassAST::PreGenerate()
 	llvm_dtype = new_dty;
 	node.dty = is_struct ? llvm_dtype: DBuilder->createPointerType(llvm_dtype, 64);
 	
-	if (needs_rtti)
+	if (needs_rtti && !parent_class)
 	{
 		GetOrCreateTypeInfoGlobal(this);
 	}
@@ -1202,11 +1207,18 @@ llvm::Value * Birdee::NewExprAST::Generate()
 		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
-	int offset = 0;
+
 	if (resolved_type.class_ast->needs_rtti)
 	{
+		ClassAST* curcls = resolved_type.class_ast;
+		std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
+		while (curcls->parent_class)
+		{
+			gep.push_back(builder.getInt32(0));
+			curcls = curcls->parent_class;
+		}
 		builder.CreateStore(GetOrCreateTypeInfoGlobal(resolved_type.class_ast),
-			builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(offset++) }));
+			builder.CreateGEP(ret, gep));
 	}
 
 	if(func)
@@ -1263,9 +1275,8 @@ llvm::Value * Birdee::SuperExprAST::Generate()
 	else
 	{
 		assert(gen_context.cur_func->Proto->cls);
-		int offset = gen_context.cur_func->Proto->cls->needs_rtti ? 1 : 0;
 		auto this_llvm_obj = helper.cur_llvm_func->args().begin();
-		return builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(offset) });
+		return builder.CreateGEP(this_llvm_obj, { builder.getInt32(0),builder.getInt32(0) });
 	}
 }
 
@@ -1347,8 +1358,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				} while (func);
 				assert(cls);
 				auto this_llvm_value = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
-				int offset = cls->needs_rtti ? 1 : 0;
-				captured_parent_super = builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(offset) });
+				captured_parent_super = builder.CreateGEP(this_llvm_value, { builder.getInt32(0),builder.getInt32(0) });
 			}
 			for (auto& v : imported_captured_var)
 			{
@@ -1674,10 +1684,29 @@ namespace Birdee
 {
 	extern ClassAST* GetArrayClass();
 }
+
+static Value* GenerateMemberParentGEP(Value* casade_llvm_obj, ClassAST* &curcls,  int casade_parents)
+{
+	if (casade_parents)
+	{
+		std::vector<Value*> gep = { builder.getInt32(0) };
+		for (int i = 0; i < casade_parents; i++)
+		{
+			gep.push_back(builder.getInt32(0));
+			curcls = curcls->parent_class;
+		}
+		return builder.CreateGEP(casade_llvm_obj, gep);
+	}
+	else
+	{
+		return casade_llvm_obj;
+	}
+}
+
 llvm::Value * Birdee::MemberExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	int field_offset = 0;
+	int field_offset = 0;	
 	if (Obj)
 	{
 		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
@@ -1692,37 +1721,28 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
 		{
 			auto casade_llvm_obj = Obj->Generate();
-			for (auto offset : casade_offset)
-			{
-				casade_llvm_obj = builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) });
-			}
-			llvm_obj = casade_llvm_obj;
+			ClassAST* curcls = Obj->resolved_type.class_ast;
+			llvm_obj = GenerateMemberParentGEP(casade_llvm_obj, curcls, casade_parents);
+			//if current class is a subclass, add 1 to offset,
+			//because field 0 is always the embeded parent class object
+			if (curcls->parent_type)
+				field_offset++;
+			else if(curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+				field_offset++;
 		}
 		else
 		{
 			llvm_obj = Obj->Generate();
 			assert(llvm_obj);
 		}
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti)
-		{
-			field_offset++;
-		}
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->parent_type)
-		{
-			field_offset++;
-		}
+
 	}
 	dinfo.emitLocation(this);
 	if (kind == member_field)
 	{
 		if (llvm_obj)//if we have a pointer to the object
 		{
-			// auto casade_llvm_obj = llvm_obj;
-			// for (auto offset : casade_offset)
-			// {
-			// 	casade_llvm_obj = builder.CreateLoad(builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) }));
-			// }
-			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) }));
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
 		} else //else, we only have a RValue of struct
 			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
 	}
@@ -1973,20 +1993,16 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 	else
 		llvm_obj = Obj->Generate();
 
-
-	if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->needs_rtti) //if the class has rtti, add 1 offset to the field index
-	{
-		offset = 1;
-	}
-
 	if (kind == member_field)
 	{
-		auto casade_llvm_obj = llvm_obj;
-		for (auto offset : casade_offset)
-		{
-			casade_llvm_obj = builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0), builder.getInt32(offset) });
-		}
-		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + target_offset) });
+		assert(Obj->resolved_type.type == tok_class);
+		auto curcls = Obj->resolved_type.class_ast;
+		auto casade_llvm_obj = GenerateMemberParentGEP(llvm_obj, curcls, casade_parents);
+		if (curcls->parent_type)
+			offset++;
+		else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+			offset++;
+		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
 	}
 		
 	return nullptr;
@@ -2209,7 +2225,16 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 	else if (Op == tok_typeof)
 	{
 		auto val = arg->Generate();
-		return builder.CreateLoad(builder.CreateGEP(val, { builder.getInt32(0),builder.getInt32(0) }));
+		assert(arg->resolved_type.type == tok_class);
+		auto curcls = arg->resolved_type.class_ast;
+
+		std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
+		while (curcls->parent_class)
+		{
+			gep.push_back(builder.getInt32(0)); //get the parent pointer
+			curcls = curcls->parent_class;
+		}
+		return builder.CreateLoad(builder.CreateGEP(val, gep));
 	}
 
 	return nullptr;

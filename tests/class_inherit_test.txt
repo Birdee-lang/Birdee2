@@ -1,13 +1,12 @@
-@init_script
 {@
-def ty_vararg(idx):
-	set_type(get_cur_class().template_instance_args[idx].resolved_type)
+import bdutils
 @}
 
 println("Hello world")
 
 declare function getchar() as int
 
+@enable_rtti
 class TestBase[a]
 	public base1 as a
 	public base2 as int
@@ -32,7 +31,7 @@ class TestSon[T1, ...] : TestBase[T1]
 	private a as T1
 	private b as double
 	public pa as T1
-	public c as {@ty_vararg(1)@}
+	public c as {@bdutils.cls_templ_type_at(1)@}
 	public str as string
 	public function create()
 		super.create()
@@ -144,5 +143,5 @@ println(int2str(ts.base1))
 println(ts.basestr)
 
 println(int2str(ts.pubget()))
-
+println(typeof(ts).get_name())
 getchar()

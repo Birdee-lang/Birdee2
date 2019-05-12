@@ -1583,7 +1583,16 @@ namespace Birdee
 	{
 		scope_mgr.class_stack.push_back(this);
 		if (isTemplate())
+		{
+			scope_mgr.class_stack.pop_back();
 			return;
+		}
+		if (this->parent_type) {
+			// resolve parent type
+			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
+			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
+			parent_class = parent_resolved_type.class_ast;
+		}
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
 			if (template_source_class->template_param->mod)
@@ -1594,12 +1603,6 @@ namespace Birdee
 						funcdef.decl->template_param->mod = template_source_class->template_param->mod;
 				}
 			}
-		}
-		if (this->parent_type && !this->parent_resolved_type.isResolved()) {
-			// resolve parent type
-			parent_resolved_type = ResolvedType(*parent_type, Pos);
-			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
-			parent_class = parent_resolved_type.class_ast;
 		}
 		for (auto& funcdef : funcs)
 		{
@@ -2201,11 +2204,31 @@ If usage vararg name is "", match the closest vararg
 			Pos, "The object to be thrown must be a class object reference with runtime type info");
 	}
 
+	//copy parent's "needs_rtti" bit (if exists)
+	//fix-me: we can have compiler better performance here
+	static bool ResolveRTTIBitInClass(ClassAST* cls)
+	{
+		if (!cls->needs_rtti && cls->parent_class)
+		{
+			//if !needs_rtti then it is either not resolved or the class really does not need rtti
+			cls->needs_rtti = ResolveRTTIBitInClass(cls->parent_class);
+		}
+		return cls->needs_rtti;
+	}
+
 	void ClassAST::Phase1()
 	{
 		if (isTemplate())
 			return;
 		Phase0();
+		//copy parent's "needs_rtti" bit
+		ResolveRTTIBitInClass(this);
+		if (parent_class && needs_rtti)
+		{
+			//if this class has rtti, the parent must have rtti too
+			CompileAssert(parent_class->needs_rtti, Pos,
+				string("The super class ") + parent_class->GetUniqueName() + " of the class " + GetUniqueName() + " must have rtti.");
+		}
 		scope_mgr.PushClass(this);
 		for (auto& fielddef : fields)
 		{
@@ -2291,21 +2314,10 @@ If usage vararg name is "", match the closest vararg
 			return;
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
-		int parent_offset;
+	
 		ClassAST* cls = Obj->resolved_type.class_ast;
 		ClassAST* cur_cls = cls;
 		while (cur_cls) {
-			parent_offset = 0;
-			target_offset = 0;
-			if (cur_cls->needs_rtti)
-			{
-				parent_offset++;
-				target_offset++;
-			}
-			if (cur_cls->parent_type)
-			{
-				target_offset++;
-			}
 			auto field = cur_cls->fieldmap.find(member);
 			if (field != cur_cls->fieldmap.end())
 			{
@@ -2326,7 +2338,7 @@ If usage vararg name is "", match the closest vararg
 				resolved_type = this->func->decl->resolved_type;
 				return;
 			}
-			casade_offset.emplace_back(parent_offset);
+			this->casade_parents++;
 			cur_cls = cur_cls->parent_class;
 		}
 		throw CompileError(Pos, "Cannot find member "+member);
