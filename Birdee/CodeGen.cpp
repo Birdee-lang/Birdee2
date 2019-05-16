@@ -908,6 +908,29 @@ BD_CORE_API TargetMachine* GetAndSetTargetMachine()
 	return TheTargetMachine;
 }
 
+static void ReserveLinkOnceGlobals(vector<GlobalValue*>& weak_globals, Module* m)
+{
+	auto mark = [&weak_globals, m](GlobalValue& gv)
+	{
+		if (gv.getLinkage() == GlobalValue::LinkOnceODRLinkage
+			&& !gv.isDeclaration())
+		{
+			gv.setLinkage(GlobalValue::ExternalLinkage);
+			weak_globals.push_back(&gv);
+		}
+	};
+	for (auto& gv : m->getGlobalList())
+		mark(gv);
+	for (auto& gv : m->getFunctionList())
+		mark(gv);
+}
+
+static void RestoreLinkOnceGlobals(vector<GlobalValue*>& weak_globals)
+{
+	for(auto g: weak_globals)
+		g->setLinkage(GlobalValue::LinkOnceODRLinkage);
+}
+
 bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 {
 	if (ends_with(cu.targetpath, ".o"))
@@ -1011,9 +1034,6 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		lastinst = nullptr;	
 	}
 
-	 
-
-
 	std::function<void(ImportTree* tree, string& name)> gen_module_main_call;
 	gen_module_main_call = [&lastinst, FT, F, &gen_module_main_call](ImportTree* tree, string& name)
 	{
@@ -1073,21 +1093,23 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		func->Generate();
 	}
 
-
-
 	// Finalize the debug info.
 	DBuilder->finalize();
 
-	// Print out all of the generated code.
-	//module->print(errs(), nullptr);
-
-	//verifyModule(*module);
-
+	vector<GlobalValue*> weak_globals;
+	//mark any WEAK linkage definitions (not declarations) with "external"
+	//to make them survive from GlobalDCEPass
+	ReserveLinkOnceGlobals(weak_globals, module);
+	
+	//kill any unused code
 	llvm::ModulePassManager mpm;
 	llvm::ModuleAnalysisManager mam;
 	mpm.addPass(StripDeadPrototypesPass());
 	mpm.addPass(GlobalDCEPass());
 	mpm.run(*module, mam);
+
+	RestoreLinkOnceGlobals(weak_globals);
+	weak_globals.clear();
 
 	if (cu.options->is_print_ir)
 		module->print(errs(), nullptr);
@@ -2357,7 +2379,6 @@ llvm::Value * Birdee::ClassAST::Generate()
 	if (needs_rtti) //the class is instantiated in the current module, generate type_info
 	{
 		auto tyinfo = GetOrCreateTypeInfoGlobalRaw(this);
-		tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
 		tyinfo->setExternallyInitialized(false);
 
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));

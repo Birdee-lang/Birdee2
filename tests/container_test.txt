@@ -1,6 +1,9 @@
 import fmt
 import list:list
-#import hash_set:hash_set
+import hash_set:hash_set
+import hash_set:hash_map
+import hash_set:hash_key_error
+
 #import hash_map:hash_map
 #import stack:stack
 #import queue:queue
@@ -38,7 +41,81 @@ function check_list[T](lst as list[T], chk as T[], pos as string)
 	assert(itr == lst.ends(), {@line_pos()@})
 end
 
-# test list
+function check_map(lst as hash_map[string,int], start as int, ends as int, pos as string)
+	dim itr = lst.front()
+	println("Checking " + pos)
+	assert(lst.size() == ends - start, {@line_pos()@})
+	for dim i=start till ends
+		dim n = lst.find(int2str(i))
+		assert(n!=lst.ends(), int2str(i) + " not found: " + {@line_pos()@})
+		assert(n.getv()==i, {@line_pos()@})
+	end
+	dim cnt=0
+	while itr!=lst.ends()
+		cnt=cnt+1
+		itr.forward()
+	end
+	assert(cnt == ends - start, {@line_pos()@})
+	assert(itr == lst.ends(), {@line_pos()@})
+end
+
+dim a = new hash_map[string,int] 
+for dim i=0 till 100
+	a.insert(int2str(i),i)
+end
+#a.dbgprint()
+check_map(a,0,100,{@line_pos()@})
+
+println("removing")
+for dim i=7 till 100
+	dim node=a.find(int2str(i))
+	if node==a.ends() then
+		println("ERROR" + int2str(i))
+	end
+	a.remove(int2str(i))
+end
+check_map(a,0,7,{@line_pos()@})
+
+try
+	a.remove("30")
+	assert(false, {@line_pos()@})
+catch e as hash_key_error
+	println("Caught the exception as expected")
+end
+
+#a.dbgprint()
+println("removing again")
+for dim i=0 till 7
+	dim node=a.find(int2str(i))
+	if node==a.ends() then
+		println("ERROR" + int2str(i))
+	end
+	a.remove(int2str(i))
+end
+assert(a.empty(), {@line_pos()@})
+
+println("Insert again")
+for dim i=0 till 15
+	a.insert(int2str(i),i)
+end
+#a.dbgprint()
+check_map(a,0,15,{@line_pos()@})
+
+dim hset = new hash_set[string]
+hset.insert("HI")
+hset.insert("1I")
+println("HSEt should be T "+ bool2str(hset.has("HI")))
+println("HSEt should be F "+ bool2str(hset.has("I")))
+
+a.clear()
+assert(a.front() == a.ends(), {@line_pos()@})
+
+
+println("Done")
+getchar()
+
+##
+#test list
 dim lst = new list[int]
 
 assert(lst.size()==0 , {@line_pos()@})
@@ -73,10 +150,8 @@ assert(lst.back() == itr, {@line_pos()@})
 assert(lst.ends() == itr.next(), {@line_pos()@})
 lst.remove(lst.back())
 
-println("Done")
-getchar()
 
-##
+
 # test queue
 dim q = new queue[uint]
 
