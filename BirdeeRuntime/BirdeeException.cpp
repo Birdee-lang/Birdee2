@@ -25,7 +25,7 @@ Modified from LLVM project's ExceptionDemo.cpp
 #include "BirdeeRuntime.h"
 #include <string.h>
 #include <stdlib.h>
-
+#include <exception>
 
 //#define EXCEPTION_DEBUG 1
 
@@ -100,6 +100,8 @@ extern "C" {
 
 	DLLEXPORT void __Birdee_Throw(BirdeeRTTIObject* obj) {
 		_Unwind_RaiseException(__Birdee_CreateException(obj));
+		fprintf(stderr, "Uncaught exception found! %s\n", obj->type->name->arr->packed.cbuf);
+		std::terminate();
 		return;
 	}
 
