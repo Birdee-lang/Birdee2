@@ -36,6 +36,7 @@ static const uint64_t MY_EXCEPTION_CLASS = MKINT('M', 7) | MKINT('N', 6) | MKINT
 #ifdef _WIN32
 //__builtin_eh_return_data_regno(x) seems always equals to x on Windows
 #define  __builtin_eh_return_data_regno(A) (A)
+#include "dbg.h"
 #else
 #include <execinfo.h>
 #include <unistd.h>
@@ -104,6 +105,7 @@ extern "C" {
 #ifdef _WIN32
 	void printbacktrace() {
 		//not implemented
+		dbg::print_stack_trace();
 	}
 #else
 	void printbacktrace() {
