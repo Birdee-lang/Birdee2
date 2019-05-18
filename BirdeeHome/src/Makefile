@@ -25,7 +25,7 @@ ${BLIB_DIR}/birdee.o: birdee.txt ${BLIB_DIR} ${BIN}
 	$(BIN)/birdeec --corelib -i birdee.txt -o $(BLIB_DIR)/birdee.o
 
 libs: ${BLIB_DIR}/birdee.o
-	python3 $(PARENT_DIR)/pylib/bbuild.py -i . -o ${BLIB_DIR} variant list hash_map hash_set tuple fmt vector queue stack unsafe concurrent.threading rtti
+	python3 $(PARENT_DIR)/pylib/bbuild.py -i . -o ${BLIB_DIR} variant list hash tuple fmt vector queue stack unsafe concurrent.threading rtti
 
 clean:
 	rm -rf ${BLIB_DIR}

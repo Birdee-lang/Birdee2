@@ -1,8 +1,8 @@
 import fmt
 import list:list
-import hash_set:hash_set
-import hash_set:hash_map
-import hash_set:hash_key_error
+import hash:hash_set
+import hash:hash_map
+import hash:hash_key_error
 
 #import hash_map:hash_map
 #import stack:stack
@@ -99,16 +99,20 @@ for dim i=0 till 15
 	a.insert(int2str(i),i)
 end
 #a.dbgprint()
+
 check_map(a,0,15,{@line_pos()@})
+a["233"] = 12345
+assert(a["233"] == 12345, {@line_pos()@})
+a.clear()
+assert(a.front() == a.ends(), {@line_pos()@})
+
 
 dim hset = new hash_set[string]
 hset.insert("HI")
 hset.insert("1I")
-println("HSEt should be T "+ bool2str(hset.has("HI")))
-println("HSEt should be F "+ bool2str(hset.has("I")))
+assert(hset["HI"], {@line_pos()@})
+assert(!hset["I"], {@line_pos()@})
 
-a.clear()
-assert(a.front() == a.ends(), {@line_pos()@})
 
 
 println("Done")

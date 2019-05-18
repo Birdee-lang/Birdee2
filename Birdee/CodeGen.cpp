@@ -1600,8 +1600,22 @@ llvm::Value * Birdee::NewExprAST::Generate()
 			builder.CreateGEP(ret, gep));
 	}
 
-	if(func)
-		GenerateCall(func->GetLLVMFunc(), func->Proto.get(), ret, args, this->Pos);
+	if (func)
+	{
+		assert(resolved_type.type == tok_class);
+		ClassAST* curcls = resolved_type.class_ast;
+		vector<Value*> gep = { builder.getInt32(0) };
+		while (curcls != func->Proto->cls)
+		{
+			assert(curcls);
+			gep.push_back(builder.getInt32(0));
+			curcls = curcls->parent_class;
+		}
+		auto pthis = ret;
+		if (gep.size() != 1)
+			pthis = builder.CreateGEP(pthis, gep);
+		GenerateCall(func->GetLLVMFunc(), func->Proto.get(), pthis, args, this->Pos);
+	}
 	return ret;
 }
 
@@ -2617,7 +2631,7 @@ llvm::Value * BinaryGenerateBool(Token op, ExprAST* lvexpr, ExprAST* rvexpr)
 llvm::Value * Birdee::BinaryExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	if (func)
+	if (is_overloaded)
 	{
 		//if it is an overloaded operator, the call expr is in LHS
 		return LHS->Generate();
