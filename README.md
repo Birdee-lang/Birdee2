@@ -191,7 +191,7 @@ If you have downloaded pre-compiled LLVM,
 
 First download LLVM dynamic library and headers for Windows built by me.
 
- * LLVM-shared-build (BaiduYun no long allows public file sharing) [GoogleDrive](https://drive.google.com/open?id=1RufaOQCWK1hiiWXOlQJhk7tSZUSfLWO0)
+ * LLVM-shared-build [BaiduYun, share code: 8dwy](https://pan.baidu.com/s/1Z-K-jpcmWw6m5in8SNQjJw) [GoogleDrive](https://drive.google.com/open?id=1RufaOQCWK1hiiWXOlQJhk7tSZUSfLWO0)
  * Headers for Windows x64 (The same as in the above section) [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
 
 Then,
@@ -209,7 +209,7 @@ The DLL file "LLVM-6.0.dll" is built from "Debug" version of LLVM, and has been 
  * Convert the list of symbols to a ".DEF" file to generate DLL
  * Re-link the LLVM static libraries to generate a single DLL using `link /DLL /DEF LLVM-6.0.def ...`
 
-I have done the above steps for you in the file `LLVM-shared-build.zip`.
+I have done the above steps for you in the file `LLVM-shared-build.zip`. You can view the txt files in the zip for more details.
 
 ### Step 2 for VS (Install pybind11)
 Then make sure you have installed an x64 version of Python. Copy/Link "python3.lib" and "python3X.lib" from Python to "Birdee\\dependency\\bin" ("X" in the file name is the exact subversion of your Python). These two files are located in "lib" directory of Python's installed directory.
