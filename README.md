@@ -160,27 +160,18 @@ make -j4
 
 This repo includes a Visual Studio 2017 solution. Clone this repo and open "Birdee.sln", then you can view the source code of Birdee. However, to compile Birdee, a few more steps needs to be done.
 
+### Step 1 for VS (Install LLVM)
+
+You can either statically link with LLVM or link with LLVM DLL. Linking with static LLVM library makes the linking time of the compiler itself (BirdeeCompilerCore) much longer and takes more time to build Birdee compiler. However a statically linked Birdee compiler can be distributed without the DLL of LLVM. On the other hand, dynamically linked version of LLVM makes Birdee compiler faster to build and results in smaller executable files. To build Birdee with statically linked LLVM, use the "Debug" configuration of the Visual Studio Solution. To build with LLVM DLL, please switch to the "DynLLVM" configuration.
+
+Assume that the root directory of Birdee source code is "Birdee". Then create directory "Birdee\\dependency" and "Birdee\\dependency\\bin".
+
+#### Either you can build/install static LLVM library
 First, you need a copy of LLVM 6.0 (or maybe newer). You can compile LLVM by yourself with CMake, or you can download a pre-compiled LLVM binary built by me.
 
  * LLVM-Windows-x64-Debug (Debug version with symbols) [BaiduYun](https://pan.baidu.com/s/1Yb4GPKIuYlQcXcKWd7tXRA) [GoogleDrive](https://drive.google.com/open?id=1Jeh8Dm9ca7u119yvsytv_SaHQNqHaq1m)
  * LLVM-Windows-x64-Release (Release version) [BaiduYun](https://pan.baidu.com/s/1JJPzMSNf9XRaSzzHO42DiA) [GoogleDrive](https://drive.google.com/open?id=1TKdx8wxkdvz1Mx2Fzpluc7-XVEa2gaeH)
  * Headers for Windows x64 [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
-
-
-Assume that the root directory of Birdee source code is "Birdee". Then create directory "Birdee\\dependency" and "Birdee\\dependency\\bin".
-
-### Step 1 for VS (Install pybind11)
-Then make sure you have installed an x64 version of Python. Copy/Link "python3.lib" and "python3X.lib" from Python to "Birdee\\dependency\\bin" ("X" in the file name is the exact subversion of your Python). These two files are located in "lib" directory of Python's installed directory.
-
-Run command
-
-```cmd
-pip install pybind11
-```
-
-Make sure the "pip" program is provided exactly by the same version of Python to be used by Birdee. Finally, link/copy the "include" directory from Python's installed directory to "Birdee\\dependency\\pyinclude"
-
-### Step 2 for VS (Install LLVM)
 
 If you have compiled LLVM by yourself,
 
@@ -195,6 +186,41 @@ If you have downloaded pre-compiled LLVM,
  * extract "llvm.6.0.win.include.zip/llvm-build-include" to "Birdee\\dependency\\llvm-build-include"
  * extract "llvm.6.0.win.Debug.zip/lib" to "Birdee\\dependency\\bin\\llvm-debug" 
  * (Not currently needed, you can skip this step) extract "llvm.6.0.win.Release.zip/lib" to "Birdee\\dependency\\bin\\llvm-release" 
+
+#### Or you can build/install dynamic LLVM library
+
+First download LLVM dynamic library and headers for Windows built by me.
+
+ * LLVM-shared-build (BaiduYun no long allows public file sharing) [GoogleDrive](https://drive.google.com/open?id=1RufaOQCWK1hiiWXOlQJhk7tSZUSfLWO0)
+ * Headers for Windows x64 (The same as in the above section) [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
+
+Then,
+
+ * extract "llvm.6.0.win.include.zip/llvm-include" to  "Birdee\\dependency\\llvm-include"
+ * extract "llvm.6.0.win.include.zip/llvm-build-include" to "Birdee\\dependency\\llvm-build-include"
+ * extract "LLVM-shared-build.zip/\*" to "Birdee\\dependency\\bin\\llvm-debug-dyn"
+ * Link/copy Birdee\\dependency\\bin\\llvm-debug-dyn\\LLVM-6.0.dll to Birdee\\x64\\DynLLVM\\LLVM-6.0.dll (You may need to create the directories)
+
+The DLL file "LLVM-6.0.dll" is built from "Debug" version of LLVM, and has been tailored for the use of Birdee Compiler. It only include needed ".lib" files from LLVM and only exports needed symbols of Birdee. For reference, I built it in the following steps:
+
+ * Build LLVM static libraries
+ * Run compilation of Birdee compiler, MSVC will complain on missing symbols.
+ * Parse the MSVC linker error message, a list of needed symbols from LLVM is generated
+ * Convert the list of symbols to a ".DEF" file to generate DLL
+ * Re-link the LLVM static libraries to generate a single DLL using `link /DLL /DEF LLVM-6.0.def ...`
+
+I have done the above steps for you in the file `LLVM-shared-build.zip`.
+
+### Step 2 for VS (Install pybind11)
+Then make sure you have installed an x64 version of Python. Copy/Link "python3.lib" and "python3X.lib" from Python to "Birdee\\dependency\\bin" ("X" in the file name is the exact subversion of your Python). These two files are located in "lib" directory of Python's installed directory.
+
+Run command
+
+```cmd
+pip install pybind11
+```
+
+Make sure the "pip" program is provided exactly by the same version of Python to be used by Birdee. Finally, link/copy the "include" directory from Python's installed directory to "Birdee\\dependency\\pyinclude"
 
 ### Step 3 for VS (Install header-only dependencies)
 
