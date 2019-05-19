@@ -2088,7 +2088,9 @@ If usage vararg name is "", match the closest vararg
 		}
 		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
-		vector<ClassAST*> clsstack = std::move(scope_mgr.class_stack);
+		vector<ClassAST*> clsstack;
+		if(!cls_template) // if it is not a member function, clear the class environment
+			clsstack = std::move(scope_mgr.class_stack);
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
@@ -2096,7 +2098,8 @@ If usage vararg name is "", match the closest vararg
 		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
-		scope_mgr.class_stack = std::move(clsstack);
+		if (!cls_template)
+			scope_mgr.class_stack = std::move(clsstack);
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.function_scopes = std::move(basic_blocks_backup);
@@ -2194,11 +2197,11 @@ If usage vararg name is "", match the closest vararg
 	{
 		auto classast = obj->resolved_type.class_ast;
 		int cascade_parents = 0;
-		MemberExprAST::MemberType kind;
+		MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
 		MemberFunctionDef* outfunc = nullptr;
 		FieldDef* outfield = nullptr;
 		auto rty = ResolveClassMember(obj.get(), name, Pos, cascade_parents, kind, outfunc, outfield);
-		CompileAssert(rty.isResolved() && (kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function),
+		CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
 			Pos, string("Cannot find public method") + name + " in class " + classast->GetUniqueName() + " or it is a field or a function.");
 		auto memberexpr = make_unique<MemberExprAST>(std::move(obj), outfunc, Pos);
 		memberexpr->kind = kind;
@@ -2502,19 +2505,19 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
 			int cascade_parents = 0;
-			MemberExprAST::MemberType kind;
+			MemberExprAST::MemberType kind= MemberExprAST::MemberType::member_error;
 			MemberFunctionDef* outfunc = nullptr;
 			FieldDef* outfield = nullptr;
 			if (!method.empty())
 			{
 				auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield);
-				CompileAssert(rty.isResolved() && (kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function),
+				CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
 					Pos, string("Cannot find public method") + method + " in class " + cls->GetUniqueName() + " or it is a field or a function.");
 				//note: we ignore the @virtual flag here, since we know exactly the class of which we "new" an object.
 				func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
 			} else { // no specifically calling __init__, complier tries to find one
 				auto rty = ResolveClassMember(this, "__init__", Pos, cascade_parents, kind, outfunc, outfield);
-				if (rty.isResolved() && (kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function))
+				if (kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function)
 					func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
 				else
 					CompileAssert(args.size() == 0, Pos, string("Cannot find the method __init__ in class ") + cls->GetUniqueName());
@@ -2658,8 +2661,9 @@ If usage vararg name is "", match the closest vararg
 			return;
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
+		this->kind = MemberType::member_error;
 		resolved_type = ResolveClassMember(Obj.get(),this->member, Pos, this->casade_parents, this->kind, this->func, this->field);
-		CompileAssert(resolved_type.isResolved(), Pos, string("Cannot find member ") + member);
+		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member);
 	}
 	string TemplateArgument::GetString() const
 	{
