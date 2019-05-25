@@ -82,10 +82,10 @@ clear_compile_unit()
 - [ ] class inheritance, interface 
 - [x] array
 - [ ] array boundary checking
-- [ ] array initializer
+- [x] array initializer
 - [x] lambda expressions
 - [x] exceptions
-- [ ] threading
+- [x] threading
 - [x] operator overloading
 - [x] calling C/C++ code
 

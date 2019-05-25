@@ -1623,7 +1623,7 @@ BD_CORE_API void DoImportName(const vector<string>& package, const string& name)
 	if (FindAndInsertName(cu.imported_funcmap, mod->funcmap, name)) return;
 	if (FindAndInsertName(cu.imported_classmap, mod->classmap, name)) return;
 	if (FindAndInsertName(cu.imported_functypemap, mod->functypemap, name)) return;
-	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
+	throw CompileError("Cannot find name " + name + " from module " + GetModuleNameByArray(package));
 }
 
 

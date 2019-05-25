@@ -2,11 +2,12 @@ import fmt
 import list:list
 import hash:hash_set
 import hash:hash_map
-import hash:hash_key_error
+import hash:hash_key_excption
 
-#import hash_map:hash_map
-#import stack:stack
-#import queue:queue
+import stack:stack
+import stack:stack_empty_exception
+import queue:queue
+import queue:queue_empty_exception
 
 declare function getchar() as int
 
@@ -59,218 +60,171 @@ function check_map(lst as hash_map[string,int], start as int, ends as int, pos a
 	assert(itr == lst.ends(), {@line_pos()@})
 end
 
-dim a = new hash_map[string,int] 
-for dim i=0 till 100
-	a.insert(int2str(i),i)
-end
-#a.dbgprint()
-check_map(a,0,100,{@line_pos()@})
-
-println("removing")
-for dim i=7 till 100
-	dim node=a.find(int2str(i))
-	if node==a.ends() then
-		println("ERROR" + int2str(i))
+function hash_test()
+	dim a = new hash_map[string,int] 
+	for dim i=0 till 100
+		a.insert(int2str(i),i)
 	end
-	a.remove(int2str(i))
-end
-check_map(a,0,7,{@line_pos()@})
+	#a.dbgprint()
+	check_map(a,0,100,{@line_pos()@})
 
-try
-	a.remove("30")
-	assert(false, {@line_pos()@})
-catch e as hash_key_error
-	println("Caught the exception as expected")
-end
-
-#a.dbgprint()
-println("removing again")
-for dim i=0 till 7
-	dim node=a.find(int2str(i))
-	if node==a.ends() then
-		println("ERROR" + int2str(i))
+	println("removing")
+	for dim i=7 till 100
+		dim node=a.find(int2str(i))
+		if node==a.ends() then
+			println("ERROR" + int2str(i))
+		end
+		a.remove(int2str(i))
 	end
-	a.remove(int2str(i))
+	check_map(a,0,7,{@line_pos()@})
+
+	try
+		a.remove("30")
+		assert(false, {@line_pos()@})
+	catch e as hash_key_excption
+		println("Caught the exception as expected")
+	end
+
+	#a.dbgprint()
+	println("removing again")
+	for dim i=0 till 7
+		dim node=a.find(int2str(i))
+		if node==a.ends() then
+			println("ERROR" + int2str(i))
+		end
+		a.remove(int2str(i))
+	end
+	assert(a.empty(), {@line_pos()@})
+
+	println("Insert again")
+	for dim i=0 till 15
+		a.insert(int2str(i),i)
+	end
+	#a.dbgprint()
+
+	check_map(a,0,15,{@line_pos()@})
+	a["233"] = 12345
+	assert(a["233"] == 12345, {@line_pos()@})
+	a.clear()
+	assert(a.front() == a.ends(), {@line_pos()@})
+
+
+	dim hset = new hash_set[string]
+	hset.insert("HI")
+	hset.insert("1I")
+	assert(hset["HI"], {@line_pos()@})
+	assert(!hset["I"], {@line_pos()@})
 end
-assert(a.empty(), {@line_pos()@})
 
-println("Insert again")
-for dim i=0 till 15
-	a.insert(int2str(i),i)
+function list_test()
+	#test list
+	dim lst = new list[int]
+
+	assert(lst.size()==0 , {@line_pos()@})
+	assert(lst.empty(), {@line_pos()@})
+
+	lst.insert_back(123)
+	lst.insert_back(234)
+	lst.insert_back(345)
+
+	check_list(lst,[123,234,345], {@line_pos()@})
+	assert(!lst.empty(), {@line_pos()@})
+
+	lst.remove(lst.front())
+	check_list(lst,[234,345], {@line_pos()@})
+
+	lst.remove(lst.back())
+	check_list(lst,[234], {@line_pos()@})
+
+	lst.insert_front(2)
+	check_list(lst,[2,234],{@line_pos()@})
+
+	dim itr = lst.front().next()
+	lst.insert_after(itr, 32)
+	check_list(lst,[2,234,32],{@line_pos()@})
+
+	lst.insert_before(itr, 44)
+	check_list(lst,[2,44,234,32],{@line_pos()@})
+
+	assert(lst.back() == itr.next(), {@line_pos()@})
+	lst.remove(lst.back())
+	assert(lst.back() == itr, {@line_pos()@})
+	assert(lst.ends() == itr.next(), {@line_pos()@})
+	lst.remove(lst.back())
 end
-#a.dbgprint()
 
-check_map(a,0,15,{@line_pos()@})
-a["233"] = 12345
-assert(a["233"] == 12345, {@line_pos()@})
-a.clear()
-assert(a.front() == a.ends(), {@line_pos()@})
+function queue_test()
+	dim q = new queue[uint]
 
+	assert(q.size()==0, {@line_pos()@})
+	q.push(10)
+	assert(q.size()==1, {@line_pos()@})
+	q.push(20)
+	q.push(30)
+	q.push(40)
+	q.push(50)
+	assert(q.size()==5, {@line_pos()@})
 
-dim hset = new hash_set[string]
-hset.insert("HI")
-hset.insert("1I")
-assert(hset["HI"], {@line_pos()@})
-assert(!hset["I"], {@line_pos()@})
+	assert(q.front()==10, {@line_pos()@})
+	q.pop()
+	assert(q.front()==20, {@line_pos()@})
+	q.pop()
+	assert(q.front()==30, {@line_pos()@})
+	q.pop()
+	assert(q.front()==40, {@line_pos()@})
+	q.pop()
+	assert(q.front()==50, {@line_pos()@})
+	q.pop()
 
+	assert(q.size()==0, {@line_pos()@})
 
+	try
+		q.pop()
+		assert(false, {@line_pos()@})
+	catch e as queue_empty_exception
+		println("Caught queue_empty_exception as expected")
+	end
+
+end
+
+function stack_test()
+	dim s = new stack[uint]
+
+	assert(s.size()==0, {@line_pos()@})
+	s.push(10)
+	assert(s.size()==1, {@line_pos()@})
+	s.push(20)
+	s.push(30)
+	s.push(40)
+	s.push(50)
+	assert(s.size()==5, {@line_pos()@})
+
+	assert(s.top()==50, {@line_pos()@})
+	s.pop()
+	assert(s.top()==40, {@line_pos()@})
+	s.pop()
+	assert(s.top()==30, {@line_pos()@})
+	s.pop()
+	assert(s.top()==20, {@line_pos()@})
+	s.pop()
+	assert(s.top()==10, {@line_pos()@})
+	assert(s.pop()==10, {@line_pos()@})
+
+	assert(s.size()==0, {@line_pos()@})
+	try
+		s.pop()
+		assert(false, {@line_pos()@})
+	catch e as stack_empty_exception
+		println("Caught stack_empty_exception as expected")
+	end
+end
+
+hash_test()
+list_test()
+queue_test()
+stack_test()
 
 println("Done")
 getchar()
 
-##
-#test list
-dim lst = new list[int]
 
-assert(lst.size()==0 , {@line_pos()@})
-assert(lst.empty(), {@line_pos()@})
-
-lst.insert_back(123)
-lst.insert_back(234)
-lst.insert_back(345)
-
-check_list(lst,[123,234,345], {@line_pos()@})
-assert(!lst.empty(), {@line_pos()@})
-
-lst.remove(lst.front())
-check_list(lst,[234,345], {@line_pos()@})
-
-lst.remove(lst.back())
-check_list(lst,[234], {@line_pos()@})
-
-lst.insert_front(2)
-check_list(lst,[2,234],{@line_pos()@})
-
-dim itr = lst.front().next()
-lst.insert_after(itr, 32)
-check_list(lst,[2,234,32],{@line_pos()@})
-
-lst.insert_before(itr, 44)
-check_list(lst,[2,44,234,32],{@line_pos()@})
-
-assert(lst.back() == itr.next(), {@line_pos()@})
-lst.remove(lst.back())
-assert(lst.back() == itr, {@line_pos()@})
-assert(lst.ends() == itr.next(), {@line_pos()@})
-lst.remove(lst.back())
-
-
-
-# test queue
-dim q = new queue[uint]
-
-println(int2str(q.get_size()))
-q.push(10)
-println(int2str(q.get_size()))
-q.push(20)
-println(int2str(q.get_size()))
-q.push(30)
-println(int2str(q.get_size()))
-q.push(40)
-println(int2str(q.get_size()))
-q.push(50)
-println(int2str(q.get_size()))
-
-println(int2str(q.front()))
-q.pop()
-println(int2str(q.front()))
-q.pop()
-println(int2str(q.front()))
-q.pop()
-println(int2str(q.front()))
-q.pop()
-println(int2str(q.front()))
-q.pop()
-
-println(int2str(q.get_size()))
-
-getchar()
-
-# test stack
-dim s = new stack[uint]
-
-println(int2str(s.get_size()))
-s.push(10)
-println(int2str(s.get_size()))
-s.push(20)
-println(int2str(s.get_size()))
-s.push(30)
-println(int2str(s.get_size()))
-s.push(40)
-println(int2str(s.get_size()))
-s.push(50)
-println(int2str(s.get_size()))
-
-println(int2str(s.top()))
-s.pop()
-println(int2str(s.top()))
-s.pop()
-println(int2str(s.top()))
-s.pop()
-println(int2str(s.top()))
-s.pop()
-println(int2str(s.top()))
-s.pop()
-
-println(int2str(s.get_size()))
-
-getchar()
-
-# test hash_set
-dim hs = new hash_set[string]
-
-println(int2str(hs.get_size()))
-hs.insert("1")
-hs.insert("999")
-hs.insert("999")
-hs.insert("999")
-hs.insert("7567")
-hs.insert("7567")
-hs.insert("7567")
-
-println(int2str(hs.get_size()))
-
-hs.insert("7")
-hs.insert("8")
-hs.insert("9")
-
-println(int2str(hs.get_size()))
-
-hs.insert("10")
-hs.insert("11")
-hs.insert("12")
-hs.insert("13")
-hs.insert("14")
-
-println(int2str(hs.get_size()))
-
-if hs.has("1") then
-	println("hs has 1: good")
-end
-
-if hs.has("2") then
-	println("hs has 2: bad")
-end
-
-if hs.has("999") then
-	println("hs has 999: good")
-end
-
-hs.remove("999")
-
-if hs.has("999") then
-	println("hs has 999: bad")
-end
-
-hs.clear()
-
-if hs.has("2") then
-	println("hs has 2: bad")
-end
-if hs.has("7567") then
-	println("hs has 7567: bad")
-end
-println(int2str(hs.get_size()))
-
-getchar()
-##

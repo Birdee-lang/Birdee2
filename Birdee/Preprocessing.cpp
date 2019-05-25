@@ -997,6 +997,8 @@ static ResolvedType GetMoreGeneralType(ResolvedType& v1, ResolvedType& v2)
 
 Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,bool isBool, SourcePos pos)
 {
+	CompileAssert(v1->resolved_type.isNumber() && v2->resolved_type.isNumber(), pos, string("Cannot convert from type ")
+		+ v1->resolved_type.GetString() + " to type " + v2->resolved_type.GetString());
 	int p1 = promotion_map[v1->resolved_type.type];
 	int p2 = promotion_map[v2->resolved_type.type];
 	if (p1 == p2)
