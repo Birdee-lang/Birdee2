@@ -1,7 +1,7 @@
 #include "BdAST.h"
 #include "CompileError.h"
 #include "llvm/IR/IRBuilder.h"
-
+#include "llvm/IR/Constants.h"
 
 extern llvm::IRBuilder<> builder;
 
@@ -20,6 +20,8 @@ namespace Birdee
 	extern llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty);
 	extern int GetLLVMTypeSizeInBit(llvm::Type* ty);
 	extern bool IsResolvedTypeClass(const ResolvedType& r);
+	BD_CORE_API extern std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member);
+	extern ClassAST* GetStringClass();
 
 	static void CheckIntrinsic(FunctionAST* func, int arg_num, int targ_num)
 	{
@@ -177,11 +179,72 @@ namespace Birdee
 		return GetOrCreateTypeInfoGlobal(targs[0].type.class_ast);
 	}
 
+
+	static void Intrinsic_TypedptrGetFieldPtr_Phase1(FunctionAST* func)
+	{
+		CheckIntrinsic(func, 1, 2);
+		auto& targs = *func->template_instance_args;
+		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_EXPR
+			&& isa<StringLiteralAST>(targs[0].expr.get()),
+			func->Pos, "The first template argument for unsafe.get_field_ptr should be a string");
+		CompileAssert(targs[1].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
+			func->Pos, "The second template argument for unsafe.get_field_ptr should be a type");
+		auto& rtype = targs[1].type;
+		bool is_struct = rtype.type == tok_class && rtype.index_level == 0 && rtype.class_ast->is_struct;
+		CompileAssert(is_struct, func->Pos,
+			string("Cannot get field pointer from non struct type ") + rtype.GetString());
+		auto& args = func->Proto->resolved_args;
+		CompileAssert(args.size() == 1 && args[0]->resolved_type.index_level == 0
+			&& args[0]->resolved_type.type == tok_pointer, func->Pos,
+			"The argument should be pointer");
+	}
+
+	extern llvm::Value* GenerateMemberGEP(llvm::Value* llvm_obj, ClassAST* curcls, FieldDef* field, int casade_parents);
+
+	static llvm::Value* Intrinsic_TypedptrGetFieldPtr_Generate(FunctionAST* func, llvm::Value* obj, vector<unique_ptr<ExprAST>>& args)
+	{
+		assert(func->template_instance_args);
+		assert(func->template_instance_args->size() == 2);
+		assert(args.size() == 1);
+		auto& targs = *func->template_instance_args;
+		string& name = static_cast<StringLiteralAST*>(targs[0].expr.get())->Val;
+		ClassAST* cls = targs[1].type.class_ast;
+		auto ret = FindClassField(cls, name);
+		CompileAssert(ret.first >= 0, func->Pos, string("Cannot find field ") + name + " in class " + cls->GetUniqueName());
+		auto v = args[0]->Generate();
+		auto ty = GetLLVMTypeFromResolvedType(ResolvedType(cls));
+		auto pcls = builder.CreatePointerCast(v, ty->getPointerTo());
+		auto gep = GenerateMemberGEP(pcls, cls, ret.second, ret.first);
+		return builder.CreatePointerCast(gep, builder.getInt8PtrTy());
+	}
+
+	static void Intrinsic_TypedptrSizeof_Phase1(FunctionAST* func)
+	{
+		CheckIntrinsic(func, 0, 1);
+		auto& targs = *func->template_instance_args;
+		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
+			func->Pos, "The 1st template argument for rtti.get_type_info should be a type");
+	}
+
+	static llvm::Value* Intrinsic_TypedptrSizeof_Generate(FunctionAST* func, llvm::Value* obj, vector<unique_ptr<ExprAST>>& args)
+	{
+		assert(func->template_instance_args);
+		assert(func->template_instance_args->size() == 1);
+		assert(args.size() == 0);
+		auto& targs = *func->template_instance_args;
+		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
+		auto bigptr = builder.CreateGEP(llvm::Constant::getNullValue(ty->getPointerTo()), builder.getInt32(1));
+		return builder.CreatePtrToInt(bigptr, builder.getInt64Ty());
+	}
+
+
 	static IntrisicFunction unsafe_bit_cast = { Intrinsic_UnsafeBitCast_Generate , Intrinsic_UnsafeBitCast_Phase1 };
 	static IntrisicFunction unsafe_ptr_cast = { Intrinsic_UnsafePtrCast_Generate , Intrinsic_UnsafePtrCast_Phase1 };
 	static IntrisicFunction unsafe_ptr_load = { Intrinsic_UnsafePtrLoad_Generate , Intrinsic_UnsafePtrLoad_Phase1 };
 	static IntrisicFunction unsafe_ptr_store = { Intrinsic_UnsafePtrStore_Generate , Intrinsic_UnsafePtrStore_Phase1 };
 	static IntrisicFunction unsafe_static_cast = { Intrinsic_UnsafeStaticCast_Generate , Intrinsic_UnsafeStaticCast_Phase1 };
+	static IntrisicFunction typedptr_get_field_ptr = { Intrinsic_TypedptrGetFieldPtr_Generate , Intrinsic_TypedptrGetFieldPtr_Phase1 };
+	static IntrisicFunction typedptr_sizeof = { Intrinsic_TypedptrSizeof_Generate , Intrinsic_TypedptrSizeof_Phase1 };
 	static IntrisicFunction rtti_get_type_info = { Intrinsic_RttiGetTypeInfo_Generate , Intrinsic_RttiGetTypeInfo_Phase1 };
 
 	static unordered_map<string, unordered_map<string, IntrisicFunction*>> intrinsic_module_names = {
@@ -195,6 +258,11 @@ namespace Birdee
 		},
 		{"rtti",{
 			{"get_type_info",&rtti_get_type_info},
+			}
+		},
+		{"typedptr",{
+			{"sizeof",&typedptr_sizeof},
+			{"get_field_ptr",&typedptr_get_field_ptr},
 			}
 		},
 	};

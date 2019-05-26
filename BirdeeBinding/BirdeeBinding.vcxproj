@@ -130,7 +130,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)x64/Debug;$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)x64/$(Configuration);$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug</AdditionalLibraryDirectories>
       <AdditionalDependencies>python3.lib;BirdeeCompilerCore.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -148,7 +148,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(SolutionDir)x64/Debug;$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)x64/$(Configuration);$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug</AdditionalLibraryDirectories>
       <AdditionalDependencies>python3.lib;BirdeeCompilerCore.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

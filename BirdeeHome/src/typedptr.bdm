@@ -1,0 +1,71 @@
+import unsafe:*
+
+#intrinsic
+function sizeof[T]() as ulong
+end
+
+function get_field_ptr[name as string,T2](a as pointer) as pointer
+end
+
+@init_script
+{@
+from traits import *
+from bdutils import *
+
+
+def check_if_T_is_struct():
+	if not is_a_struct(get_cls_type_templ_at(0)):
+		raise RuntimeError("Require T as a struct type")
+
+def get_field_type(field_name):
+	check_if_T_is_struct()
+	T = get_cls_type_templ_at(0)
+	assert(is_a_struct(T))
+	structT = T.get_detail()
+	parents, fielddef = structT.find_field(field_name)
+	if parents==-1:
+		raise RuntimeError("Cannot find field {} in {}".format(field_name, T))
+	set_type(fielddef.decl.resolved_type)
+
+@}
+
+struct ref[T]
+	private ptr as pointer
+	public func set_raw(p as pointer) => ptr = p
+	public func get_raw() => ptr
+
+	
+	public func get() as T => ptr_load[T](ptr)
+	public func set(value as T) => ptr_store[T](ptr, value)
+
+	public func fptr[field as string]() as ref[{@get_field_type(get_func_expr_templ_at(0).value)@}]
+		dim p = get_field_ptr[field, T](ptr)
+		dim ret as {@set_type(get_cur_func().proto.return_type)@}
+		ret.set_raw(p)
+		return ret
+	end
+
+	public func f[field as string]() as {@get_field_type(get_func_expr_templ_at(0).value)@}
+		dim p = get_field_ptr[field, T](ptr)
+		return ptr_load[{@set_type(get_cur_func().proto.return_type)@}](p)
+	end
+
+	public func __eq__(other as ref[T]) as boolean => ptr == other.ptr
+	public func __ne__(other as ref[T]) as boolean => ptr != other.ptr
+
+	public func __add__(offset as int) as ref[T]
+		dim uptr = ptr_cast[ulong](ptr)
+		dim p as pointer = ptr_cast[pointer](uptr + offset * sizeof[T]())
+		dim ret as ref[T]
+		ret.set_raw(p)
+		return ret
+	end
+	
+	public func __sub__(offset as int) as ref[T] => __add__(0-offset)
+end
+
+function mkref[T](p as pointer) as ref[T]
+	dim ret as ref[T]
+	ret.set_raw(p)
+	return ret
+end

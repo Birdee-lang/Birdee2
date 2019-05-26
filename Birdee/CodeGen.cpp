@@ -2125,12 +2125,8 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	Value* obj = GetObjOfMemberFunc(Callee.get());
 	return GenerateCall(func, proto, obj, Args,this->Pos);
 }
-namespace Birdee
-{
-	extern ClassAST* GetArrayClass();
-}
 
-static Value* GenerateMemberParentGEP(Value* casade_llvm_obj, ClassAST* &curcls,  int casade_parents)
+static Value* GenerateMemberParentGEP(Value* casade_llvm_obj, ClassAST* &curcls, int casade_parents)
 {
 	if (casade_parents)
 	{
@@ -2145,6 +2141,22 @@ static Value* GenerateMemberParentGEP(Value* casade_llvm_obj, ClassAST* &curcls,
 	else
 	{
 		return casade_llvm_obj;
+	}
+}
+
+namespace Birdee
+{
+	extern ClassAST* GetArrayClass();
+
+	llvm::Value* GenerateMemberGEP(llvm::Value* llvm_obj, ClassAST* curcls, FieldDef* field, int casade_parents)
+	{
+		int offset = 0;
+		auto casade_llvm_obj = GenerateMemberParentGEP(llvm_obj, curcls, casade_parents);
+		if (curcls->parent_class)
+			offset++;
+		else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+			offset++;
+		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
 	}
 }
 
@@ -2454,7 +2466,6 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 		return (llvm::Value *)1;
 	}
 	dinfo.emitLocation(this);
-	int offset = 0;
 	if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
 	{
 			llvm_obj = Obj->GetLValue(false);
@@ -2472,12 +2483,7 @@ llvm::Value * Birdee::MemberExprAST::GetLValue(bool checkHas)
 	{
 		assert(Obj->resolved_type.type == tok_class);
 		auto curcls = Obj->resolved_type.class_ast;
-		auto casade_llvm_obj = GenerateMemberParentGEP(llvm_obj, curcls, casade_parents);
-		if (curcls->parent_class)
-			offset++;
-		else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
-			offset++;
-		return builder.CreateGEP(casade_llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + offset) });
+		return GenerateMemberGEP(llvm_obj, curcls, field, casade_parents);
 	}
 		
 	return nullptr;
@@ -2645,14 +2651,16 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}
-	if (LHS->resolved_type.isReference())
+	if (LHS->resolved_type.isReference() || 
+		(LHS->resolved_type.index_level == 0 && LHS->resolved_type.type == tok_pointer
+		&& RHS->resolved_type.index_level == 0 && RHS->resolved_type.type == tok_pointer))
 	{
-		if (Op == tok_cmp_equal)
+		if (Op == tok_cmp_equal || Op == tok_equal)
 		{
 			return builder.CreateICmpEQ(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
 				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
 		}
-		if (Op == tok_cmp_ne)
+		if (Op == tok_cmp_ne || Op == tok_ne)
 		{
 			return builder.CreateICmpNE(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
 				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));

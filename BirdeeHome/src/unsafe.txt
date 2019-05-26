@@ -12,4 +12,3 @@ end
 
 function static_cast[T1,T2](a as T2) as T1
 end
-

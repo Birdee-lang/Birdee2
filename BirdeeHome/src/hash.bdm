@@ -197,38 +197,48 @@ class hash_map[K,V]
 		return mk_hash_iterator[K,V](node)
 	end
 
+	private function _remove(h as uint, node as hash_node[K,V]) as hash_iterator[K,V]
+		dim cur_idx = h % buckets_num
+		dim lst = buckets[cur_idx]
+		dim prev = get_prev_node(h, node)
+		dim next_idx = 0u
+		dim next = node.next
+		if next!==null then
+			next_idx = next.hash_cache % buckets_num
+		end
+		if prev === lst then
+			#then current node is the first of the bucket
+			if next === null || next_idx != cur_idx then
+				#after removal, the bucket is empty
+				if next!==null then
+					buckets[next_idx] = buckets[cur_idx]
+				end
+				buckets[cur_idx] = null
+			end
+		else if next!==null then
+			#if current node is in the bucket set
+			if next_idx != cur_idx then
+				buckets[next_idx] = prev
+			end
+		end
+		prev.next=node.next
+		lsize = lsize - 1
+		return mk_hash_iterator[K,V](node.next)
+	end
+
+	public function remove_itr(node as hash_iterator[K,V]) as hash_iterator[K,V]
+		dim n = node._node
+		dim h = n.hash_cache
+		return _remove(h, n)
+	end
+
 	public function remove(t as K) as hash_iterator[K,V]
 		dim h = hash[K](t)
 		dim node = do_find(h, t)
 		if node === null then
 			throw new hash_key_excption
 		else
-			dim cur_idx = h % buckets_num
-			dim lst = buckets[cur_idx]
-			dim prev = get_prev_node(h, node)
-			dim next_idx = 0u
-			dim next = node.next
-			if next!==null then
-				next_idx = next.hash_cache % buckets_num
-			end
-			if prev === lst then
-				#then current node is the first of the bucket
-				if next === null || next_idx != cur_idx then
-					#after removal, the bucket is empty
-					if next!==null then
-						buckets[next_idx] = buckets[cur_idx]
-					end
-					buckets[cur_idx] = null
-				end
-			else if next!==null then
-				#if current node is in the bucket set
-				if next_idx != cur_idx then
-					buckets[next_idx] = prev
-				end
-			end
-			prev.next=node.next
-			lsize = lsize - 1
-			return mk_hash_iterator[K,V](node.next)
+			return _remove(h, node)
 		end
 	end
 
