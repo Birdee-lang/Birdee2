@@ -58,6 +58,7 @@ static void Init()
 #else
 #include <eh.h>
 #include <Windows.h>
+#define GCC_EXCODE ((DWORD)0x20474343)
 void Init()
 {
 	SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS* ptr) -> LONG
@@ -65,6 +66,10 @@ void Init()
 		auto code = ptr->ExceptionRecord->ExceptionCode;
 		switch (code)
 		{
+		case GCC_EXCODE:
+			//an uncaught Birdee exception occurs, return to __Birdee_Throw
+			fputs("Uncaught libgcc exception!", stderr);
+			return EXCEPTION_CONTINUE_EXECUTION;
 		case EXCEPTION_ACCESS_VIOLATION:
 			__Birdee_Throw((BirdeeRTTIObject*)birdee_0____create__basic__exception__no__call(0));
 			return EXCEPTION_CONTINUE_EXECUTION;

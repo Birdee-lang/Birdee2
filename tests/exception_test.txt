@@ -27,8 +27,8 @@ class E3 : E2
 end
 
 #declare function getchar() as int
-#getchar()
 #println("Hello")
+#getchar()
 
 function f1()
 
@@ -61,3 +61,12 @@ function f2()
 end
 
 f1()
+
+func aaa()
+	dim f = func ()
+		throw new E3("yo",135)
+	end
+	f()
+end
+
+aaa()

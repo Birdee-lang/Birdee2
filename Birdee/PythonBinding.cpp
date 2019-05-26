@@ -244,7 +244,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_static("new", [](BinaryOp op, UniquePtrStatementAST& lhs, UniquePtrStatementAST& rhs) {
 			return new UniquePtrStatementAST(std::make_unique<BinaryExprAST>((Token)op,lhs.move_expr(),rhs.move_expr()));
 		})
-		.def_readwrite("func", &BinaryExprAST::func)
+		.def_readwrite("is_overloaded", &BinaryExprAST::is_overloaded)
 		.def_property("lhs", [](BinaryExprAST& ths) {return GetRef(ths.LHS); },
 			[](BinaryExprAST& ths, UniquePtrStatementAST& v) {ths.LHS = v.move_expr(); })
 		.def_property("rhs", [](BinaryExprAST& ths) {return GetRef(ths.RHS); },

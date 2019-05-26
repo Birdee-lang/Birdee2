@@ -25,7 +25,7 @@ Modified from LLVM project's ExceptionDemo.cpp
 #include "BirdeeRuntime.h"
 #include <string.h>
 #include <stdlib.h>
-
+#include <exception>
 
 //#define EXCEPTION_DEBUG 1
 
@@ -36,6 +36,10 @@ static const uint64_t MY_EXCEPTION_CLASS = MKINT('M', 7) | MKINT('N', 6) | MKINT
 #ifdef _WIN32
 //__builtin_eh_return_data_regno(x) seems always equals to x on Windows
 #define  __builtin_eh_return_data_regno(A) (A)
+#include "dbg.h"
+#else
+#include <execinfo.h>
+#include <unistd.h>
 #endif
 
 extern "C" bool birdee_0type__info_0is__parent__of(BirdeeTypeInfo* parent, BirdeeTypeInfo* child);
@@ -98,8 +102,26 @@ extern "C" {
 		return exp->pobj;
 	}
 
+#ifdef _WIN32
+	void printbacktrace() {
+		//not implemented
+		dbg::print_stack_trace();
+	}
+#else
+	void printbacktrace() {
+		void *array[70];
+		size_t size;
+		// get void*'s for all entries on the stack
+		size = backtrace(array, 70);
+		backtrace_symbols_fd(array, size, STDERR_FILENO);
+	}
+#endif
+
 	DLLEXPORT void __Birdee_Throw(BirdeeRTTIObject* obj) {
 		_Unwind_RaiseException(__Birdee_CreateException(obj));
+		fprintf(stderr, "Uncaught exception found! %s\n Stacktrace:\n", obj->type->name->arr->packed.cbuf);
+		printbacktrace();
+		std::terminate();
 		return;
 	}
 

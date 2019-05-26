@@ -321,6 +321,7 @@ def link_gcc():
 		lpath += obj_postfix
 		cmdarr.append(lpath)
 	cmdarr.append("-lgc")
+	cmdarr.append("-lstdc++")
 	cmdarr.append("-Wl,--end-group")
 	if len(link_cmd):
 		cmdarr.append(link_cmd)
@@ -335,7 +336,8 @@ parse_args(sys.argv)
 root_modules.append(['birdee'])
 file_cnt=0
 for modu in root_modules:
-	prepare_module(modu,file_cnt==0)
+	is_main = file_cnt==0 and link_executable
+	prepare_module(modu,is_main)
 	file_cnt += 1
 
 thread_worker=compile_worker()

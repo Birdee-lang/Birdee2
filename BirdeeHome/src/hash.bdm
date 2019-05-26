@@ -1,0 +1,274 @@
+import unsafe:ptr_cast
+
+@enable_rtti
+class hash_key_excption
+
+end
+
+function int_hash(v as ulong) as uint
+	v = v ^ (v/32)
+	v = v ^ (v/1024*1024)
+	return v
+end
+
+function hash[T](v as T) as uint
+	return {@
+ty=resolve_type("T")
+if ty.is_integer():
+	set_ast(expr("int_hash(v)"))
+elif ty.index_level==0 and ty.base==BasicType.CLASS:
+	set_ast(expr("v.__hash__()"))
+else:
+	raise Exception(f"Cannot hash the type: {ty}")
+@}
+end
+
+struct hash_data[K,V]
+	public k as K
+	public v as V
+	public func __hash__() as uint => hash[K](k)
+	public func __eq__(other as hash_data[K,V]) as boolean => k == other.k
+end
+
+class hash_node[K,V]
+	public next as hash_node[K,V]
+	public k as K
+	public v as V
+	public hash_cache as uint
+end
+
+class hash_node_nodata[K,V]
+	public next as hash_node[K,V]
+end
+
+struct __unit
+end
+
+struct hash_iterator[K,V]
+	public _node as hash_node[K,V]
+	public func getk() as K => _node.k
+	public func getv() as V => _node.v
+	public func get_ptrk() as pointer => addressof(_node.k)
+	public func get_ptrv() as pointer => addressof(_node.v)
+	public func next() as hash_iterator[K,V] => mk_hash_iterator[K,V](_node.next)
+	public func forward() => _node = _node.next
+	public func __eq__ (other as hash_iterator[K,V]) as boolean => _node === other._node
+	public func __ne__ (other as hash_iterator[K,V]) as boolean => _node !== other._node
+end
+
+function mk_hash_iterator[K,V](node as hash_node[K,V]) as hash_iterator[K,V]
+	dim ret as hash_iterator[K,V]
+	ret._node=node
+	return ret
+end
+
+class hash_map[K,V]
+	private buckets as hash_node[K,V][]
+	private buckets_num as uint
+	private lsize as uint
+	private allnodes as hash_node[K,V]
+
+	##
+	public function dbgprint()
+		for dim i =0 till buckets.length()
+			if buckets[i]!==null then
+				print(int2str(i)+":")
+				dim cur = buckets[i].next
+				while cur!==null
+					print(to_str(cur.k)+",")
+					if cur.next === null || cur.next.hash_cache % buckets_num != cur.hash_cache % buckets_num then
+						break
+					end
+					cur = cur.next
+				end
+				print("\n")
+			else
+				println(int2str(i)+"NULL")
+			end
+		end
+	end##
+
+	public function front() as hash_iterator[K,V]
+		return mk_hash_iterator[K,V](allnodes.next)
+	end
+
+	public function ends() as hash_iterator[K,V]
+		return mk_hash_iterator[K,V](null)
+	end
+
+	public function __init__()
+		lsize = 0
+		buckets_num = 10
+		buckets = new hash_node[K,V] * 10
+		for dim i = 0 till buckets_num
+			buckets[i] = null
+		end
+		allnodes = unsafe.ptr_cast[hash_node[K,V],hash_node_nodata[K,V]](new hash_node_nodata[K,V])
+		allnodes.next = null
+	end
+
+	private function get_prev_node(h as uint, t as hash_node[K,V]) as hash_node[K,V]
+		dim cur = buckets[h % buckets_num]
+		while cur.next !== t
+			cur = cur.next
+		end
+		return cur
+	end
+
+	private function find_node_before(h as uint, k as K) as hash_node[K,V]
+		dim prev = buckets[h % buckets_num]
+		if prev===null then
+			return null
+		end
+		dim cur = prev.next
+		while cur!==null
+			if cur.k == k then
+				return prev
+			end
+			if cur.next === null || (cur.next.hash_cache % buckets_num != h % buckets_num) then
+				break
+			end
+			prev = cur
+			cur = cur.next
+		end
+		return null
+	end
+
+	private function do_find(h as uint, t as K) as hash_node[K,V]
+		dim ret = find_node_before(h,t)
+		if ret!==null then
+			return ret.next
+		else
+			return null
+		end
+	end
+
+	private function _find(t as K) as hash_node[K,V] => do_find(hash[K](t), t)
+
+	public function has(t as K) as boolean
+		return _find(t) !== null
+	end
+
+	public function find(t as K) as hash_iterator[K,V]
+		return mk_hash_iterator[K,V](_find(t))
+	end
+
+	#insert a node in the hash map, without checking uniqueness
+	private function insert_unique(h as uint, k as K, v as V) as hash_node[K,V]
+		dim lst = buckets[h % buckets_num]
+		dim node = new hash_node[K,V]
+		node.k = k
+		node.v = v
+		node.hash_cache = h
+		#if is empty bucket, link the node to list head
+		#else, simply insert
+		if lst === null then
+			node.next = allnodes.next
+			allnodes.next = node
+			buckets[h % buckets_num] = allnodes
+			if node.next!==null then
+				buckets[node.next.hash_cache % buckets_num] = node
+			end
+		else			
+			node.next = lst.next
+			lst.next = node
+		end
+		lsize = lsize + 1
+		return node
+	end
+
+	public function insert(t as K, v as V) as hash_iterator[K,V]
+		dim h = hash[K](t)
+		if do_find(h, t) !== null then
+			throw new hash_key_excption
+		else
+			return mk_hash_iterator[K,V](insert_unique(h,t,v))
+		end
+	end
+
+	public function update(t as K, v as V) as hash_iterator[K,V]
+		dim h = hash[K](t)
+		dim node = do_find(h, t)
+		if node!== null then
+			node.v = v
+		else
+			node = insert_unique(h,t,v)
+		end
+		return mk_hash_iterator[K,V](node)
+	end
+
+	public function remove(t as K) as hash_iterator[K,V]
+		dim h = hash[K](t)
+		dim node = do_find(h, t)
+		if node === null then
+			throw new hash_key_excption
+		else
+			dim cur_idx = h % buckets_num
+			dim lst = buckets[cur_idx]
+			dim prev = get_prev_node(h, node)
+			dim next_idx = 0u
+			dim next = node.next
+			if next!==null then
+				next_idx = next.hash_cache % buckets_num
+			end
+			if prev === lst then
+				#then current node is the first of the bucket
+				if next === null || next_idx != cur_idx then
+					#after removal, the bucket is empty
+					if next!==null then
+						buckets[next_idx] = buckets[cur_idx]
+					end
+					buckets[cur_idx] = null
+				end
+			else if next!==null then
+				#if current node is in the bucket set
+				if next_idx != cur_idx then
+					buckets[next_idx] = prev
+				end
+			end
+			prev.next=node.next
+			lsize = lsize - 1
+			return mk_hash_iterator[K,V](node.next)
+		end
+	end
+
+	public function clear()
+		for dim i = 0 till buckets_num
+			buckets[i] = null
+		end
+		allnodes.next=null
+		lsize = 0
+	end
+
+	public function size() as uint
+		return lsize
+	end
+
+	public function empty() as boolean
+		return lsize == 0
+	end
+
+	public function __getitem__(k as K) as V
+		dim h = hash[K](k)
+		dim node = do_find(h, k)
+		if  node === null then
+			throw new hash_key_excption
+		else
+			return node.v
+		end
+	end
+
+	public function __setitem__(k as K, v as V) 
+		update(k, v)
+	end
+
+end
+
+class hash_set[K]: hash_map[K,__unit]
+	public function insert(t as K) as hash_iterator[K,__unit]
+		dim dummy as __unit
+		return super.insert(t, dummy)
+	end
+
+	public function __getitem__(k as K) as boolean => super.has(k)
+end
