@@ -1042,11 +1042,18 @@ namespace Birdee
 				[&this_template_args](IdentifierExprAST* ex) {
 				ImportTree* import_tree = nullptr;
 				auto ret = scope_mgr.ResolveNameNoThrow(ex->Name, ex->Pos, import_tree);
-				if (ret || import_tree)
+				if (import_tree)
 					assert(0 && "Not implemented");
-				IdentifierType type(ex->Name);
-				Type& dummy = type;
-				this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				if (ret)
+				{
+					this_template_args.push_back(TemplateArgument(std::move(ret)));
+				}
+				else
+				{
+					IdentifierType type(ex->Name);
+					Type& dummy = type;
+					this_template_args.push_back(TemplateArgument(ResolvedType(dummy, ex->Pos)));
+				}
 			},
 				[&this_template_args](MemberExprAST* ex) {
 				//fix-me: resolve this member!!!!!!!!!
@@ -2193,6 +2200,25 @@ If usage vararg name is "", match the closest vararg
 			cur_cls = cur_cls->parent_class;
 		}
 		return ResolvedType();
+	}
+
+	//returns the casade_parents & member definition of the member
+	//returns <-1,nullptr> if not found
+	BD_CORE_API std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member)
+	{
+		int casade_parents = 0;
+		ClassAST* cur_cls = class_ast;
+		while (cur_cls) {
+			auto field = cur_cls->fieldmap.find(member);
+			if (field != cur_cls->fieldmap.end())
+			{
+				auto thsfield = &(cur_cls->fields[field->second]);
+				return std::make_pair(casade_parents, thsfield);
+			}
+			casade_parents++;
+			cur_cls = cur_cls->parent_class;
+		}
+		return std::make_pair(-1, nullptr);
 	}
 
 	static unique_ptr<MemberExprAST> ResolveAndCreateMemberExpr(unique_ptr<ExprAST>&& obj, const string& name, SourcePos& Pos)

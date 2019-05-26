@@ -171,5 +171,8 @@
     <None Include="..\BirdeeHome\src\hash.bdm">
       <Filter>资源文件\blib</Filter>
     </None>
+    <None Include="..\BirdeeHome\src\typedptr.bdm">
+      <Filter>资源文件\blib</Filter>
+    </None>
   </ItemGroup>
 </Project>

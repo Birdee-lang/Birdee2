@@ -1343,16 +1343,17 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg, ret->template_param->vararg_name));
 	}
 	// class inherit
-	if (!is_struct) {
-		if (tokenizer.CurTok == tok_colon) {
-			tokenizer.GetNextToken(); // eat colon
-			// CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
-			// tokenizer.GetNextToken(); 
-			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
-			// ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
-			ret->parent_type = ParseBasicType();
-		}
+	
+	if (tokenizer.CurTok == tok_colon) {
+		CompileAssert(!is_struct, "structs do not support inherience");
+		tokenizer.GetNextToken(); // eat colon
+		// CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
+		// tokenizer.GetNextToken(); 
+		CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
+		// ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
+		ret->parent_type = ParseBasicType();
 	}
+	
 	CompileExpect(tok_newline, "Expected an newline after class name");
 
 	while (true)

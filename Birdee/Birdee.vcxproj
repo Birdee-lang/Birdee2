@@ -175,7 +175,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeBinding.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/$(Configuration)</AdditionalLibraryDirectories>
       <LinkStatus>false</LinkStatus>
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <DelayLoadDLLs>BirdeeBinding.dll</DelayLoadDLLs>
@@ -198,7 +198,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeBinding.lib</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/$(Configuration)</AdditionalLibraryDirectories>
       <LinkStatus>false</LinkStatus>
       <LinkTimeCodeGeneration>UseFastLinkTimeCodeGeneration</LinkTimeCodeGeneration>
       <DelayLoadDLLs>BirdeeBinding.dll</DelayLoadDLLs>
@@ -297,6 +297,7 @@
     <None Include="..\BirdeeHome\pylib\traits.py" />
     <None Include="..\BirdeeHome\src\hash.bdm" />
     <None Include="..\BirdeeHome\src\list.bdm" />
+    <None Include="..\BirdeeHome\src\typedptr.bdm" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\getset_test.py" />
     <None Include="..\tests\scripttest.py" />

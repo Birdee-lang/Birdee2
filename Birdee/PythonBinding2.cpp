@@ -30,6 +30,7 @@ static void init_embedded_module();
 namespace Birdee
 {
 	extern void ClearPyHandles();
+	BD_CORE_API extern std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member);
 }
 
 struct BirdeePyContext
@@ -515,6 +516,10 @@ void RegisiterClassForBinding(py::module& m)
 		.def_property_readonly("is_struct", [](ClassAST& ths) {return ths.is_struct; })
 		.def_readwrite("parent_class", &ClassAST::parent_class)
 		.def("has_parent", &ClassAST::HasParent)
+		.def("find_field", [](ClassAST& cls, const string& member)->auto {
+			auto ret = FindClassField(&cls, member);
+			return py::make_tuple(ret.first, GetRef(ret.second));
+		})
 		.def("run", [](ClassAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
 //	unordered_map<reference_wrapper<const string>, int> fieldmap;
 //	unordered_map<reference_wrapper<const string>, int> funcmap;
