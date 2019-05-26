@@ -1251,15 +1251,17 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	};
 	AccessModifier access;
 	while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
-	std::unordered_set<string> anno;
+	std::vector<string> anno;
+	std::unordered_map<string, int> anno_occurrence;
 	while (tokenizer.CurTok == tok_annotation)
 	{
-		anno.insert(std::move(tokenizer.IdentifierStr));
+		anno_occurrence[tokenizer.IdentifierStr] += 1;
+		anno.emplace_back(std::move(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
 	}
-	auto contain_annotation = [&anno](string ano) -> bool {
-		return anno.find(ano) != anno.end();
+	auto contain_annotation = [&anno_occurrence](const string & ano) -> bool {
+		return anno_occurrence.find(ano) != anno_occurrence.end();
 	};
 	auto apply_annotations = [&anno, ret](bool is_field, int index)
 	{
@@ -1301,7 +1303,10 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
-			CompileExpect(tok_newline, "Expected a new line after function definition");
+			if (!contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))
+				CompileExpect(tok_newline, "Expected a new line after function definition");
+			else
+				CompileExpect(tok_newline, "Expected a new line after function declaration");
 			apply_annotations(false, funcs.size() - 1);
 		}
 		else
@@ -1316,7 +1321,10 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
-		CompileExpect({ tok_newline }, "Expected a new line after function definition");
+		if (!contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))
+			CompileExpect(tok_newline, "Expected a new line after function definition");
+		else
+			CompileExpect(tok_newline, "Expected a new line after function declaration");
 		apply_annotations(false, funcs.size() - 1);
 		break;
 	case tok_declare:
@@ -1397,7 +1405,13 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 			throw CompileError("Unexpected end of file, missing \"end\"");
 		else
 		{
-			throw CompileError("Expected member declarations");
+			// TODO, make it better
+			if (ret->funcs.rbegin()->is_pure) {
+				throw CompileError("Expected member declarations, are you trying to implement a pure virtual function?");
+			}
+			else {
+				throw CompileError("Expected member declarations");
+			}
 		}
 	}
 done:

@@ -1873,7 +1873,9 @@ namespace Birdee
 					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
 					if (itr != cls->funcmap.end())
 					{
-						CompileAssert(cls->funcs[itr->second].is_pure, funcdef.decl->Pos, "Cannot mark non-pure virtual function as pure");
+						CompileAssert(cls->funcs[itr->second].is_pure, funcdef.decl->Pos, 
+							"method " + funcdef.decl->Proto->Name + "is defind as pure virtual in class " +
+							this->GetUniqueName() + ", but it's non-pure-virtual in parent class " + cls->GetUniqueName());
 						break;
 					}
 					cls = cls->parent_class;
