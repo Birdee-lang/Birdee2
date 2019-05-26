@@ -132,7 +132,7 @@ BD_CORE_API Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
 
 /////////////////////////////////////////////////////////////////////////////////////
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown();
-std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
+std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
 PrototypeAST *current_func_proto = nullptr;
@@ -1071,7 +1071,7 @@ vector<TemplateParameter> ParseTemplateParameters(bool& is_vararg,string& vararg
 	return ret;
 }
 
-std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
+std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls, bool is_pure_virtual)
 {
 	auto pos = tokenizer.GetSourcePos();
 	unique_ptr<TemplateParameters<FunctionAST>> template_param;
@@ -1129,25 +1129,27 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	current_func_proto = funcproto.get();
 
 	ASTBasicBlock body;
-
-	if (tokenizer.CurTok == tok_into)
-	{
-		//one-line function
-		tokenizer.GetNextToken();
-		unique_ptr<ExprAST> expr = ParseExpressionUnknown();
-		auto pos = expr->Pos;
-		unique_ptr<StatementAST> stmt;
-		if (!is_return_void)
-			stmt = make_unique<ReturnAST>(std::move(expr), pos);
+	if (!is_pure_virtual) {
+		if (tokenizer.CurTok == tok_into)
+		{
+			//one-line function
+			tokenizer.GetNextToken();
+			unique_ptr<ExprAST> expr = ParseExpressionUnknown();
+			auto pos = expr->Pos;
+			unique_ptr<StatementAST> stmt;
+			if (!is_return_void)
+				stmt = make_unique<ReturnAST>(std::move(expr), pos);
+			else
+				stmt = std::move(expr);
+			body.body.emplace_back(std::move(stmt));
+		}
 		else
-			stmt = std::move(expr);
-		body.body.emplace_back(std::move(stmt));
+		{
+			//parse function body
+			ParseBasicBlock(body, tok_func);
+		}
 	}
-	else
-	{
-		//parse function body
-		ParseBasicBlock(body, tok_func);
-	}
+
 	current_func_proto = old_current_func_proto;
 	if (is_template)
 	{
@@ -1206,13 +1208,24 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 
 //is_field: true for FieldDef, false for MemberFunctionDef
 //index: the index within fields/funcdef
+static const string INTERNAL_ANNO_VIRTUAL = "virtual";
+static const string INTERNAL_ANNO_PURE_VIRTUAL = "pure_virtual";
 static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, int index)>> interal_class_annontation_map = {
-	{"virtual", [](ClassAST* cls, bool is_field, int index) {
+	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
 		CompileAssert(!cls->is_struct, "The \'virtual\' annotation can only be applied on class functions");
 		CompileAssert(!cls->isTemplate(), "The \'virtual\' annotation cannot be applied on class templates");
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
+		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
+	}},
+	{INTERNAL_ANNO_PURE_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(!is_field,"The \'pure_virtual\' annotation can only be applied on member functions");
+		CompileAssert(!cls->is_struct, "The \'pure_virtual\' annotation can only be applied on class functions");
+		CompileAssert(!cls->isTemplate(), "The \'pure_virtual\' annotation cannot be applied on class templates");
+		cls->needs_rtti = true;
+		cls->is_abstract = true;
+		cls->funcs[index].is_pure = true;
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
 	}}
 };
@@ -1238,13 +1251,16 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	};
 	AccessModifier access;
 	while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
-	std::vector<string> anno;
+	std::unordered_set<string> anno;
 	while (tokenizer.CurTok == tok_annotation)
 	{
-		anno.emplace_back(std::move(tokenizer.IdentifierStr));
+		anno.insert(std::move(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
 	}
+	auto contain_annotation = [&anno](string ano) -> bool {
+		return anno.find(ano) != anno.end();
+	};
 	auto apply_annotations = [&anno, ret](bool is_field, int index)
 	{
 		for (auto& ano : anno)
@@ -1280,7 +1296,8 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		else if (tokenizer.CurTok == tok_func)
 		{
 			tokenizer.GetNextToken(); //eat function
-			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
+			funcs.push_back(MemberFunctionDef(access, 
+				ParseFunction(ret, contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))));
 			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
@@ -1294,7 +1311,8 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		break;
 	case tok_func:
 		tokenizer.GetNextToken(); //eat function
-		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
+		funcs.push_back(MemberFunctionDef(access_private, 
+		 	ParseFunction(ret, contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))));
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
@@ -1346,10 +1364,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 	if (!is_struct) {
 		if (tokenizer.CurTok == tok_colon) {
 			tokenizer.GetNextToken(); // eat colon
-			// CompileExpect(tok_class, "Expected a class as parent"); // eat 'class'
-			// tokenizer.GetNextToken(); 
 			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
-			// ret->parent = make_unique<VariableSingleDefAST>(std::move(ParseBasicType()), pos);
 			ret->parent_type = ParseBasicType();
 		}
 	}

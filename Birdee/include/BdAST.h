@@ -1201,6 +1201,7 @@ namespace Birdee {
 		//the index in the vtable, or VIRT_NONE if is non-virtual
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		//only valid after Phase0
+		bool is_pure = false;
 		int virtual_idx = -1;
 		std::unique_ptr<FunctionAST> decl;
 		void print(int level)
@@ -1247,6 +1248,7 @@ namespace Birdee {
 		std::string name;
 		bool needs_rtti = false;
 		bool is_struct = false;
+		bool is_abstract = false;
 		int done_phase = 0;
 		//the table of virtual functions, including the inherited virt functions from parents
 		//valid after Phase0

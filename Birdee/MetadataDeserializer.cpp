@@ -24,7 +24,7 @@ static string current_package_name;
 static int current_module_idx;
 
 extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
-extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
+extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
 extern void ParseClassInPlace(ClassAST* ret, bool is_struct);
 
 extern std::vector<std::string> Birdee::source_paths;

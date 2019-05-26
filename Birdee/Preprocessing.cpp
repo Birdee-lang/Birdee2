@@ -1844,7 +1844,43 @@ namespace Birdee
 				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
 				+ " but they have different prototypes");
 		};
-    
+
+		// automatically mark class as abstract if there's unimplemented pure virtual function
+		{
+			unordered_set<string> parent_funcdef;
+			ClassAST* cls = parent_class;
+			while (!this->is_abstract && cls)
+			{
+				for (auto& funcdef : cls->funcs) {
+					string & name = funcdef.decl->Proto->Name;
+					if (parent_funcdef.find(name) != parent_funcdef.end())
+						continue;
+					parent_funcdef.insert(name);
+					if (funcdef.is_pure && this->funcmap.find(name) == this->funcmap.end()) {
+						this->is_abstract = true;
+						break;
+					}
+				}
+				cls = cls->parent_class;
+			}
+		}
+
+		for (auto& funcdef : funcs) {
+			if (funcdef.is_pure) {
+				ClassAST* cls = parent_class;
+				while (cls)
+				{
+					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
+					if (itr != cls->funcmap.end())
+					{
+						CompileAssert(cls->funcs[itr->second].is_pure, funcdef.decl->Pos, "Cannot mark non-pure virtual function as pure");
+						break;
+					}
+					cls = cls->parent_class;
+				}
+			}
+		}
+
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
@@ -2505,6 +2541,7 @@ If usage vararg name is "", match the closest vararg
 		{
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
 			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
+			CompileAssert(!resolved_type.class_ast->is_abstract, Pos, "cannot instantiate abstract class");
 			ClassAST* cls = resolved_type.class_ast;
 			int cascade_parents = 0;
 			MemberExprAST::MemberType kind= MemberExprAST::MemberType::member_error;

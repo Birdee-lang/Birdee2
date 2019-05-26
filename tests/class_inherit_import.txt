@@ -1,7 +1,17 @@
 import class_inherit_test:bird
 import class_inherit_test:quail
+import class_inherit_test:swallow
+
+declare function getchar() as int
 
 println("import test")
 dim a = new quail
-dim b as bird=a
+dim s = new swallow
+dim b as bird = a
+dim d as bird = s
 b.say("hello")
+d.say("hello2")
+d.speak("hello")
+println("import test ends")
+
+getchar()

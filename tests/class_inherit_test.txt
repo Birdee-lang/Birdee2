@@ -1,4 +1,4 @@
-import unsafe:up_cast
+import unsafe:static_cast
 
 @init_script
 {@
@@ -98,7 +98,7 @@ println(int2str(ts.base1))
 println(int2str(ts.base2))
 println(ts.basestr)
 
-ts = up_cast[TestFather[int, double, boolean]](tb)
+ts = static_cast[TestFather[int, double, boolean]](tb)
 
 println("=============")
 
@@ -158,6 +158,9 @@ class bird
 		println("bird"+a)
 		return 1
 	end
+
+	@pure_virtual
+	public func speak(a as string) as int
 end
 
 class quail : bird
@@ -166,11 +169,28 @@ class quail : bird
 		println("quail"+a)
 		return 2
 	end
+
+	public func speak(a as string) as int
+		println("pure virtual quail " + a)
+		return 3
+	end
+end
+
+class swallow : bird
+	public func speak(a as string) as int
+		println("pure virtual swallow " + a)
+		return 4
+	end
 end
 
 dim a = new quail
-dim b as bird =a
+dim s = new swallow
+dim b as bird = a
+dim d as bird = s
 b.say("asd")
+b.say("test")
+d.say("test2")
+d.speak("speak test")
 println("End")
 
 getchar()

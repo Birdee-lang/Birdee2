@@ -1849,7 +1849,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1 + param_offset);
 		}
 
-
 		bool hasret = Body.Generate();
 		if (!hasret)
 		{
@@ -1858,6 +1857,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			else
 				builder.CreateRet(Constant::getNullValue(myfunc->getReturnType()));
 		}
+
 		dinfo.LexicalBlocks.pop_back();
 		builder.restoreIP(IP);
 		helper.cur_llvm_func = func_backup;
