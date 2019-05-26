@@ -133,7 +133,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\birdee.obj;$(BIRDEE_HOME)blib\hash_map.obj;$(BIRDEE_HOME)blib\concurrent\threading.obj;$(BIRDEE_HOME)blib\string_buffer.obj;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/$(Configuration)</AdditionalLibraryDirectories>
       <ForceSymbolReferences>
       </ForceSymbolReferences>
     </Link>
@@ -157,7 +157,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\birdee.obj;$(BIRDEE_HOME)blib\hash_map.obj;$(BIRDEE_HOME)blib\concurrent\threading.obj;$(BIRDEE_HOME)blib\string_buffer.obj;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/Debug</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/$(Configuration)</AdditionalLibraryDirectories>
       <ForceSymbolReferences>
       </ForceSymbolReferences>
     </Link>
