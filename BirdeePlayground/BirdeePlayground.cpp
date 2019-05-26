@@ -157,7 +157,7 @@ You can try and see Birdee codes here. Type ":q" to exit.
 						prompt += ": Function ";
 						prompt += funcast->Proto->GetName();
 					}
-					else if (expr->resolved_type.type != tok_void)
+					else if (expr->resolved_type.isResolved() && expr->resolved_type.type != tok_void)
 					{
 						//if the expression has a value, make a call to fmt.printast
 						//first, get an instance of printast[T]

@@ -13,7 +13,7 @@ using namespace Birdee;
 
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
-extern int ParseTopLevel(bool autoimport=false);
+extern int ParseTopLevel(bool autoimport=true);
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
@@ -394,6 +394,9 @@ void RegisiterClassForBinding(py::module& m)
 	});
 	m.def("get_target_bits", []()->int {
 		return 64;
+	});
+	m.def("get_cur_script", []()->std::reference_wrapper<ScriptAST> {
+		return GetRef(cur_script_ast);
 	});
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);

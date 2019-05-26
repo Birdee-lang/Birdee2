@@ -1,44 +1,46 @@
 import list:list
 
+@enable_rtti
+class stack_empty_exception
+
+end
+
 class stack[T]
 	private buf as list[T]
-	private size as uint
 
 	public func __init__()
-		size = 0
 		buf = new list[T]
 	end
 
 	public func empty() as boolean
-		return size == 0
+		return buf.empty()
 	end
 
-	public func get_size() as uint
-		return size
+	public func size() as uint
+		return buf.size()
 	end
 
 	public func push(element as T)
-		size = size + 1
 		buf.insert_back(element)
 	end
 
-	public func pop()
+	public func pop() as T
 		if buf.empty() then
-			breakpoint()
+			throw new stack_empty_exception
 		end
-		size = size - 1
-		buf.remove(buf.head.prev)
+		dim element = buf.back().get()
+		buf.remove(buf.back())
+		return element
 	end
 
 	public func top() as T
-		if size == 0 then
-			breakpoint()
+		if buf.empty() then
+			throw new stack_empty_exception
 		end
-		return buf.head.prev.v
+		return buf.back().get()
 	end
 
 	public func clear()
 		buf.clear()
-		size = 0
 	end
 end

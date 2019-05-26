@@ -656,7 +656,7 @@ namespace Birdee {
 	/// BinaryExprAST - Expression class for a binary operator.
 	class BD_CORE_API BinaryExprAST : public ExprAST {
 	public:
-		FunctionAST* func = nullptr;
+		bool is_overloaded = false;
 		std::unique_ptr<ExprAST> LHS, RHS;
 		Token Op;
 		BinaryExprAST(Token Op, std::unique_ptr<ExprAST>&& LHS,

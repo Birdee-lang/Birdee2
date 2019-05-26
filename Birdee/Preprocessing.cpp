@@ -997,6 +997,8 @@ static ResolvedType GetMoreGeneralType(ResolvedType& v1, ResolvedType& v2)
 
 Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,bool isBool, SourcePos pos)
 {
+	CompileAssert(v1->resolved_type.isNumber() && v2->resolved_type.isNumber(), pos, string("Cannot convert from type ")
+		+ v1->resolved_type.GetString() + " to type " + v2->resolved_type.GetString());
 	int p1 = promotion_map[v1->resolved_type.type];
 	int p2 = promotion_map[v2->resolved_type.type];
 	if (p1 == p2)
@@ -2088,7 +2090,9 @@ If usage vararg name is "", match the closest vararg
 		}
 		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
-		vector<ClassAST*> clsstack = std::move(scope_mgr.class_stack);
+		vector<ClassAST*> clsstack;
+		if(!cls_template) // if it is not a member function, clear the class environment
+			clsstack = std::move(scope_mgr.class_stack);
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
@@ -2096,7 +2100,8 @@ If usage vararg name is "", match the closest vararg
 		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
-		scope_mgr.class_stack = std::move(clsstack);
+		if (!cls_template)
+			scope_mgr.class_stack = std::move(clsstack);
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.function_scopes = std::move(basic_blocks_backup);
@@ -2157,6 +2162,54 @@ If usage vararg name is "", match the closest vararg
 		return ret;
 	}
 
+	static ResolvedType ResolveClassMember(ExprAST* obj, const string& member, const SourcePos& Pos,
+		/*out parameters*/ int& casade_parents,
+		MemberExprAST::MemberType& kind, MemberFunctionDef*& thsfunc, FieldDef*& thsfield)
+	{
+		ClassAST* cur_cls = obj->resolved_type.class_ast;
+		while (cur_cls) {
+			auto field = cur_cls->fieldmap.find(member);
+			if (field != cur_cls->fieldmap.end())
+			{
+				if (cur_cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
+					throw CompileError(Pos, "Accessing a private member outside of a class");
+				kind = MemberExprAST::member_field;
+				thsfield = &(cur_cls->fields[field->second]);
+				return thsfield->decl->resolved_type;
+			}
+			auto func = cur_cls->funcmap.find(member);
+			if (func != cur_cls->funcmap.end())
+			{
+				thsfunc = &(cur_cls->funcs[func->second]);
+				if (dyncast_resolve_anno<SuperExprAST>(obj)) //if the object is "super", do not generate virtual call here
+					kind = MemberExprAST::member_function;
+				else
+					kind = thsfunc->virtual_idx == MemberFunctionDef::VIRT_NONE ? MemberExprAST::member_function : MemberExprAST::member_virtual_function;
+				if (thsfunc->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
+					throw CompileError(Pos, "Accessing a private member outside of a class");
+				return thsfunc->decl->resolved_type;
+			}
+			casade_parents++;
+			cur_cls = cur_cls->parent_class;
+		}
+		return ResolvedType();
+	}
+
+	static unique_ptr<MemberExprAST> ResolveAndCreateMemberExpr(unique_ptr<ExprAST>&& obj, const string& name, SourcePos& Pos)
+	{
+		auto classast = obj->resolved_type.class_ast;
+		int cascade_parents = 0;
+		MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
+		MemberFunctionDef* outfunc = nullptr;
+		FieldDef* outfield = nullptr;
+		auto rty = ResolveClassMember(obj.get(), name, Pos, cascade_parents, kind, outfunc, outfield);
+		CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
+			Pos, string("Cannot find public method") + name + " in class " + classast->GetUniqueName() + " or it is a field or a function.");
+		auto memberexpr = make_unique<MemberExprAST>(std::move(obj), outfunc, Pos);
+		memberexpr->kind = kind;
+		memberexpr->casade_parents = cascade_parents;
+		return std::move(memberexpr);
+	}
 
 
 	bool IndexExprAST::isOverloaded()
@@ -2213,13 +2266,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		if (Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class)
 		{
-			string str = "__getitem__";
-			auto itr = Expr->resolved_type.class_ast->funcmap.find(str);
-			CompileAssert(itr != Expr->resolved_type.class_ast->funcmap.end(), 
-				Pos, string("The method __getitem__ should be declared in class ")+ Expr->resolved_type.class_ast->GetUniqueName());
-			auto& func = Expr->resolved_type.class_ast->funcs[itr->second];
-			CompileAssert(func.access == AccessModifier::access_public, Pos, "The method __getitem__ should be public");
-			auto memberexpr = make_unique<MemberExprAST>(std::move(Expr), &func, Pos);
+			auto memberexpr = ResolveAndCreateMemberExpr(std::move(Expr), "__getitem__", Pos);
 			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(Index));
 			instance = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 			instance->Pos = Pos;
@@ -2435,7 +2482,7 @@ If usage vararg name is "", match the closest vararg
 			unique_ptr<ExprAST> memb = make_unique<ResolvedFuncExprAST>(funcdef->decl.get(), Pos);
 			//check for template
 			func = FixFunctionForCall(memb, args, Pos);
-			assert(func->Proto->cls == cls);
+			assert(cls->HasParent(func->Proto->cls));
 		}
 		CheckFunctionCallParameters(func->Proto.get(), args, Pos);
 		return func;
@@ -2459,25 +2506,23 @@ If usage vararg name is "", match the closest vararg
 			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
 			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
 			ClassAST* cls = resolved_type.class_ast;
+			int cascade_parents = 0;
+			MemberExprAST::MemberType kind= MemberExprAST::MemberType::member_error;
+			MemberFunctionDef* outfunc = nullptr;
+			FieldDef* outfield = nullptr;
 			if (!method.empty())
 			{
-				auto itr = cls->funcmap.find(method);
-				CompileAssert(itr != cls->funcmap.end(), Pos, "Cannot resolve name "+ method);
-				auto funcdef = &cls->funcs[itr->second];
-				CompileAssert(funcdef->access==access_public, Pos, "Accessing a private method");
-				func = FixFunctionForNew(funcdef, args, resolved_type.class_ast, Pos);
+				auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield);
+				CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
+					Pos, string("Cannot find public method") + method + " in class " + cls->GetUniqueName() + " or it is a field or a function.");
+				//note: we ignore the @virtual flag here, since we know exactly the class of which we "new" an object.
+				func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
 			} else { // no specifically calling __init__, complier tries to find one
-				string init_method = "__init__";
-				auto itr = cls->funcmap.find(init_method);
-				if (itr != cls->funcmap.end()) // check if available __init__() exists
-				{ 
-					auto tfunc = &cls->funcs[itr->second];
-					CompileAssert(tfunc->access == access_public, Pos, string("__init__ function of class ")
-						+ resolved_type.class_ast->GetUniqueName() + " is defined, but is not public");
-					//CompileAssert(tfunc->decl->Proto.get()->resolved_args.size() == 0, Pos, string("__init__ function of class ")
-					//	+ resolved_type.class_ast->GetUniqueName() + " is defined, but has more than zero arguments"); 
-					func = FixFunctionForNew(tfunc, args, resolved_type.class_ast, Pos);
-				}
+				auto rty = ResolveClassMember(this, "__init__", Pos, cascade_parents, kind, outfunc, outfield);
+				if (kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function)
+					func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
+				else
+					CompileAssert(args.size() == 0, Pos, string("Cannot find the method __init__ in class ") + cls->GetUniqueName());
 			}
 		}
 	}
@@ -2618,37 +2663,9 @@ If usage vararg name is "", match the closest vararg
 			return;
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
-	
-		ClassAST* cls = Obj->resolved_type.class_ast;
-		ClassAST* cur_cls = cls;
-		while (cur_cls) {
-			auto field = cur_cls->fieldmap.find(member);
-			if (field != cur_cls->fieldmap.end())
-			{
-				if (cur_cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
-					throw CompileError(Pos, "Accessing a private member outside of a class");
-				kind = member_field;
-				this->field = &(cur_cls->fields[field->second]);
-				resolved_type = this->field->decl->resolved_type;
-				return;
-			}
-			auto func = cur_cls->funcmap.find(member);
-			if (func != cur_cls->funcmap.end())
-			{
-				this->func = &(cur_cls->funcs[func->second]);
-				if (dyncast_resolve_anno<SuperExprAST>(Obj.get())) //if the object is "super", do not generate virtual call here
-					kind = member_function;
-				else
-					kind = this->func->virtual_idx==MemberFunctionDef::VIRT_NONE? member_function : member_virtual_function;
-				if (this->func->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
-					throw CompileError(Pos, "Accessing a private member outside of a class");
-				resolved_type = this->func->decl->resolved_type;
-				return;
-			}
-			this->casade_parents++;
-			cur_cls = cur_cls->parent_class;
-		}
-		throw CompileError(Pos, "Cannot find member "+member);
+		this->kind = MemberType::member_error;
+		resolved_type = ResolveClassMember(Obj.get(),this->member, Pos, this->casade_parents, this->kind, this->func, this->field);
+		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member);
 	}
 	string TemplateArgument::GetString() const
 	{
@@ -2982,6 +2999,8 @@ If usage vararg name is "", match the closest vararg
 		iffalse.Phase1();
 	}
 
+
+
 	void BinaryExprAST::Phase1()
 	{
 		if (resolved_type.isResolved())
@@ -2990,7 +3009,7 @@ If usage vararg name is "", match the closest vararg
 		auto& RHS = this->RHS;
 		auto& resolved_type = this->resolved_type;
 		auto& Pos = this->Pos;
-		auto& func = this->func;
+		auto& is_overloaded = this->is_overloaded;
 
 		//if Op is tok_assign, then it is a special case
 		//we do not first do phase1 on LHS here, because it may be a overloaded indexexpr
@@ -3002,15 +3021,7 @@ If usage vararg name is "", match the closest vararg
 			{
 				if (indexexpr->isOverloaded()) //if indexexpr's Expr is a class object, generate "__setitem__"
 				{
-					string str = "__setitem__";
-					auto classast = indexexpr->Expr->resolved_type.class_ast;
-					auto itr = classast->funcmap.find(str);
-					CompileAssert(itr != classast->funcmap.end(),
-						Pos, string("The method __setitem__ should be declared in class ") + classast->GetUniqueName());
-					auto& funcdef = classast->funcs[itr->second];
-					func = funcdef.decl.get();
-					CompileAssert(funcdef.access == AccessModifier::access_public, Pos, "The method __setitem__ should be public");
-					auto memberexpr = make_unique<MemberExprAST>(std::move(indexexpr->Expr), &funcdef, Pos);
+					auto memberexpr = ResolveAndCreateMemberExpr(std::move(indexexpr->Expr), "__setitem__", Pos);
 					vector<unique_ptr<ExprAST>> args; 
 					args.emplace_back(std::move(indexexpr->Index));
 					args.emplace_back(std::move(RHS));
@@ -3019,6 +3030,7 @@ If usage vararg name is "", match the closest vararg
 					//Index->Phase1 and RHS->Phase1 will be called in CallExprAST
 					LHS->Phase1();
 					resolved_type = LHS->resolved_type;
+					is_overloaded = true;
 					return;
 				}
 				//else, goto the following control flow
@@ -3043,18 +3055,14 @@ If usage vararg name is "", match the closest vararg
 		//important! call RHS->Phase1()!
 		//it is not called here because we may put RHS as a parameter in a function
 
-		auto gen_call_to_operator_func = [&LHS,&RHS,&resolved_type,&Pos,&func](const string name) {
-			auto itr = LHS->resolved_type.class_ast->funcmap.find(name);
-			CompileAssert(itr != LHS->resolved_type.class_ast->funcmap.end(), Pos, 
-				string("Cannot find function ") + name + " in class " + LHS->resolved_type.class_ast->GetUniqueName());
-			auto member_def = &LHS->resolved_type.class_ast->funcs[itr->second];
-			func = member_def->decl.get();
-			auto memberexpr = make_unique<MemberExprAST>(std::move(LHS), member_def, Pos);
+		auto gen_call_to_operator_func = [&LHS,&RHS,&resolved_type,&Pos,&is_overloaded](const string& name) {
+			auto memberexpr = ResolveAndCreateMemberExpr(std::move(LHS), name, Pos);
 			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(RHS));
 			LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 			LHS->Pos = Pos;
 			//RHS->Phase1 will be called in CallExprAST
 			LHS->Phase1();
+			is_overloaded = true;
 			resolved_type = LHS->resolved_type;
 		};
 		if (Op == tok_equal || Op == tok_ne)
@@ -3109,7 +3117,7 @@ If usage vararg name is "", match the closest vararg
 				{ tok_not,"__not__" },
 				{ tok_xor,"__xor__" },
 				};
-				string& name = operator_map[Op];
+				string& name = operator_map.find(Op)->second;
 				gen_call_to_operator_func(name);
 				return;
 			}
@@ -3151,13 +3159,7 @@ If usage vararg name is "", match the closest vararg
 			arg->Phase1();
 			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
 			{
-				const string name = "__not__";
-				auto itr = arg->resolved_type.class_ast->funcmap.find(name);
-				CompileAssert(itr != arg->resolved_type.class_ast->funcmap.end(), Pos,
-					string("Cannot find function ") + name + " in class " + arg->resolved_type.class_ast->GetUniqueName());
-				auto member_def = &arg->resolved_type.class_ast->funcs[itr->second];
-				func = arg->resolved_type.class_ast->funcs[itr->second].decl.get();
-				auto memberexpr = make_unique<MemberExprAST>(std::move(arg), member_def, Pos);
+				auto memberexpr = ResolveAndCreateMemberExpr(std::move(arg), "__not__", Pos);
 				vector<unique_ptr<ExprAST>> args;
 				arg = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 				arg->Pos = Pos;

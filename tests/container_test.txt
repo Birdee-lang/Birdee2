@@ -1,0 +1,230 @@
+import fmt
+import list:list
+import hash:hash_set
+import hash:hash_map
+import hash:hash_key_excption
+
+import stack:stack
+import stack:stack_empty_exception
+import queue:queue
+import queue:queue_empty_exception
+
+declare function getchar() as int
+
+@enable_rtti
+class assertion_exception
+
+end
+
+{@
+from bdutils import *
+def line_pos():
+	strpos = str(get_cur_script().pos)
+	set_ast(StringLiteralAST.new(strpos))
+@}
+
+function assert(v as boolean, msg as string)
+	if !v then
+		println("Assertion failed :" + msg)
+		throw new assertion_exception
+	end
+end
+
+function check_list[T](lst as list[T], chk as T[], pos as string)
+	dim itr = lst.front()
+	println("Checking " + pos)
+	assert(lst.size() == chk.length(), {@line_pos()@})
+	for dim i=0 till chk.length()
+		assert(itr!=lst.ends(), {@line_pos()@})
+		assert(itr.get() == chk[i], {@line_pos()@})
+		itr.forward()
+	end
+	assert(itr == lst.ends(), {@line_pos()@})
+end
+
+function check_map(lst as hash_map[string,int], start as int, ends as int, pos as string)
+	dim itr = lst.front()
+	println("Checking " + pos)
+	assert(lst.size() == ends - start, {@line_pos()@})
+	for dim i=start till ends
+		dim n = lst.find(int2str(i))
+		assert(n!=lst.ends(), int2str(i) + " not found: " + {@line_pos()@})
+		assert(n.getv()==i, {@line_pos()@})
+	end
+	dim cnt=0
+	while itr!=lst.ends()
+		cnt=cnt+1
+		itr.forward()
+	end
+	assert(cnt == ends - start, {@line_pos()@})
+	assert(itr == lst.ends(), {@line_pos()@})
+end
+
+function hash_test()
+	dim a = new hash_map[string,int] 
+	for dim i=0 till 100
+		a.insert(int2str(i),i)
+	end
+	#a.dbgprint()
+	check_map(a,0,100,{@line_pos()@})
+
+	println("removing")
+	for dim i=7 till 100
+		dim node=a.find(int2str(i))
+		if node==a.ends() then
+			println("ERROR" + int2str(i))
+		end
+		a.remove(int2str(i))
+	end
+	check_map(a,0,7,{@line_pos()@})
+
+	try
+		a.remove("30")
+		assert(false, {@line_pos()@})
+	catch e as hash_key_excption
+		println("Caught the exception as expected")
+	end
+
+	#a.dbgprint()
+	println("removing again")
+	for dim i=0 till 7
+		dim node=a.find(int2str(i))
+		if node==a.ends() then
+			println("ERROR" + int2str(i))
+		end
+		a.remove(int2str(i))
+	end
+	assert(a.empty(), {@line_pos()@})
+
+	println("Insert again")
+	for dim i=0 till 15
+		a.insert(int2str(i),i)
+	end
+	#a.dbgprint()
+
+	check_map(a,0,15,{@line_pos()@})
+	a["233"] = 12345
+	assert(a["233"] == 12345, {@line_pos()@})
+	a.clear()
+	assert(a.front() == a.ends(), {@line_pos()@})
+
+
+	dim hset = new hash_set[string]
+	hset.insert("HI")
+	hset.insert("1I")
+	assert(hset["HI"], {@line_pos()@})
+	assert(!hset["I"], {@line_pos()@})
+end
+
+function list_test()
+	#test list
+	dim lst = new list[int]
+
+	assert(lst.size()==0 , {@line_pos()@})
+	assert(lst.empty(), {@line_pos()@})
+
+	lst.insert_back(123)
+	lst.insert_back(234)
+	lst.insert_back(345)
+
+	check_list(lst,[123,234,345], {@line_pos()@})
+	assert(!lst.empty(), {@line_pos()@})
+
+	lst.remove(lst.front())
+	check_list(lst,[234,345], {@line_pos()@})
+
+	lst.remove(lst.back())
+	check_list(lst,[234], {@line_pos()@})
+
+	lst.insert_front(2)
+	check_list(lst,[2,234],{@line_pos()@})
+
+	dim itr = lst.front().next()
+	lst.insert_after(itr, 32)
+	check_list(lst,[2,234,32],{@line_pos()@})
+
+	lst.insert_before(itr, 44)
+	check_list(lst,[2,44,234,32],{@line_pos()@})
+
+	assert(lst.back() == itr.next(), {@line_pos()@})
+	lst.remove(lst.back())
+	assert(lst.back() == itr, {@line_pos()@})
+	assert(lst.ends() == itr.next(), {@line_pos()@})
+	lst.remove(lst.back())
+end
+
+function queue_test()
+	dim q = new queue[uint]
+
+	assert(q.size()==0, {@line_pos()@})
+	q.push(10)
+	assert(q.size()==1, {@line_pos()@})
+	q.push(20)
+	q.push(30)
+	q.push(40)
+	q.push(50)
+	assert(q.size()==5, {@line_pos()@})
+
+	assert(q.front()==10, {@line_pos()@})
+	q.pop()
+	assert(q.front()==20, {@line_pos()@})
+	q.pop()
+	assert(q.front()==30, {@line_pos()@})
+	q.pop()
+	assert(q.front()==40, {@line_pos()@})
+	q.pop()
+	assert(q.front()==50, {@line_pos()@})
+	q.pop()
+
+	assert(q.size()==0, {@line_pos()@})
+
+	try
+		q.pop()
+		assert(false, {@line_pos()@})
+	catch e as queue_empty_exception
+		println("Caught queue_empty_exception as expected")
+	end
+
+end
+
+function stack_test()
+	dim s = new stack[uint]
+
+	assert(s.size()==0, {@line_pos()@})
+	s.push(10)
+	assert(s.size()==1, {@line_pos()@})
+	s.push(20)
+	s.push(30)
+	s.push(40)
+	s.push(50)
+	assert(s.size()==5, {@line_pos()@})
+
+	assert(s.top()==50, {@line_pos()@})
+	s.pop()
+	assert(s.top()==40, {@line_pos()@})
+	s.pop()
+	assert(s.top()==30, {@line_pos()@})
+	s.pop()
+	assert(s.top()==20, {@line_pos()@})
+	s.pop()
+	assert(s.top()==10, {@line_pos()@})
+	assert(s.pop()==10, {@line_pos()@})
+
+	assert(s.size()==0, {@line_pos()@})
+	try
+		s.pop()
+		assert(false, {@line_pos()@})
+	catch e as stack_empty_exception
+		println("Caught stack_empty_exception as expected")
+	end
+end
+
+hash_test()
+list_test()
+queue_test()
+stack_test()
+
+println("Done")
+getchar()
+
+

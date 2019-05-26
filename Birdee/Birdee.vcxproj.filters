@@ -94,26 +94,8 @@
     <Text Include="llvm.txt">
       <Filter>资源文件</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\test.txt">
-      <Filter>资源文件</Filter>
-    </Text>
-    <Text Include="..\BirdeeHome\src\test2.txt">
-      <Filter>资源文件</Filter>
-    </Text>
-    <Text Include="..\BirdeeHome\src\compile_name_checking_test.txt">
-      <Filter>资源文件</Filter>
-    </Text>
-    <Text Include="..\BirdeeHome\src\templates.txt">
-      <Filter>资源文件\template</Filter>
-    </Text>
-    <Text Include="..\BirdeeHome\src\template_user_lib.txt">
-      <Filter>资源文件\template</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\template_test.txt">
       <Filter>资源文件\template</Filter>
-    </Text>
-    <Text Include="..\BirdeeHome\src\hash_map.txt">
-      <Filter>资源文件\blib</Filter>
     </Text>
     <Text Include="..\tests\hash_map_test.txt">
       <Filter>资源文件\tests</Filter>
@@ -183,10 +165,10 @@
     <None Include="..\BirdeeHome\pylib\traits.py">
       <Filter>资源文件\pylib</Filter>
     </None>
-    <None Include="..\BirdeeHome\src\hash_set.bdm">
+    <None Include="..\BirdeeHome\src\list.bdm">
       <Filter>资源文件\blib</Filter>
     </None>
-    <None Include="..\BirdeeHome\src\list.bdm">
+    <None Include="..\BirdeeHome\src\hash.bdm">
       <Filter>资源文件\blib</Filter>
     </None>
   </ItemGroup>
