@@ -292,12 +292,11 @@ static GlobalVariable* GetOrCreateTypeInfoGlobalRaw(ClassAST* cls)
 	{
 		return itr->second;
 	}
-	string name;
-	MangleNameAndAppend(name, cls->GetUniqueName());
-	name += "0_typeinfo";
-
 	if (cls->vtabledef.empty())
 	{
+		string name;
+		MangleNameAndAppend(name, cls->GetUniqueName());
+		name += "0_typeinfo";
 		auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
 			true, GlobalVariable::LinkOnceODRLinkage, nullptr,
 			name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);

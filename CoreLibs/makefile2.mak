@@ -4,7 +4,7 @@ BLIB_DIR=$(BIRDEE_HOME)\blib
 $(BLIB_DIR):
 	cmd /c "if not exist $@ mkdir $@"
 $(BIRDEE_HOME)\blib\birdee.obj: $(BLIB_DIR) $(BIRDEE_HOME)\src\birdee.txt
-	..\x64\Debug\birdeec.exe -i $(BIRDEE_HOME)\src\birdee.txt -o $(BIRDEE_HOME)\blib\birdee.obj --corelib
+	$(BIRDEE_HOME)\bin\birdeec.exe -i $(BIRDEE_HOME)\src\birdee.txt -o $(BIRDEE_HOME)\blib\birdee.obj --corelib
 
 libs: $(BIRDEE_HOME)\blib\birdee.obj
 	python3 $(BIRDEE_HOME)/pylib/bbuild.py -i $(BIRDEE_HOME)/src -o $(BLIB_DIR) test variant list hash tuple fmt vector queue stack unsafe concurrent.threading rtti

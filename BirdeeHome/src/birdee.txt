@@ -102,6 +102,12 @@ class type_info
 	end
 end
 
+class runtime_exception
+	public msg as string
+	public func __init__(m as string) => msg=m
+	@virtual public func get_message() as string => msg
+end
+
 declare function BirdeeI2S (i as int) as string
 declare function BirdeeP2S (i as pointer) as string
 declare function BirdeeD2S (i as double) as string
