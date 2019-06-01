@@ -178,6 +178,11 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 	auto proto = make_unique<PrototypeAST>(name, std::move(Args), ConvertIdToType(func["return"]), cls, current_module_idx, /*is_closure*/false);
 	auto protoptr = proto.get();
 	auto ret = make_unique<FunctionAST>(std::move(proto));
+	{
+		auto itr = func.find("link_name");
+		if (itr != func.end())
+			ret->link_name = itr->get<string>();
+	}
 	ret->resolved_type.type = tok_func;
 	ret->resolved_type.proto_ast = protoptr;
 	return std::move(ret);

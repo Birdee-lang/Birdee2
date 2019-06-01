@@ -252,6 +252,8 @@ json BuildFunctionJson(FunctionAST* func)
 		return ret;
 	}
 	ret["name"] = func->GetName();
+	if (func->isDeclare)
+		ret["link_name"] = func->link_name.empty()? func->GetName(): func->link_name;
 	json args = json::array();
 	for (auto& arg : func->Proto->resolved_args)
 	{
@@ -308,8 +310,6 @@ json BuildGlobalFuncJson(json& func_template)
 	func_template = json::array();
 	for (auto itr : cu.funcmap)
 	{
-		if (itr.second.first->isDeclare)
-			continue;
 		if (itr.second.first->isTemplate())
 		{
 			for (auto& instance : (itr.second.first->template_param->instances))

@@ -1429,41 +1429,63 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return ret;
 	}
 	string prefix;
-	if (Proto->cls)
+	if (isDeclare)
 	{
-		MangleNameAndAppend(prefix, Proto->cls->GetUniqueName());
-		prefix += "_0";
-	}
-	else if (Proto->prefix_idx == -1)
-		prefix = GetMangledSymbolPrefix();
-	else
-	{
-		MangleNameAndAppend(prefix, cu.imported_module_names[Proto->prefix_idx]);
-		prefix += "_0";
-	}
-	if (parent)
-	{
-		auto f = parent;
-		vector<string*> names;
-		while (f)
+		if (!isImported)//if the function is declared in current module
 		{
-			names.push_back(&f->Proto->Name);
-			f = f->parent;
+			if (link_name.empty()) //if is declaration and is a c-style extern function
+				prefix = Proto->GetName();
+			else
+				prefix = link_name;
 		}
-		for (auto itr = names.rbegin(); itr != names.rend(); itr++)
+		else //if the function is an imported function from other module
 		{
-			//prefix += **itr;
-			MangleNameAndAppend(prefix, **itr);
+			if (!link_name.empty()) //if link name is empty, it is a normal function declared in the other module
+			{
+				//if not empty, it is declared in other module
+				prefix = link_name;
+			}
+		}
+	}
+	if(prefix.empty())
+	{
+		if (Proto->cls)
+		{
+			MangleNameAndAppend(prefix, Proto->cls->GetUniqueName());
 			prefix += "_0";
 		}
+		else if (Proto->prefix_idx == -1)
+			prefix = GetMangledSymbolPrefix();
+		else
+		{
+			MangleNameAndAppend(prefix, cu.imported_module_names[Proto->prefix_idx]);
+			prefix += "_0";
+		}
+		if (parent)
+		{
+			auto f = parent;
+			vector<string*> names;
+			while (f)
+			{
+				names.push_back(&f->Proto->Name);
+				f = f->parent;
+			}
+			for (auto itr = names.rbegin(); itr != names.rend(); itr++)
+			{
+				//prefix += **itr;
+				MangleNameAndAppend(prefix, **itr);
+				prefix += "_0";
+			}
 
+		}
+		MangleNameAndAppend(prefix, Proto->GetName());
 	}
+
 	GlobalValue::LinkageTypes linkage;
 	if (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance)
 		linkage = Function::LinkOnceODRLinkage;
 	else
 		linkage = Function::ExternalLinkage;
-	MangleNameAndAppend(prefix, Proto->GetName());
 	auto ftype=Proto->GenerateFunctionType();
 	auto myfunc = Function::Create(ftype, linkage, prefix, module);
 	llvm_func = myfunc;
@@ -1863,13 +1885,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		helper.cur_llvm_func = func_backup;
 		gen_context.cur_func = curfunc_backup;
 		gen_context.landingpad = landingpad_backup;
-	}
-	else if (!isImported) //if is declaration and is a c-style extern function
-	{
-		if(link_name.empty())
-			llvm_func->setName(Proto->GetName());
-		else
-			llvm_func->setName(link_name);
 	}
 	if (Proto->is_closure)
 	{
