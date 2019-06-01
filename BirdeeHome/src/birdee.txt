@@ -145,6 +145,7 @@ class div_zero_exception
 
 end
 
+@private
 function __create_basic_exception_no_call(ty as int) as pointer
 	if ty==0 then
 		return pointerof(new mem_access_exception)

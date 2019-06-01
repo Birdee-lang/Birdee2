@@ -109,17 +109,17 @@ inline void CompileCheckGlobalConflict(SourcePos pos, const std::string& name)
 	auto prv_cls = cu.classmap.find(name);
 	if (prv_cls != cu.classmap.end())
 	{
-		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_cls->second.get().Pos.ToString());
+		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_cls->second.first->Pos.ToString());
 	}
 	auto prv_func = cu.funcmap.find(name);
 	if (prv_func != cu.funcmap.end())
 	{
-		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_func->second.get().Pos.ToString());
+		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_func->second.first->Pos.ToString());
 	}
 	auto prv_dim = cu.dimmap.find(name);
 	if (prv_dim != cu.dimmap.end())
 	{
-		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_dim->second.get().Pos.ToString());
+		throw CompileError(pos, string("The global name ") + name + " is already defined in " + prv_dim->second.first->Pos.ToString());
 	}
 }
 
@@ -320,7 +320,7 @@ std::unique_ptr<VariableSingleDefAST> ParseSingleDim()
 	return make_unique<VariableSingleDefAST>(identifier, std::move(type), std::move(val), pos);
 }
 
-std::unique_ptr<VariableDefAST> ParseDim(bool isglobal = false,bool* pout_vararg=nullptr,string* pout_vararg_name=nullptr)
+std::unique_ptr<VariableDefAST> ParseDim(bool isglobal = false, bool is_public_global = false,bool* pout_vararg=nullptr,string* pout_vararg_name=nullptr)
 {
 	std::vector<std::unique_ptr<VariableSingleDefAST>> defs;
 	auto pos = tokenizer.GetSourcePos();
@@ -375,8 +375,7 @@ done:
 		{
 			CompileCheckGlobalConflict(v->Pos, v->name);
 			std::reference_wrapper<const string> name = v->name;
-			std::reference_wrapper<VariableSingleDefAST> ref = *v;
-			cu.dimmap.insert(std::make_pair(name, ref));
+			cu.dimmap.insert(std::make_pair(name, std::make_pair(v.get(), is_public_global)));
 		}
 	}
 
@@ -1111,7 +1110,7 @@ std::unique_ptr<FunctionAST> ParseFunction(ClassAST* cls)
 	bool is_vararg = false;
 	string vararg_name;
 	if (tokenizer.CurTok != tok_right_bracket)
-		args = ParseDim(/*is_global*/false, &is_vararg, &vararg_name);
+		args = ParseDim(/*is_global*/false, /*is_public_global*/false, &is_vararg, &vararg_name);
 	if (is_vararg)
 	{
 		CompileAssert(is_template || (cls && cls->isTemplate()), "Vararg in function parameters can only be used within a function or class template");
@@ -1589,19 +1588,23 @@ void DoImportPackageAll(const vector<string>& package)
 	auto mod = DoImportPackage(package);
 	for (auto& itr : mod->classmap)
 	{
-		InsertName(cu.imported_classmap, itr.first, itr.second.get());
+		if(itr.second.second)
+			InsertName(cu.imported_classmap, itr.first, itr.second.first.get());
 	}
 	for (auto& itr : mod->dimmap)
 	{
-		InsertName(cu.imported_dimmap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(cu.imported_dimmap, itr.first, itr.second.first.get());
 	}
 	for (auto& itr : mod->funcmap)
 	{
-		InsertName(cu.imported_funcmap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(cu.imported_funcmap, itr.first, itr.second.first.get());
 	}
 	for (auto& itr : mod->functypemap)
 	{
-		InsertName(cu.imported_functypemap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(cu.imported_functypemap, itr.first, itr.second.first.get());
 	}
 }
 
@@ -1609,9 +1612,9 @@ template<typename T,typename NodeT>
 bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
 {
 	auto dim = namemap.find(name);
-	if (dim != namemap.end())
+	if (dim != namemap.end() && dim->second.second)
 	{
-		InsertName(node,dim->first, dim->second.get());
+		InsertName(node,dim->first, dim->second.first.get());
 		return true;
 	}
 	return false;
@@ -1652,19 +1655,23 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 	auto mod = DoImportPackage(package);
 	for (auto& itr : mod->classmap)
 	{
-		InsertName(to_mod->imported_classmap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(to_mod->imported_classmap, itr.first, itr.second.first.get());
 	}
 	for (auto& itr : mod->dimmap)
 	{
-		InsertName(to_mod->imported_dimmap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(to_mod->imported_dimmap, itr.first, itr.second.first.get());
 	}
 	for (auto& itr : mod->funcmap)
 	{
-		InsertName(to_mod->imported_funcmap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(to_mod->imported_funcmap, itr.first, itr.second.first.get());
 	}
 	for (auto& itr : mod->functypemap)
 	{
-		InsertName(to_mod->imported_functypemap, itr.first, itr.second.get());
+		if (itr.second.second)
+			InsertName(to_mod->imported_functypemap, itr.first, itr.second.first.get());
 	}
 }
 
@@ -1791,9 +1798,8 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 		CompileAssert(is_top_level, "Can only parse function declaration in top-level");
 		std::unique_ptr<FunctionAST> funcast = ParseDeclareFunction(nullptr);
 		std::reference_wrapper<const string> funcname = funcast->GetName();
-		std::reference_wrapper<FunctionAST> funcref = *funcast;
 		CompileCheckGlobalConflict(funcast->Pos, funcname);
-		cu.funcmap.insert(std::make_pair(funcname, funcref));
+		cu.funcmap.insert(std::make_pair(funcname, std::make_pair(funcast.get(), true)));
 		ret = std::move(funcast);
 		break;
 	}
@@ -1851,6 +1857,23 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			tokenizer.GetNextToken();
 			while(tokenizer.CurTok==tok_newline) tokenizer.GetNextToken();
 		}
+		auto is_public = [&anno]()
+		{
+			bool ret = true;
+			for (auto itr = anno.begin(); itr != anno.end();)
+			{
+				if (*itr == "private")
+				{
+					itr = anno.erase(itr);
+					ret = false;
+				}
+				else
+				{
+					++itr;
+				}
+			}
+			return ret;
+		};
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
 			ApplyInternalAnnotations(anno, st.get(), true);
@@ -1868,7 +1891,7 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			break;
 		case tok_dim:
 			tokenizer.GetNextToken(); //eat dim
-			push_expr(ParseDim(true));
+			push_expr(ParseDim(true,is_public()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after variable definition");
 			break;
 		case tok_eof:
@@ -1890,9 +1913,8 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			tokenizer.GetNextToken(); //eat function
 			std::unique_ptr<FunctionAST> funcast = ParseFunction(nullptr);
 			std::reference_wrapper<const string> funcname = funcast->GetName();
-			std::reference_wrapper<FunctionAST> funcref = *funcast;
 			CompileCheckGlobalConflict(funcast->Pos, funcname);
-			cu.funcmap.insert(std::make_pair(funcname, funcref));
+			cu.funcmap.insert(std::make_pair(funcname, std::make_pair(funcast.get(),is_public())));
 			push_expr(std::move(funcast));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after function definition");
 			break;
@@ -1906,7 +1928,7 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			auto funcast = ParseFunctionPrototype(nullptr, false, nullptr, is_closure);
 			std::reference_wrapper<const string> funcname = funcast->GetName();
 			CompileCheckGlobalConflict(funcast->pos, funcname);
-			cu.functypemap.insert(std::make_pair(funcname, std::move(funcast)));
+			cu.functypemap.insert(std::make_pair(funcname, std::make_pair(std::move(funcast),is_public())));
 			break;
 		}
 		case tok_declare:
@@ -1915,9 +1937,8 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			CompileExpect(tok_func, "Expected a function after declare");
 			std::unique_ptr<FunctionAST> funcast = ParseDeclareFunction(nullptr);
 			std::reference_wrapper<const string> funcname = funcast->GetName();
-			std::reference_wrapper<FunctionAST> funcref = *funcast;
 			CompileCheckGlobalConflict(funcast->Pos, funcname);
-			cu.funcmap.insert(std::make_pair(funcname, funcref));
+			cu.funcmap.insert(std::make_pair(funcname, std::make_pair(funcast.get(), is_public())));
 			push_expr(std::move(funcast));
 			break;
 		}
@@ -1946,9 +1967,8 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			tokenizer.GetNextToken(); //eat class
 			auto classdef = ParseClass(is_struct);
 			std::reference_wrapper<const string> clscname = classdef->name;
-			std::reference_wrapper<ClassAST> classref = *classdef;
 			CompileCheckGlobalConflict(classdef->Pos, clscname);
-			cu.classmap.insert(std::make_pair(clscname, classref));
+			cu.classmap.insert(std::make_pair(clscname, std::make_pair(classdef.get(),is_public())));
 			push_expr(std::move(classdef));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after class definition");
 			break;

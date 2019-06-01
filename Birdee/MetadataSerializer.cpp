@@ -261,13 +261,15 @@ json BuildFunctionJson(FunctionAST* func)
 	ret["return"] = ConvertTypeToIndex(func->Proto->resolved_type);
 	return ret;
 }
-void BuildAndPushFunctionJson(json& arr, FunctionAST* func)
+json* BuildAndPushFunctionJson(json& arr, FunctionAST* func)
 {
 	json ret = BuildFunctionJson(func);
 	if (!ret.empty())
 	{
 		arr.push_back(std::move(ret));
+		return &arr.back();
 	}
+	return nullptr;
 }
 
 void BuildClassJson(json& arr)
@@ -275,7 +277,7 @@ void BuildClassJson(json& arr)
 	int idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
-		class_idx_map[&itr.second.get()] = idx++;
+		class_idx_map[itr.second.first] = idx++;
 	}
 	if (class_idx_map.size() > MAX_CLASS_DEF_COUNT)
 	{
@@ -284,7 +286,8 @@ void BuildClassJson(json& arr)
 	}
 	for (auto itr : Birdee::cu.classmap)
 	{
-		arr.push_back(BuildSingleClassJson(itr.second,false));
+		arr.push_back(BuildSingleClassJson(*itr.second.first,false));
+		arr.back()["is_public"] = itr.second.second;
 	}
 }
 
@@ -293,7 +296,8 @@ json BuildGlobalVaribleJson()
 	json arr = json::array();
 	for (auto itr : cu.dimmap)
 	{
-		arr.push_back(BuildVariableJson(&itr.second.get()));
+		arr.push_back(BuildVariableJson(itr.second.first));
+		arr.back()["is_public"] = itr.second.second;
 	}
 	return arr;
 }
@@ -304,24 +308,29 @@ json BuildGlobalFuncJson(json& func_template)
 	func_template = json::array();
 	for (auto itr : cu.funcmap)
 	{
-		if (itr.second.get().isDeclare)
+		if (itr.second.first->isDeclare)
 			continue;
-		if (itr.second.get().isTemplate())
+		if (itr.second.first->isTemplate())
 		{
-			for (auto& instance : (itr.second.get().template_param->instances))
+			for (auto& instance : (itr.second.first->template_param->instances))
 			{
 				BuildAndPushFunctionJson(arr,instance.second.get());
 			}
 			json template_obj;
-			auto ptr = itr.second.get().template_param.get();
+			auto ptr = itr.second.first->template_param.get();
 			template_obj["template"] = ptr->source.get();
 			if (ptr->annotation)
 				template_obj["annotations"] = ptr->annotation->anno;
-			template_obj["source_line"] = itr.second.get().Pos.line;
+			template_obj["source_line"] = itr.second.first->Pos.line;
+			template_obj["is_public"] = itr.second.second;
 			func_template.push_back(std::move(template_obj));
 		}
 		else
-			BuildAndPushFunctionJson(arr,&itr.second.get());
+		{
+			auto jsonobj = BuildAndPushFunctionJson(arr, itr.second.first);
+			if(jsonobj)
+				(*jsonobj)["is_public"] = itr.second.second;
+		}
 	}
 	return arr;
 }
@@ -409,7 +418,7 @@ void BuildExportedPrototypePlaceholders()
 {
 	for (auto& node : cu.functypemap)
 	{
-		functype_idx_map[node.second.get()] = NextFunctionTypeIndex--;
+		functype_idx_map[node.second.first.get()] = NextFunctionTypeIndex--;
 		exported_functype.push_back(json());
 	}
 	if (functype_idx_map.size() >= MAX_CLASS_DEF_COUNT)
@@ -425,7 +434,8 @@ void BuildExportedPrototypes()
 	int idx = 0;
 	for (auto& itr : cu.functypemap)
 	{
-		exported_functype[idx]=BuildPrototypeJson(itr.second.get());
+		exported_functype[idx]=BuildPrototypeJson(itr.second.first.get());
+		exported_functype[idx]["is_public"] = itr.second.second;
 		idx++;
 	}
 }

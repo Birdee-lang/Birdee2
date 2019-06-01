@@ -28,16 +28,6 @@ T* FindImportByName(const unordered_map<reference_wrapper<const string>, T*>& M,
 	return (itr->second);
 }
 
-template <typename T>
-T* FindImportByName(const unordered_map<string, std::unique_ptr<T>>& M,
-	const string& name)
-{
-	auto itr = M.find(name);
-	if (itr == M.end())
-		return nullptr;
-	return (itr->second.get());
-}
-
 namespace Birdee
 {
 	class TemplateArgumentNumberError : public CompileError
@@ -181,6 +171,24 @@ extern void* BirdeeCopyPyScope(void* src);
 extern void BirdeeDerefObj(void* obj);
 extern void* BirdeeGetOrigScope();
 #endif
+
+#define CompileAssert(a, p ,msg)\
+do\
+{\
+	if (!(a))\
+	{\
+		throw CompileError(p, msg);\
+	}\
+}while(0)\
+
+template<typename T>
+inline T* FindModuleGlobal(unordered_map<string, std::pair<unique_ptr<T>, bool>>& v,const string& name)
+{
+	auto itr = v.find(name);
+	if (itr != v.end() && itr->second.second)
+		return itr->second.first.get();
+	return nullptr;
+}
 
 class ScopeManager
 {
@@ -445,9 +453,8 @@ public:
 			if (!vec.empty() && vec.back().imported_mod)
 			{
 				auto& dimmap = vec.back().imported_mod->dimmap;
-				auto var = dimmap.find(name);
-				if (var != dimmap.end())
-					return var->second.get();
+				if (auto v = FindModuleGlobal(dimmap, name))
+					return v;
 				auto& dimmap2 = vec.back().imported_mod->imported_dimmap;
 				auto var2 = dimmap2.find(name);
 				if (var2 != dimmap2.end())
@@ -567,9 +574,8 @@ public:
 			if (!v.empty() && v.back().imported_mod)
 			{
 				auto& funcmap = v.back().imported_mod->funcmap;
-				auto var = funcmap.find(name);
-				if (var != funcmap.end())
-					return make_unique<ResolvedFuncExprAST>(var->second.get(), pos);
+				if(auto var = FindModuleGlobal(funcmap, name))
+					return make_unique<ResolvedFuncExprAST>(var, pos);
 				auto& funcmap2 = v.back().imported_mod->imported_funcmap;
 				auto var2 = funcmap2.find(name);
 				if (var2 != funcmap2.end())
@@ -590,7 +596,7 @@ public:
 			auto func = cu.funcmap.find(name);
 			if (func != cu.funcmap.end())
 			{
-				return make_unique<ResolvedFuncExprAST>(&(func->second.get()), pos);
+				return make_unique<ResolvedFuncExprAST>(func->second.first, pos);
 			}
 		}
 
@@ -745,14 +751,7 @@ const T& GetItemByName(const unordered_map<T2, T>& M,
 	return itr->second;
 }
 
-#define CompileAssert(a, p ,msg)\
-do\
-{\
-	if (!(a))\
-	{\
-		throw CompileError(p, msg);\
-	}\
-}while(0)\
+
 
 template<typename Derived>
 Derived* dyncast_resolve_anno(StatementAST* p)
@@ -1350,14 +1349,12 @@ namespace Birdee
 			{
 				//we are now acting as if we are compiling another module
 				auto& functypemap = env.imported_mod->functypemap;
-				auto fitr = functypemap.find(str);
-				if (fitr != functypemap.end())
+				if (auto fitr = FindModuleGlobal(functypemap, str))
 				{
 					ths.type = tok_func;
-					ths.proto_ast = fitr->second.get();
+					ths.proto_ast = fitr;
 					return;
-				}
-				
+				}				
 				auto& functypemap2 = env.imported_mod->imported_functypemap;
 				auto fitr2 = functypemap2.find(str);
 				if (fitr2 != functypemap2.end())
@@ -1368,11 +1365,10 @@ namespace Birdee
 				}
 
 				auto& classmap = env.imported_mod->classmap;
-				auto itr = classmap.find(str);
-				if (itr != classmap.end())
+				if (auto cls = FindModuleGlobal(classmap, str))
 				{
 					ths.type = tok_class;
-					ths.class_ast = itr->second.get();
+					ths.class_ast = cls;
 					return;
 				}
 				ths.type = tok_class;
@@ -1394,7 +1390,7 @@ namespace Birdee
 				if (fitr != functypemap.end())
 				{
 					this->type = tok_func;
-					this->proto_ast = fitr->second.get();
+					this->proto_ast = fitr->second.first.get();
 				}
 				else
 				{
@@ -1412,7 +1408,7 @@ namespace Birdee
 						if (itr == cu.classmap.end())
 							this->class_ast = GetItemByName(cu.imported_classmap, ty->name, pos);
 						else
-							this->class_ast = &(itr->second.get());
+							this->class_ast = itr->second.first;
 					}
 				}
 			}
@@ -1429,19 +1425,17 @@ namespace Birdee
 				throw CompileError(pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
 			}
 			auto& functypemap2 = node->mod->functypemap;
-			auto fitr2 = functypemap2.find(clsname);
-			if (fitr2 != functypemap2.end())
+			if (auto fitr = FindModuleGlobal(functypemap2, clsname))
 			{
 				this->type = tok_func;
-				this->proto_ast = fitr2->second.get();
+				this->proto_ast = fitr;
 			}
 			else
 			{
-				auto itr = node->mod->classmap.find(clsname);
-				if (itr == node->mod->classmap.end())
-					throw CompileError(pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
+				auto itr = FindModuleGlobal(node->mod->classmap, clsname);
+				CompileAssert(itr, pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
 				this->type = tok_class;
-				this->class_ast = itr->second.get();
+				this->class_ast = itr;
 			}
 		}
 		if (this->type==tok_class &&(type.type == tok_identifier || type.type == tok_package))
@@ -1465,15 +1459,15 @@ namespace Birdee
 	{
 		for (auto& node : funcmap)
 		{
-			node.second.get().Phase0();
+			node.second.first->Phase0();
 		}
 		for (auto& node : classmap)
 		{
-			node.second.get().Phase0();
+			node.second.first->Phase0();
 		}
 		for (auto& node : functypemap)
 		{
-			node.second->Phase1(false);
+			node.second.first->Phase1(false);
 		}
 	}
 
@@ -2469,7 +2463,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		string name("genericarray");
 		if (cu.is_corelib)
-			return &(cu.classmap.find(name)->second.get());
+			return cu.classmap.find(name)->second.first;
 		else
 			return cu.imported_classmap.find(name)->second;
 	}
@@ -2557,10 +2551,10 @@ If usage vararg name is "", match the closest vararg
 	{
 		string name("type_info");
 		if (cu.is_corelib)
-			return &(cu.classmap.find(name)->second.get());
+			return cu.classmap.find(name)->second.first;
 		else
 		{
-			return cu.imported_packages.FindName("birdee")->mod->classmap.find(name)->second.get();
+			return cu.imported_packages.FindName("birdee")->mod->classmap.find(name)->second.first.get();
 		}
 	}
 
@@ -2633,7 +2627,7 @@ If usage vararg name is "", match the closest vararg
 			ImportTree* node = Obj->resolved_type.import_node;
 			if (node->map.size() == 0)
 			{
-				auto ret1 = FindImportByName(node->mod->dimmap, member);
+				auto ret1 = FindModuleGlobal(node->mod->dimmap, member);
 				if (ret1)
 				{
 					kind = member_imported_dim;
@@ -2642,7 +2636,7 @@ If usage vararg name is "", match the closest vararg
 					resolved_type = ret1->resolved_type;
 					return;
 				}
-				auto ret2 = FindImportByName(node->mod->funcmap, member);
+				auto ret2 = FindModuleGlobal(node->mod->funcmap, member);
 				if (ret2)
 				{
 					kind = member_imported_function;
@@ -3001,7 +2995,7 @@ If usage vararg name is "", match the closest vararg
 	{
 		string name("string");
 		if (cu.is_corelib)
-			return &(cu.classmap.find(name)->second.get());
+			return cu.classmap.find(name)->second.first;
 		else
 			return cu.imported_classmap.find(name)->second;
 	}

@@ -437,7 +437,7 @@ void RegisiterClassForBinding(py::module& m)
 		if (itr == cu.funcmap.end())
 			return GetRef((FunctionAST*)nullptr);
 		else
-			return itr->second;
+			return GetRef(itr->second.first);
 	});
 	m.def("get_top_level", []() {return GetRef(cu.toplevel); });
 	m.def("get_compile_error", []() {return GetRef(CompileError::last_error); });
