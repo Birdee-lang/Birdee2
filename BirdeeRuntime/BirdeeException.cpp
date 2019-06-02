@@ -43,6 +43,7 @@ static const uint64_t MY_EXCEPTION_CLASS = MKINT('M', 7) | MKINT('N', 6) | MKINT
 #endif
 
 extern "C" bool birdee_0type__info_0is__parent__of(BirdeeTypeInfo* parent, BirdeeTypeInfo* child);
+extern "C" BirdeeTypeInfo birdee_0runtime__exception0_typeinfo_vtable;
 
 struct EmptyExceptionStruct
 {
@@ -117,10 +118,23 @@ extern "C" {
 	}
 #endif
 
+	void DumpException(BirdeeRTTIObject* obj)
+	{
+		typedef BirdeeString* (*PTRGetMessage)(BirdeeRTTIObject*);
+		fprintf(stderr, "Uncaught exception found! %s\n", obj->type->name->arr->packed.cbuf);
+		if (birdee_0type__info_0is__parent__of(&birdee_0runtime__exception0_typeinfo_vtable, obj->type))
+		{
+			PTRGetMessage func = (PTRGetMessage)obj->type->vtable[0];
+			BirdeeString* msg = func(obj);
+			fprintf(stderr, "Message: %s\n", msg->arr->packed.cbuf);
+		}
+		fputs("Stacktrace:\n", stderr);
+		printbacktrace();
+	}
+
 	DLLEXPORT void __Birdee_Throw(BirdeeRTTIObject* obj) {
 		_Unwind_RaiseException(__Birdee_CreateException(obj));
-		fprintf(stderr, "Uncaught exception found! %s\n Stacktrace:\n", obj->type->name->arr->packed.cbuf);
-		printbacktrace();
+		DumpException(obj);
 		std::terminate();
 		return;
 	}

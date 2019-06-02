@@ -705,6 +705,8 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 
 	if (package.size() == 1 && package[0] == "birdee") //if is "birdee" core package, generate "type_info" first
 		classmap.find("type_info")->second->PreGenerate();
+	for (auto cls : to_run_phase0)
+		cls->Phase0();
 	for (auto& cls : this->classmap)
 	{
 		cls.second->PreGenerate();//it is safe to call multiple times
@@ -724,9 +726,6 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 
 	BuildGlobalVaribleFromJson(json["Variables"], *this);
 	BuildGlobalFuncFromJson(json["Functions"], *this);
-
-	for (auto cls : to_run_phase0)
-		cls->Phase0();
 	
 	{
 		auto itr = json.find("InitScripts");
