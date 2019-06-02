@@ -68,9 +68,7 @@ class string
 		len=length
 		buf=new byte * (length+1)
 		buf[length]=0
-		for dim i as uint=0 till length
-			buf[i] = buffer[i]
-		end
+		memcpy(addressof(buf[0]),addressof(buffer[start]),length,1,false)
 	end
 
 	public function get_bytes() as byte[]

@@ -25,6 +25,15 @@
     <Filter Include="资源文件\blib">
       <UniqueIdentifier>{66515783-4c42-478f-b199-5a7aa3253095}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\blib\system">
+      <UniqueIdentifier>{e497ca51-bea2-4fc1-b030-cbe808bc7ace}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\blib\system\specific">
+      <UniqueIdentifier>{1a9a4afa-bf4d-497b-a6c4-4ba5983d6d4a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\blib\system\specific\win32">
+      <UniqueIdentifier>{5483bc71-9af5-4d35-928c-0d7e75090488}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -173,6 +182,12 @@
     </None>
     <None Include="..\BirdeeHome\src\typedptr.bdm">
       <Filter>资源文件\blib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\win32\file.bdm">
+      <Filter>资源文件\blib\system\specific\win32</Filter>
+    </None>
+    <None Include="..\BirdeeHome\pylib\bdconst.py">
+      <Filter>资源文件\pylib</Filter>
     </None>
   </ItemGroup>
 </Project>
