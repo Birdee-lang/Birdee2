@@ -1,0 +1,8 @@
+package py_module_test
+
+@init_script
+{@
+a=1
+def p():
+	print(a)
+@}

@@ -93,13 +93,14 @@ namespace Birdee {
 	BD_CORE_API extern string GetTokenString(Token tok);
 
 	class AnnotationStatementAST;
-
+	
 	struct ImportedModule
 	{
-		unordered_map<string, unique_ptr<ClassAST>> classmap;
-		unordered_map<string, unique_ptr<FunctionAST>> funcmap;
-		unordered_map<string, unique_ptr<VariableSingleDefAST>> dimmap;
-		unordered_map<string, unique_ptr<PrototypeAST>> functypemap;
+		//mapping from name to <Symbol,is_public>
+		unordered_map<string, std::pair<unique_ptr<ClassAST>,bool>> classmap;
+		unordered_map<string, std::pair<unique_ptr<FunctionAST>, bool>> funcmap;
+		unordered_map<string, std::pair<unique_ptr<VariableSingleDefAST>, bool>> dimmap;
+		unordered_map<string, std::pair<unique_ptr<PrototypeAST>, bool>> functypemap;
 
 		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
 		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
@@ -342,10 +343,11 @@ namespace Birdee {
 
 		vector<string> search_path; //the search paths, with "/" at the end
 		vector<unique_ptr<StatementAST>> toplevel;
-		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<ClassAST>> classmap;
-		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<FunctionAST>> funcmap;
-		unordered_map<std::reference_wrapper<const string>, std::reference_wrapper<VariableSingleDefAST>> dimmap;
-		unordered_map<std::reference_wrapper<const string>, unique_ptr<PrototypeAST>> functypemap;
+		//name to <symbol, is_public> mapping
+		unordered_map<std::reference_wrapper<const string>, std::pair<ClassAST*,bool>> classmap;
+		unordered_map<std::reference_wrapper<const string>, std::pair<FunctionAST*,bool>> funcmap;
+		unordered_map<std::reference_wrapper<const string>, std::pair<VariableSingleDefAST*,bool>> dimmap;
+		unordered_map<std::reference_wrapper<const string>, std::pair<unique_ptr<PrototypeAST>,bool>> functypemap;
 
 		//maps from short names ("import a.b:c" => "c") to the imported AST
 		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;

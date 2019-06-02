@@ -501,7 +501,9 @@ Token Birdee::Tokenizer::gettok() {
 	{
 		LastChar = GetChar();
 		Token ret = gettok();
-		if (ret != tok_identifier)
+		if (ret == tok_private)
+			tokenizer.IdentifierStr = "private";
+		else if (ret != tok_identifier)
 			throw TokenizerError(line, pos, "Expected an identifier after \'@\'");
 		if (!isspace(LastChar) && LastChar != '\n') //if annotation is not followed by a " ", parse until the end of the line
 		{

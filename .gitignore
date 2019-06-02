@@ -276,3 +276,6 @@ __pycache__/
 
 /BirdeeHome2
 /BirdeeHome/lib
+/Birdee/DynLLVM
+/BirdeeBinding/DynLLVM/BirdeeBinding.tlog
+/BirdeeCompilerCore/DynLLVM/BirdeeCo.793F4745.tlog

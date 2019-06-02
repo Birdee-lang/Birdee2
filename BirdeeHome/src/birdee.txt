@@ -1,12 +1,9 @@
-declare function puts (str as pointer) as int
-declare function prints (str as pointer) as int
-declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
-declare function strcmp (a as pointer,b as pointer) as int
-declare function trap alias "llvm.debugtrap" ()
+@private declare function puts (str as pointer) as int
+@private declare function prints (str as pointer) as int
+@private declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
+@private declare function strcmp (a as pointer,b as pointer) as int
+declare function breakpoint alias "llvm.debugtrap" ()
 
-function breakpoint()
-	trap()
-end
 
 class genericarray
 	private len as uint
@@ -71,9 +68,7 @@ class string
 		len=length
 		buf=new byte * (length+1)
 		buf[length]=0
-		for dim i as uint=0 till length
-			buf[i] = buffer[i]
-		end
+		memcpy(addressof(buf[0]),addressof(buffer[start]),length,1,false)
 	end
 
 	public function get_bytes() as byte[]
@@ -102,6 +97,12 @@ class type_info
 	end
 end
 
+class runtime_exception
+	public msg as string
+	public func __init__(m as string) => msg=m
+	@virtual public func get_message() as string => msg
+end
+
 declare function BirdeeI2S (i as int) as string
 declare function BirdeeP2S (i as pointer) as string
 declare function BirdeeD2S (i as double) as string
@@ -116,14 +117,6 @@ function bool2str(i as boolean) as string
 	else
 		return "false"
 	end
-end
-
-function pointer2str(i as pointer) as string
-	return BirdeeP2S(i)
-end
-
-function double2str(i as double) as string
-	return BirdeeD2S(i)
 end
 
 function print(str as string)
@@ -145,6 +138,7 @@ class div_zero_exception
 
 end
 
+@private
 function __create_basic_exception_no_call(ty as int) as pointer
 	if ty==0 then
 		return pointerof(new mem_access_exception)

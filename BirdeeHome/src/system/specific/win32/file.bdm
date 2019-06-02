@@ -1,0 +1,103 @@
+package system.specific.win32
+
+@init_script
+{@
+from bdconst import *
+
+define("DELETE",                           0x00010000)
+define("READ_CONTROL",                     0x00020000)
+define("WRITE_DAC",                        0x00040000)
+define("WRITE_OWNER",                      0x00080000)
+define("SYNCHRONIZE",                      0x00100000)
+
+define("STANDARD_RIGHTS_REQUIRED",         0x000F0000)
+
+define("STANDARD_RIGHTS_READ",             _READ_CONTROL)
+define("STANDARD_RIGHTS_WRITE",            _READ_CONTROL)
+define("STANDARD_RIGHTS_EXECUTE",          _READ_CONTROL)
+
+define("STANDARD_RIGHTS_ALL",              0x001F0000)
+
+define("SPECIFIC_RIGHTS_ALL",              0x0000FFFF)
+
+define("GENERIC_READ",                     0x80000000)
+define("GENERIC_WRITE",                    0x40000000)
+define("GENERIC_EXECUTE",                  0x20000000)
+define("GENERIC_ALL",                      0x10000000)
+
+define("FILE_READ_DATA",             0x0001 )    # file & pipe
+define("FILE_LIST_DIRECTORY",        0x0001 )    # directory
+
+define("FILE_WRITE_DATA",            0x0002 )    # file & pipe
+define("FILE_ADD_FILE",              0x0002 )    # directory
+
+define("FILE_APPEND_DATA",           0x0004 )    # file
+define("FILE_ADD_SUBDIRECTORY",      0x0004 )    # directory
+define("FILE_CREATE_PIPE_INSTANCE",  0x0004 )    # named pipe
+
+define("FILE_READ_EA",               0x0008 )    # file & directory
+define("FILE_WRITE_EA",              0x0010 )    # file & directory
+define("FILE_EXECUTE",               0x0020 )    # file
+define("FILE_TRAVERSE",              0x0020 )    # directory
+define("FILE_DELETE_CHILD",          0x0040 )    # directory
+define("FILE_READ_ATTRIBUTES",       0x0080 )    # all
+define("FILE_WRITE_ATTRIBUTES",      0x0100 )    # all
+
+define("FILE_ALL_ACCESS", _STANDARD_RIGHTS_REQUIRED | _SYNCHRONIZE | 0x1FF)
+
+define("FILE_GENERIC_READ",_STANDARD_RIGHTS_READ| _FILE_READ_DATA|_FILE_READ_ATTRIBUTES|_FILE_READ_EA|_SYNCHRONIZE)
+
+
+define("FILE_GENERIC_WRITE",        _STANDARD_RIGHTS_WRITE    |\
+                                   _FILE_WRITE_DATA          |\
+                                   _FILE_WRITE_ATTRIBUTES    |\
+                                   _FILE_WRITE_EA            |\
+                                   _FILE_APPEND_DATA         |\
+                                   _SYNCHRONIZE)
+
+
+define("FILE_GENERIC_EXECUTE",      _STANDARD_RIGHTS_EXECUTE  |\
+                                   _FILE_READ_ATTRIBUTES     |\
+                                   _FILE_EXECUTE             |\
+                                   _SYNCHRONIZE)
+
+define("CREATE_NEW",1)
+define("CREATE_ALWAYS",2)
+define("OPEN_EXISTING",3)
+define("OPEN_ALWAYS",4)
+define("TRUNCATE_EXISTING",5)
+
+# end_access
+define("FILE_SHARE_READ",                 0x00000001)
+define("FILE_SHARE_WRITE",                0x00000002) 
+define("FILE_SHARE_DELETE",               0x00000004)
+
+define("FILE_SHARE_READ",                 0x00000001)  
+define("FILE_SHARE_WRITE",                0x00000002)  
+define("FILE_SHARE_DELETE",               0x00000004)  
+define("FILE_ATTRIBUTE_READONLY",             0x00000001)  
+define("FILE_ATTRIBUTE_HIDDEN",               0x00000002)  
+define("FILE_ATTRIBUTE_SYSTEM",               0x00000004)  
+define("FILE_ATTRIBUTE_DIRECTORY",            0x00000010)  
+define("FILE_ATTRIBUTE_ARCHIVE",              0x00000020)  
+define("FILE_ATTRIBUTE_DEVICE",               0x00000040)  
+define("FILE_ATTRIBUTE_NORMAL",               0x00000080)  
+define("FILE_ATTRIBUTE_TEMPORARY",            0x00000100)  
+define("FILE_ATTRIBUTE_SPARSE_FILE",          0x00000200)  
+define("FILE_ATTRIBUTE_REPARSE_POINT",        0x00000400)  
+define("FILE_ATTRIBUTE_COMPRESSED",           0x00000800)  
+define("FILE_ATTRIBUTE_OFFLINE",              0x00001000)  
+define("FILE_ATTRIBUTE_NOT_CONTENT_INDEXED",  0x00002000)  
+define("FILE_ATTRIBUTE_ENCRYPTED",            0x00004000)  
+define("FILE_ATTRIBUTE_INTEGRITY_STREAM",     0x00008000)  
+define("FILE_ATTRIBUTE_VIRTUAL",              0x00010000)  
+define("FILE_ATTRIBUTE_NO_SCRUB_DATA",        0x00020000)  
+define("FILE_ATTRIBUTE_EA",                   0x00040000)  
+define("FILE_ATTRIBUTE_PINNED",               0x00080000)  
+define("FILE_ATTRIBUTE_UNPINNED",             0x00100000)  
+define("FILE_ATTRIBUTE_RECALL_ON_OPEN",       0x00040000)  
+define("FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS", 0x00400000) 
+@}
+
+declare function CreateFileA(lpFileName as pointer, dwDesiredAccess as uint,dwShareMode as uint, lpSecurityAttributes as pointer##LPSECURITY_ATTRIBUTES##, dwCreationDisposition as uint, dwFlagsAndAttributes as uint, hTemplateFile as pointer) as pointer
+declare function ReadFile(hFile as pointer, lpBuffer as pointer, nNumberOfBytesToRead as uint, lpNumberOfBytesRead as pointer ##uint##, lpOverlapped as pointer ##LPOVERLAPPED##) as int
