@@ -189,5 +189,8 @@
     <None Include="..\BirdeeHome\pylib\bdconst.py">
       <Filter>资源文件\pylib</Filter>
     </None>
+    <None Include="..\BirdeeHome\pylib\bdassert.py">
+      <Filter>资源文件\pylib</Filter>
+    </None>
   </ItemGroup>
 </Project>

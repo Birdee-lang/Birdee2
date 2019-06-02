@@ -34,6 +34,8 @@ struct BirdeeString
 struct BirdeeTypeInfo
 {
 	BirdeeString* name;
+	BirdeeTypeInfo* parent;
+	void* vtable[0];
 };
 
 struct BirdeeRTTIObject

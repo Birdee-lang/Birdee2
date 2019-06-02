@@ -292,6 +292,7 @@
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\BirdeeHome\pylib\bdassert.py" />
     <None Include="..\BirdeeHome\pylib\bbuild.py" />
     <None Include="..\BirdeeHome\pylib\bdconst.py" />
     <None Include="..\BirdeeHome\pylib\getset.py" />

@@ -2269,6 +2269,8 @@ If usage vararg name is "", match the closest vararg
 	}
 	void IndexExprAST::Phase1(bool is_in_call)
 	{
+		if (!Expr || !Index) //if is resolved
+			return;
 		if(!Expr->resolved_type.isResolved())
 			Expr->Phase1();
 		unique_ptr<ExprAST>* member=nullptr;
