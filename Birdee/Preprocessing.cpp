@@ -62,6 +62,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define BirdeeCopyPyScope_NAME "?BirdeeCopyPyScope@@YAPEAXPEAX@Z"
 #define BirdeeDerefObj_NAME "?BirdeeDerefObj@@YAXPEAX@Z"
 #define BirdeeGetOrigScope_NAME "?BirdeeGetOrigScope@@YAPEAXXZ"
+#define Birdee_Register_Module_NAME "?Birdee_Register_Module@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX@Z"
 #else
 
 #include <dlfcn.h>
@@ -90,6 +91,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define BirdeeCopyPyScope_NAME "_Z17BirdeeCopyPyScopePv"
 #define BirdeeDerefObj_NAME "_Z14BirdeeDerefObjPv"
 #define BirdeeGetOrigScope_NAME "_Z18BirdeeGetOrigScopev"
+#define Birdee_Register_Module_NAME "_Z22Birdee_Register_ModuleRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPv"
 #endif
 
 static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
@@ -163,6 +165,16 @@ static void* BirdeeGetOrigScope()
 	}
 	return orig_scope;
 }
+void Birdee_Register_Module(const string& name, void* globals)
+{
+	typedef void*(*PtrImpl)(const string& name, void* globals);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(Birdee_Register_Module_NAME);
+	}
+	impl(name, globals);
+}
 #else
 extern void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);
 extern void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globalscope, void* localscope);
@@ -170,6 +182,7 @@ extern void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths, Source
 extern void* BirdeeCopyPyScope(void* src);
 extern void BirdeeDerefObj(void* obj);
 extern void* BirdeeGetOrigScope();
+extern void Birdee_Register_Module(const string& name, void* globals);
 #endif
 
 #define CompileAssert(a, p ,msg)\
@@ -1015,7 +1028,7 @@ Token PromoteNumberExpression(unique_ptr<ExprAST>& v1, unique_ptr<ExprAST>& v2,b
 
 }
 
-extern string GetModuleNameByArray(const vector<string>& package);
+extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
 namespace Birdee
 {

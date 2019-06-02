@@ -1518,12 +1518,12 @@ ImportTree* Birdee::ImportTree::Insert(const vector<string>& package, int level)
 	}
 }
 
-BD_CORE_API string GetModuleNameByArray(const vector<string>& package)
+BD_CORE_API string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".")
 {
 	string ret=package[0];
 	for (int i = 1; i < package.size(); i++)
 	{
-		ret += '.';
+		ret += delimiter;
 		ret += package[i];
 	}
 	return ret;

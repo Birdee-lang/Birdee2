@@ -12,7 +12,7 @@ using namespace Birdee;
 extern int ParseTopLevel(bool autoimport=true);
 extern void SeralizeMetadata(std::ostream& out, bool is_empty);
 extern void ParseTopLevelImportsOnly();
-extern string GetModuleNameByArray(const vector<string>& package);
+extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
 //GetCurrentDir copied from http://www.codebind.com/cpp-tutorial/c-get-current-directory-linuxwindows/
 #include <stdio.h>  /* defines FILENAME_MAX */

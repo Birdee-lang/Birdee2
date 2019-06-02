@@ -28,6 +28,7 @@ extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
 extern void ParseClassInPlace(ClassAST* ret, bool is_struct);
 
 extern std::vector<std::string> Birdee::source_paths;
+extern void Birdee_Register_Module(const string& name, void* globals);
 
 /*
 fix-me: Load template class & functions & instances
@@ -618,7 +619,7 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 	}
 }
 
-extern string GetModuleNameByArray(const vector<string>& package);
+extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
 string GetModuleFile(const vector<string>& package, std::ifstream& f)
 {
@@ -675,6 +676,7 @@ namespace Birdee
 {
 	extern void PushPyScope(ImportedModule* mod);
 	extern void PopPyScope();
+	extern void GetPyScope(void*& globals, void*& locals);
 }
 void ImportedModule::Init(const vector<string>& package, const string& module_name)
 {
@@ -759,6 +761,9 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 			{
 				tmp.Phase1();
 			}
+			void* locals, *globals;
+			GetPyScope(globals, locals);
+			Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
 			Birdee::PopPyScope();
 		}
 	}

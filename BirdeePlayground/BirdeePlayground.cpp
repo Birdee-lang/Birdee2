@@ -99,7 +99,7 @@ int main()
 		std::cerr << "Cannot import function fmt.printany\n";
 		std::exit(2);
 	}
-	auto printany_func = printany_func_itr->second.get();
+	auto printany_func = printany_func_itr->second.first.get();
 
 	std::unique_ptr < llvm::orc::KaleidoscopeJIT> TheJIT = make_unique<llvm::orc::KaleidoscopeJIT>();
 #ifdef _WIN32
