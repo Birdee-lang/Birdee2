@@ -105,7 +105,6 @@ println("=============")
 println(int2str(ts.getbase1()))
 println(int2str(ts.getbase2()))
 
-
 if ts.c then
 	println("test AA")
 else
@@ -159,8 +158,7 @@ class bird
 		return 1
 	end
 
-	@pure_virtual
-	public func speak(a as string) as int
+	public abstract func speak(a as string) as int
 end
 
 class quail : bird

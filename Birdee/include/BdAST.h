@@ -1203,7 +1203,7 @@ namespace Birdee {
 		//the index in the vtable, or VIRT_NONE if is non-virtual
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		//only valid after Phase0
-		bool is_pure = false;
+		bool is_abstract = false;
 		int virtual_idx = -1;
 		std::unique_ptr<FunctionAST> decl;
 		void print(int level)
@@ -1217,7 +1217,8 @@ namespace Birdee {
 			decl->print(level);
 		}
 		MemberFunctionDef Copy();
-		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl, int virtual_idx = -1) :access(access), decl(std::move(decl)), virtual_idx(virtual_idx){}
+		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl, int virtual_idx = -1, bool is_abstract = false) :
+			access(access), decl(std::move(decl)), virtual_idx(virtual_idx), is_abstract(is_abstract) {}
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {

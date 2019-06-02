@@ -1870,7 +1870,7 @@ namespace Birdee
 					if (parent_funcdef.find(name) != parent_funcdef.end())
 						continue;
 					parent_funcdef.insert(name);
-					if (funcdef.is_pure && this->funcmap.find(name) == this->funcmap.end()) {
+					if (funcdef.is_abstract && this->funcmap.find(name) == this->funcmap.end()) {
 						this->is_abstract = true;
 						break;
 					}
@@ -1880,16 +1880,16 @@ namespace Birdee
 		}
 
 		for (auto& funcdef : funcs) {
-			if (funcdef.is_pure) {
+			if (funcdef.is_abstract) {
 				ClassAST* cls = parent_class;
 				while (cls)
 				{
 					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
 					if (itr != cls->funcmap.end())
 					{
-						CompileAssert(cls->funcs[itr->second].is_pure, funcdef.decl->Pos, 
-							"method " + funcdef.decl->Proto->Name + "is defind as pure virtual in class " +
-							this->GetUniqueName() + ", but it's non-pure-virtual in parent class " + cls->GetUniqueName());
+						CompileAssert(cls->funcs[itr->second].is_abstract, funcdef.decl->Pos, 
+							"method " + funcdef.decl->Proto->Name + "is defind as abstract in class " +
+							this->GetUniqueName() + ", but it's non-abstract in parent class " + cls->GetUniqueName());
 						break;
 					}
 					cls = cls->parent_class;

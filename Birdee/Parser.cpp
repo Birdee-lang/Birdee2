@@ -1208,7 +1208,7 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 //is_field: true for FieldDef, false for MemberFunctionDef
 //index: the index within fields/funcdef
 static const string INTERNAL_ANNO_VIRTUAL = "virtual";
-static const string INTERNAL_ANNO_PURE_VIRTUAL = "pure_virtual";
+// static const string INTERNAL_ANNO_PURE_VIRTUAL = "pure_virtual";
 static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, int index)>> interal_class_annontation_map = {
 	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
@@ -1217,7 +1217,8 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
-	}},
+	}}
+	/*
 	{INTERNAL_ANNO_PURE_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'pure_virtual\' annotation can only be applied on member functions");
 		CompileAssert(!cls->is_struct, "The \'pure_virtual\' annotation can only be applied on class functions");
@@ -1227,6 +1228,7 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 		cls->funcs[index].is_pure = true;
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
 	}}
+	*/
 };
 
 BD_CORE_API bool ParseClassBody(ClassAST* ret)
@@ -1251,17 +1253,19 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	AccessModifier access;
 	while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
 	std::vector<string> anno;
-	std::unordered_map<string, int> anno_occurrence;
+	// std::unordered_map<string, int> anno_occurrence;
 	while (tokenizer.CurTok == tok_annotation)
 	{
-		anno_occurrence[tokenizer.IdentifierStr] += 1;
+		// anno_occurrence[tokenizer.IdentifierStr] += 1;
 		anno.emplace_back(std::move(tokenizer.IdentifierStr));
 		tokenizer.GetNextToken();
 		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
 	}
+	/*
 	auto contain_annotation = [&anno_occurrence](const string & ano) -> bool {
 		return anno_occurrence.find(ano) != anno_occurrence.end();
-	};
+	}; 
+	*/
 	auto apply_annotations = [&anno, ret](bool is_field, int index)
 	{
 		for (auto& ano : anno)
@@ -1297,15 +1301,24 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		else if (tokenizer.CurTok == tok_func)
 		{
 			tokenizer.GetNextToken(); //eat function
-			funcs.push_back(MemberFunctionDef(access, 
-				ParseFunction(ret, contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))));
+			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
 			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 				funcs.size() - 1));
-			if (!contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))
-				CompileExpect(tok_newline, "Expected a new line after function definition");
-			else
-				CompileExpect(tok_newline, "Expected a new line after function declaration");
+			CompileExpect(tok_newline, "Expected a new line after function definition");
+			apply_annotations(false, funcs.size() - 1);
+		}
+		else if (tokenizer.CurTok == tok_abstract)
+		{
+			tokenizer.GetNextToken(); //eat abstract
+			CompileExpect(tok_func, "Expected a function after abstract");
+			ret->needs_rtti = true;
+			ret->is_abstract = true;
+			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret, true), MemberFunctionDef::VIRT_UNRESOLVED, true));
+			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+				funcs.size() - 1));
+			CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
 			apply_annotations(false, funcs.size() - 1);
 		}
 		else
@@ -1315,15 +1328,11 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		break;
 	case tok_func:
 		tokenizer.GetNextToken(); //eat function
-		funcs.push_back(MemberFunctionDef(access_private, 
-		 	ParseFunction(ret, contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))));
+		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
-		if (!contain_annotation(INTERNAL_ANNO_PURE_VIRTUAL))
-			CompileExpect(tok_newline, "Expected a new line after function definition");
-		else
-			CompileExpect(tok_newline, "Expected a new line after function declaration");
+		CompileExpect(tok_newline, "Expected a new line after function definition");
 		apply_annotations(false, funcs.size() - 1);
 		break;
 	case tok_declare:
@@ -1333,6 +1342,18 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
+		apply_annotations(false, funcs.size() - 1);
+		break;
+	case tok_abstract:
+		tokenizer.GetNextToken(); //eat abstract
+		CompileExpect(tok_func, "Expected a function after abstract");
+		ret->needs_rtti = true;
+		ret->is_abstract = true;
+		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret, true), MemberFunctionDef::VIRT_UNRESOLVED, true));
+		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+			funcs.size() - 1));
+		CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
 		apply_annotations(false, funcs.size() - 1);
 		break;
 	default :
@@ -1406,7 +1427,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		else
 		{
 			// TODO, make it better
-			if (ret->funcs.rbegin()->is_pure) {
+			if (ret->funcs.rbegin()->is_abstract) {
 				throw CompileError("Expected member declarations, are you trying to implement a pure virtual function?");
 			}
 			else {
