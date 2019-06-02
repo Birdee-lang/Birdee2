@@ -2405,6 +2405,11 @@ llvm::Value * Birdee::ClassAST::Generate()
 	{
 		auto tyinfo = GetOrCreateTypeInfoGlobalRaw(this);
 		tyinfo->setExternallyInitialized(false);
+		if (strHasEnding(cu.targetpath, ".obj") && isTemplateInstance())
+		{
+			tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
+			tyinfo->setDSOLocal(true);
+		}
 
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
 		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
