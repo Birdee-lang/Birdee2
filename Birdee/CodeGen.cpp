@@ -727,11 +727,11 @@ static void ResetLLVMValuesForFunctionsAndGV(ImportTree* tree)
 	{
 		auto mod = tree->mod.get();
 		for (auto& itr : mod->classmap)
-			itr.second->ClearLLVMFunction();
+			itr.second.first->ClearLLVMFunction();
 		for (auto& itr : mod->dimmap)
-			itr.second->SetLLVMValue(nullptr);
+			itr.second.first->SetLLVMValue(nullptr);
 		for (auto& itr : mod->funcmap)
-			itr.second->ClearLLVMFunction();
+			itr.second.first->ClearLLVMFunction();
 		return;
 	}
 	else
@@ -757,13 +757,13 @@ void Birdee::CompileUnit::SwitchModule()
 	for (auto& fty : functypemap)
 	{
 		mod->mod->functypemap[fty.first.get()] = std::move(fty.second);
-		imported_functypemap[fty.second->Name] = fty.second.get();
+		imported_functypemap[fty.second.first->Name] = fty.second.first.get();
 	}
 	for (auto& stmt : toplevel)
 	{
 		if (auto cls = dyncast_resolve_anno<ClassAST>(stmt.get()))
 		{
-			mod->mod->classmap[cls->name] = unique_ptr_cast<ClassAST>(std::move(stmt));
+			mod->mod->classmap[cls->name] = std::make_pair(unique_ptr_cast<ClassAST>(std::move(stmt)), true);
 			imported_classmap[cls->name] = cls;
 			if (cls->isTemplate())
 				imported_class_templates.push_back(cls);
@@ -772,18 +772,18 @@ void Birdee::CompileUnit::SwitchModule()
 		{
 			for (auto& itr : mulvar->lst)
 			{
-				mod->mod->dimmap[itr->name] = std::move(itr);
+				mod->mod->dimmap[itr->name] = std::make_pair(std::move(itr), true);
 				imported_dimmap[itr->name]= itr.get();
 			}
 		}
 		else if (auto singlevar = dyncast_resolve_anno<VariableSingleDefAST>(stmt.get()))
 		{
-			mod->mod->dimmap[singlevar->name] = unique_ptr_cast<VariableSingleDefAST>(std::move(stmt));
+			mod->mod->dimmap[singlevar->name] = std::make_pair(unique_ptr_cast<VariableSingleDefAST>(std::move(stmt)), true);
 			imported_dimmap[singlevar->name] = singlevar;
 		}
 		else if (auto funcdef = dyncast_resolve_anno<FunctionAST>(stmt.get()))
 		{
-			mod->mod->funcmap[funcdef->Proto->Name] = unique_ptr_cast<FunctionAST>(std::move(stmt));
+			mod->mod->funcmap[funcdef->Proto->Name] = std::make_pair(unique_ptr_cast<FunctionAST>(std::move(stmt)), true);
 			imported_funcmap[funcdef->Proto->Name] = funcdef;
 			if (funcdef->isTemplate())
 				imported_func_templates.push_back(funcdef);
@@ -951,26 +951,26 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	if (cu.is_corelib)
 	{
 		string str = "type_info";
-		classmap.find(str)->second.get().PreGenerate();
+		classmap.find(str)->second.first->PreGenerate();
 	}
 
 	//first generate the classes, as the functions may reference them
 	//this will generate the LLVM types for the classes
 	for (auto& cls : classmap)
 	{
-		cls.second.get().PreGenerate();
+		cls.second.first->PreGenerate();
 	}
 
 	//generate the function objects of the function. Not the time to generate the bodies, 
 	//since functions may reference each other
 	for (auto& cls : classmap)
 	{
-		cls.second.get().PreGenerateFuncs();
+		cls.second.first->PreGenerateFuncs();
 	}
 
 	for (auto& func : funcmap)
 	{
-		func.second.get().PreGenerate();
+		func.second.first->PreGenerate();
 	}
 
 	for (auto cls : imported_class_templates)
@@ -988,7 +988,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	}
 	for (auto& dim : dimmap)
 	{
-		dim.second.get().PreGenerateForGlobal();
+		dim.second.first->PreGenerateForGlobal();
 	}
 
 	FunctionType *FT =
@@ -1428,41 +1428,63 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return ret;
 	}
 	string prefix;
-	if (Proto->cls)
+	if (isDeclare)
 	{
-		MangleNameAndAppend(prefix, Proto->cls->GetUniqueName());
-		prefix += "_0";
-	}
-	else if (Proto->prefix_idx == -1)
-		prefix = GetMangledSymbolPrefix();
-	else
-	{
-		MangleNameAndAppend(prefix, cu.imported_module_names[Proto->prefix_idx]);
-		prefix += "_0";
-	}
-	if (parent)
-	{
-		auto f = parent;
-		vector<string*> names;
-		while (f)
+		if (!isImported)//if the function is declared in current module
 		{
-			names.push_back(&f->Proto->Name);
-			f = f->parent;
+			if (link_name.empty()) //if is declaration and is a c-style extern function
+				prefix = Proto->GetName();
+			else
+				prefix = link_name;
 		}
-		for (auto itr = names.rbegin(); itr != names.rend(); itr++)
+		else //if the function is an imported function from other module
 		{
-			//prefix += **itr;
-			MangleNameAndAppend(prefix, **itr);
+			if (!link_name.empty()) //if link name is empty, it is a normal function declared in the other module
+			{
+				//if not empty, it is declared in other module
+				prefix = link_name;
+			}
+		}
+	}
+	if(prefix.empty())
+	{
+		if (Proto->cls)
+		{
+			MangleNameAndAppend(prefix, Proto->cls->GetUniqueName());
 			prefix += "_0";
 		}
+		else if (Proto->prefix_idx == -1)
+			prefix = GetMangledSymbolPrefix();
+		else
+		{
+			MangleNameAndAppend(prefix, cu.imported_module_names[Proto->prefix_idx]);
+			prefix += "_0";
+		}
+		if (parent)
+		{
+			auto f = parent;
+			vector<string*> names;
+			while (f)
+			{
+				names.push_back(&f->Proto->Name);
+				f = f->parent;
+			}
+			for (auto itr = names.rbegin(); itr != names.rend(); itr++)
+			{
+				//prefix += **itr;
+				MangleNameAndAppend(prefix, **itr);
+				prefix += "_0";
+			}
 
+		}
+		MangleNameAndAppend(prefix, Proto->GetName());
 	}
+
 	GlobalValue::LinkageTypes linkage;
 	if (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance)
 		linkage = Function::LinkOnceODRLinkage;
 	else
 		linkage = Function::ExternalLinkage;
-	MangleNameAndAppend(prefix, Proto->GetName());
 	auto ftype=Proto->GenerateFunctionType();
 	auto myfunc = Function::Create(ftype, linkage, prefix, module);
 	llvm_func = myfunc;
@@ -1862,13 +1884,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		helper.cur_llvm_func = func_backup;
 		gen_context.cur_func = curfunc_backup;
 		gen_context.landingpad = landingpad_backup;
-	}
-	else if (!isImported) //if is declaration and is a c-style extern function
-	{
-		if(link_name.empty())
-			llvm_func->setName(Proto->GetName());
-		else
-			llvm_func->setName(link_name);
 	}
 	if (Proto->is_closure)
 	{

@@ -1,0 +1,13 @@
+package os_specific
+
+import system.specific.win32.file:*
+
+{@from system_0specific_0win32_0file import *@}
+dim hFile = CreateFileA("d:\\temp.txt".get_raw(),{@GENERIC_READ()@},{@FILE_SHARE_READ()@},pointerof(null),{@OPEN_EXISTING()@},{@FILE_ATTRIBUTE_NORMAL()@},pointerof(null))
+
+dim buf  = new byte *100
+dim bytesRead as uint
+ReadFile(hFile, addressof(buf[0]), 99, addressof(bytesRead), pointerof(null))
+dim str = new string:copy_bytes(buf,0,bytesRead)
+println(str)
+println("done, bytes" + int2str(bytesRead))

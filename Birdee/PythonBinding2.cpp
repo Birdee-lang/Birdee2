@@ -132,6 +132,15 @@ BIRDEE_BINDING_API void* BirdeeGetOrigScope()
 	return InitPython().orig_scope.ptr();
 }
 
+BIRDEE_BINDING_API void Birdee_Register_Module(const string& name, void* globals)
+{
+	py::module m(name.c_str());
+	m.attr("__dict__").attr("update")(py::cast<py::object>((PyObject*)globals));
+	py::str pyname = py::str(name);
+	m.attr("__name__") = pyname;
+	py::module::import("sys").attr("modules").attr("__setitem__")(pyname, m);
+}
+
 BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, void* locals)
 {
 	cur_script_ast = ths;
@@ -437,7 +446,7 @@ void RegisiterClassForBinding(py::module& m)
 		if (itr == cu.funcmap.end())
 			return GetRef((FunctionAST*)nullptr);
 		else
-			return itr->second;
+			return GetRef(itr->second.first);
 	});
 	m.def("get_top_level", []() {return GetRef(cu.toplevel); });
 	m.def("get_compile_error", []() {return GetRef(CompileError::last_error); });

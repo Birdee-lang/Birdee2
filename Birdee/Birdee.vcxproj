@@ -294,10 +294,12 @@
   <ItemGroup>
     <None Include="..\BirdeeHome\pylib\bdassert.py" />
     <None Include="..\BirdeeHome\pylib\bbuild.py" />
+    <None Include="..\BirdeeHome\pylib\bdconst.py" />
     <None Include="..\BirdeeHome\pylib\getset.py" />
     <None Include="..\BirdeeHome\pylib\traits.py" />
     <None Include="..\BirdeeHome\src\hash.bdm" />
     <None Include="..\BirdeeHome\src\list.bdm" />
+    <None Include="..\BirdeeHome\src\system\specific\win32\file.bdm" />
     <None Include="..\BirdeeHome\src\typedptr.bdm" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\getset_test.py" />
