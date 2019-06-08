@@ -1,0 +1,13 @@
+package system.io
+
+import system.io.file:*
+import system.specific.win32.file:*
+import system.io.filedef
+
+{@
+from system_0io_0filedef import *
+@}
+
+dim stdin = new input_file:set_native(_getstd({@STDIN_H()@}))
+dim stdout = new output_file:set_native(_getstd({@STDOUT_H()@}))
+dim stderr = new output_file:set_native(_getstd({@STDERR_H()@}))

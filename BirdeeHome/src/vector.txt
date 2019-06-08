@@ -32,9 +32,11 @@ class vector[T]
 	end
 
 	public func size() as uint => len
-	public func buffer() as byte[] => buf
+	public func buffer() as T[] => buf
 
 	public func capacity() as uint => buf.length()
+
+	public func clear() => len = 0
 
 	public func push_back(itm as T)
 		if len >= buf.length() then

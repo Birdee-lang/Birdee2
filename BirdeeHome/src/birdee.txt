@@ -78,6 +78,11 @@ class string
 	public function get_raw() as pointer
 		return addressof(buf[0])
 	end
+
+	public function __getitem__(pos as uint) as byte
+		return buf[pos]
+	end
+
 end class
 
 class type_info

@@ -1,0 +1,17 @@
+import system.io.file:*
+import system.io.stdio:*
+
+#dim scanner = new string_scanner(new input_file("tests/file_text.log"))
+dim scanner = new string_scanner(stdin)
+
+dim str as string = scanner.get_line()
+while str.length()!=0
+	print(int2str(str.length()))
+	print(" Echo: " + str)
+	if str=="\r\n" then
+		break
+	end
+	str = scanner.get_line()
+end
+
+stdout.write("HI\n".get_bytes(),0,3)

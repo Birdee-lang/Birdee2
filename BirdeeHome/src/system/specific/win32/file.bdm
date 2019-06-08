@@ -1,5 +1,12 @@
 package system.specific.win32
 
+import system.io.filedef:*
+import unsafe:ptr_cast
+
+{@
+from system_0io_0filedef import *
+@}
+
 @init_script
 {@
 from bdconst import *
@@ -97,7 +104,100 @@ define("FILE_ATTRIBUTE_PINNED",               0x00080000)
 define("FILE_ATTRIBUTE_UNPINNED",             0x00100000)  
 define("FILE_ATTRIBUTE_RECALL_ON_OPEN",       0x00040000)  
 define("FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS", 0x00400000) 
+
+define("FILE_BEGIN",0)
+define("FILE_CURRENT",1)
+define("FILE_END",2)
 @}
 
 declare function CreateFileA(lpFileName as pointer, dwDesiredAccess as uint,dwShareMode as uint, lpSecurityAttributes as pointer##LPSECURITY_ATTRIBUTES##, dwCreationDisposition as uint, dwFlagsAndAttributes as uint, hTemplateFile as pointer) as pointer
 declare function ReadFile(hFile as pointer, lpBuffer as pointer, nNumberOfBytesToRead as uint, lpNumberOfBytesRead as pointer ##uint##, lpOverlapped as pointer ##LPOVERLAPPED##) as int
+declare function WriteFile(hFile as pointer, lpBuffer as pointer, nNumberOfBytesToRead as uint, lpNumberOfBytesRead as pointer ##uint##, lpOverlapped as pointer ##LPOVERLAPPED##) as int
+declare function SetFilePointerEx(hFile as pointer,liDistanceToMove as long,lpNewFilePointer as pointer ##long##,dwMoveMethod as uint) as int
+declare function GetFileSizeEx(hFile as pointer, lpFileSize as pointer ##long##) as int
+declare function CloseHandle(h as pointer) as int
+declare function GetLastError() as int
+declare function GetStdHandle(nStdHandle as int) as pointer
+
+function _is_good_handle(h as pointer) as boolean
+	return ptr_cast[pointer](0-1) != h
+end
+
+function _fopen(path as string, rw_access as uint, create_action as uint) as pointer
+##
+r  - open for reading
+w  - open for writing (file need not exist)
+a  - open for appending (file need not exist)
+r+ - open for reading and writing, start at beginning
+w+ - open for reading and writing (overwrite file)
+a+ - open for reading and writing (append if file exists)
+##
+	dim access as uint =0
+	if (rw_access | {@ACCESS_READ()@}) !=0 then
+		access = {@GENERIC_READ()@}
+	end
+	if (rw_access | {@ACCESS_WRITE()@}) !=0 then
+		access = access | {@GENERIC_WRITE()@}
+	end
+
+	dim caction as uint =0
+	if create_action == {@CREATE_OPEN_ONLY()@} then
+		caction = {@OPEN_EXISTING()@}
+	else if create_action == {@CREATE_OPEN_OR_CREATE()@} then
+		caction = {@OPEN_ALWAYS()@}
+	else if create_action == {@CREATE_OVERWRITE()@} then
+		caction = {@CREATE_ALWAYS()@}
+	else if create_action == {@CREATE_APPEND()@} then
+		caction = {@OPEN_ALWAYS()@}
+		rw_access = {@FILE_APPEND_DATA()@}
+	end
+
+	dim ret = CreateFileA(path.get_raw(), access, {@FILE_SHARE_READ()@}, pointerof(null), caction, {@FILE_ATTRIBUTE_NORMAL()@},pointerof(null))
+
+	if !_is_good_handle(ret) then
+		throw new file_open_exception(path, GetLastError())
+	end
+
+	if create_action == {@CREATE_APPEND()@} then
+		if SetFilePointerEx(ret, 0, pointerof(null), {@FILE_END()@}) == 0 then
+			CloseHandle(ret)
+			throw new file_open_exception(path, GetLastError())
+		end
+	end
+	return ret
+end
+
+
+function _fclose(h as pointer)
+	CloseHandle(h)
+end
+
+function _fread(h as pointer, buf as pointer, len as uint) as uint
+	dim bytesRead as uint
+	dim success = ReadFile(h, buf, len, addressof(bytesRead), pointerof(null))
+	if success == 0 then
+		throw new file_exception(GetLastError())
+	end
+	return bytesRead
+end
+
+function _fwrite(h as pointer, buf as pointer, len as uint) as uint
+	dim bytesWritten as uint
+	dim success = WriteFile(h, buf, len, addressof(bytesWritten), pointerof(null))
+	if success == 0 then
+		throw new file_exception(GetLastError())
+	end
+	return bytesWritten
+end
+
+function _fseek(h as pointer, offset as long, from as uint) as long
+	dim ret as long
+	if SetFilePointerEx(h, offset, addressof(ret), from) == 0 then
+			throw new file_exception(GetLastError())
+	end
+	return ret
+end
+
+function _getstd(h as int) as pointer
+	return GetStdHandle(0-10-h)
+end

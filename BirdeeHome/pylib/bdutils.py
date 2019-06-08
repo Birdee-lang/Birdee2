@@ -19,6 +19,10 @@ def make_ulong(n):
 	return NumberExprAST.new(BasicType.ULONG,n)
 def set_ulong(n):
 	set_ast(make_ulong(n))
+	
+def set_char(c):
+	assert(isinstance(c,str) and len(c)==1)
+	set_int(ord(c))
 
 def make_float(n):
 	return NumberExprAST.new(BasicType.FLOAT,n)

@@ -34,6 +34,9 @@
     <Filter Include="资源文件\blib\system\specific\win32">
       <UniqueIdentifier>{5483bc71-9af5-4d35-928c-0d7e75090488}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\blib\system\io">
+      <UniqueIdentifier>{6c300b57-4ab4-4286-8b00-b4fc1cd3d64f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -191,6 +194,9 @@
     </None>
     <None Include="..\BirdeeHome\pylib\bdassert.py">
       <Filter>资源文件\pylib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\io\file.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
     </None>
   </ItemGroup>
 </Project>
