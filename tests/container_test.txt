@@ -11,53 +11,44 @@ import queue:queue_empty_exception
 
 declare function getchar() as int
 
-@enable_rtti
-class assertion_exception
-
-end
-
 {@
+from bdassert import bdassert
 from bdutils import *
 def line_pos():
 	strpos = str(get_cur_script().pos)
 	set_ast(StringLiteralAST.new(strpos))
 @}
 
-function assert(v as boolean, msg as string)
-	if !v then
-		println("Assertion failed :" + msg)
-		throw new assertion_exception
-	end
-end
 
 function check_list[T](lst as list[T], chk as T[], pos as string)
 	dim itr = lst.front()
 	println("Checking " + pos)
-	assert(lst.size() == chk.length(), {@line_pos()@})
+	{@bdassert("lst.size() == chk.length()")@}
 	for dim i=0 till chk.length()
-		assert(itr!=lst.ends(), {@line_pos()@})
-		assert(itr.get() == chk[i], {@line_pos()@})
+		{@bdassert("itr!=lst.ends()")@}
+		{@bdassert("itr.get() == chk[i]")@}
 		itr.forward()
 	end
-	assert(itr == lst.ends(), {@line_pos()@})
+	{@bdassert("itr == lst.ends()")@}
 end
+
 
 function check_map(lst as hash_map[string,int], start as int, ends as int, pos as string)
 	dim itr = lst.front()
 	println("Checking " + pos)
-	assert(lst.size() == ends - start, {@line_pos()@})
+	{@bdassert("lst.size() == ends - start")@}
 	for dim i=start till ends
 		dim n = lst.find(int2str(i))
-		assert(n!=lst.ends(), int2str(i) + " not found: " + {@line_pos()@})
-		assert(n.getv()==i, {@line_pos()@})
+		{@bdassert("n!=lst.ends()")@}
+		{@bdassert("n.getv()==i")@}
 	end
 	dim cnt=0
 	while itr!=lst.ends()
 		cnt=cnt+1
 		itr.forward()
 	end
-	assert(cnt == ends - start, {@line_pos()@})
-	assert(itr == lst.ends(), {@line_pos()@})
+	{@bdassert("cnt == ends - start")@}
+	{@bdassert("itr == lst.ends()")@}
 end
 
 function hash_test()
@@ -80,7 +71,7 @@ function hash_test()
 
 	try
 		a.remove("30")
-		assert(false, {@line_pos()@})
+		{@bdassert("false")@}
 	catch e as hash_key_excption
 		println("Caught the exception as expected")
 	end
@@ -94,7 +85,7 @@ function hash_test()
 		end
 		a.remove(int2str(i))
 	end
-	assert(a.empty(), {@line_pos()@})
+	{@bdassert("a.empty()")@}
 
 	println("Insert again")
 	for dim i=0 till 15
@@ -104,31 +95,31 @@ function hash_test()
 
 	check_map(a,0,15,{@line_pos()@})
 	a["233"] = 12345
-	assert(a["233"] == 12345, {@line_pos()@})
+	{@bdassert('''a["233"] == 12345''')@}
 	a.clear()
-	assert(a.front() == a.ends(), {@line_pos()@})
+	{@bdassert("a.front() == a.ends()")@}
 
 
 	dim hset = new hash_set[string]
 	hset.insert("HI")
 	hset.insert("1I")
-	assert(hset["HI"], {@line_pos()@})
-	assert(!hset["I"], {@line_pos()@})
+	{@bdassert('''hset["HI"]''')@}
+	{@bdassert('''!hset["I"]''')@}
 end
 
 function list_test()
 	#test list
 	dim lst = new list[int]
 
-	assert(lst.size()==0 , {@line_pos()@})
-	assert(lst.empty(), {@line_pos()@})
+	{@bdassert("lst.size()==0 ")@}
+	{@bdassert("lst.empty()")@}
 
 	lst.insert_back(123)
 	lst.insert_back(234)
 	lst.insert_back(345)
 
 	check_list(lst,[123,234,345], {@line_pos()@})
-	assert(!lst.empty(), {@line_pos()@})
+	{@bdassert("!lst.empty()")@}
 
 	lst.remove(lst.front())
 	check_list(lst,[234,345], {@line_pos()@})
@@ -146,41 +137,41 @@ function list_test()
 	lst.insert_before(itr, 44)
 	check_list(lst,[2,44,234,32],{@line_pos()@})
 
-	assert(lst.back() == itr.next(), {@line_pos()@})
+	{@bdassert("lst.back() == itr.next()")@}
 	lst.remove(lst.back())
-	assert(lst.back() == itr, {@line_pos()@})
-	assert(lst.ends() == itr.next(), {@line_pos()@})
+	{@bdassert("lst.back() == itr")@}
+	{@bdassert("lst.ends() == itr.next()")@}
 	lst.remove(lst.back())
 end
 
 function queue_test()
 	dim q = new queue[uint]
 
-	assert(q.size()==0, {@line_pos()@})
+	{@bdassert("q.size()==0")@}
 	q.push(10)
-	assert(q.size()==1, {@line_pos()@})
+	{@bdassert("q.size()==1")@}
 	q.push(20)
 	q.push(30)
 	q.push(40)
 	q.push(50)
-	assert(q.size()==5, {@line_pos()@})
+	{@bdassert("q.size()==5")@}
 
-	assert(q.front()==10, {@line_pos()@})
+	{@bdassert("q.front()==10")@}
 	q.pop()
-	assert(q.front()==20, {@line_pos()@})
+	{@bdassert("q.front()==20")@}
 	q.pop()
-	assert(q.front()==30, {@line_pos()@})
+	{@bdassert("q.front()==30")@}
 	q.pop()
-	assert(q.front()==40, {@line_pos()@})
+	{@bdassert("q.front()==40")@}
 	q.pop()
-	assert(q.front()==50, {@line_pos()@})
+	{@bdassert("q.front()==50")@}
 	q.pop()
 
-	assert(q.size()==0, {@line_pos()@})
+	{@bdassert("q.size()==0")@}
 
 	try
 		q.pop()
-		assert(false, {@line_pos()@})
+		{@bdassert("false")@}
 	catch e as queue_empty_exception
 		println("Caught queue_empty_exception as expected")
 	end
@@ -190,30 +181,30 @@ end
 function stack_test()
 	dim s = new stack[uint]
 
-	assert(s.size()==0, {@line_pos()@})
+	{@bdassert("s.size()==0")@}
 	s.push(10)
-	assert(s.size()==1, {@line_pos()@})
+	{@bdassert("s.size()==1")@}
 	s.push(20)
 	s.push(30)
 	s.push(40)
 	s.push(50)
-	assert(s.size()==5, {@line_pos()@})
+	{@bdassert("s.size()==5")@}
 
-	assert(s.top()==50, {@line_pos()@})
+	{@bdassert("s.top()==50")@}
 	s.pop()
-	assert(s.top()==40, {@line_pos()@})
+	{@bdassert("s.top()==40")@}
 	s.pop()
-	assert(s.top()==30, {@line_pos()@})
+	{@bdassert("s.top()==30")@}
 	s.pop()
-	assert(s.top()==20, {@line_pos()@})
+	{@bdassert("s.top()==20")@}
 	s.pop()
-	assert(s.top()==10, {@line_pos()@})
-	assert(s.pop()==10, {@line_pos()@})
+	{@bdassert("s.top()==10")@}
+	{@bdassert("s.pop()==10")@}
 
-	assert(s.size()==0, {@line_pos()@})
+	{@bdassert("s.size()==0")@}
 	try
 		s.pop()
-		assert(false, {@line_pos()@})
+		{@bdassert("false")@}
 	catch e as stack_empty_exception
 		println("Caught stack_empty_exception as expected")
 	end

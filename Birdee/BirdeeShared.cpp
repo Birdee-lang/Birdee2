@@ -72,6 +72,7 @@ namespace Birdee
 	{"function",tok_func},
 	{"func",tok_func},
 	{"declare",tok_declare},
+	{"abstract",tok_abstract},
 	{"addressof",tok_address_of},
 	{ "pointerof",tok_pointer_of },
 	{"pointer",tok_pointer},

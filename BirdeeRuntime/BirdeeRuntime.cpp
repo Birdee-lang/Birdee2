@@ -68,7 +68,7 @@ void Init()
 		{
 		case GCC_EXCODE:
 			//an uncaught Birdee exception occurs, return to __Birdee_Throw
-			fputs("Uncaught libgcc exception!", stderr);
+			//fputs("Uncaught libgcc exception!", stderr);
 			return EXCEPTION_CONTINUE_EXECUTION;
 		case EXCEPTION_ACCESS_VIOLATION:
 			__Birdee_Throw((BirdeeRTTIObject*)birdee_0____create__basic__exception__no__call(0));

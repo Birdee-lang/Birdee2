@@ -11,6 +11,7 @@ namespace Birdee
 		tok_extern,
 		tok_func,
 		tok_declare,
+		tok_abstract,
 		tok_import,
 		tok_package,
 		tok_functype,

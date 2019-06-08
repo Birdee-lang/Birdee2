@@ -24,7 +24,7 @@ static string current_package_name;
 static int current_module_idx;
 
 extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
-extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*);
+extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
 extern void ParseClassInPlace(ClassAST* ret, bool is_struct);
 
 extern std::vector<std::string> Birdee::source_paths;
@@ -725,6 +725,8 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 
 	if (package.size() == 1 && package[0] == "birdee") //if is "birdee" core package, generate "type_info" first
 		classmap.find("type_info")->second.first->PreGenerate();
+	for (auto cls : to_run_phase0)
+		cls->Phase0();
 	for (auto& cls : this->classmap)
 	{
 		cls.second.first->PreGenerate();//it is safe to call multiple times
@@ -744,9 +746,6 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 
 	BuildGlobalVaribleFromJson(json["Variables"], *this);
 	BuildGlobalFuncFromJson(json["Functions"], *this);
-
-	for (auto cls : to_run_phase0)
-		cls->Phase0();
 	
 	{
 		auto itr = json.find("InitScripts");

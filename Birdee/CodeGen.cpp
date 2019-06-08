@@ -292,12 +292,11 @@ static GlobalVariable* GetOrCreateTypeInfoGlobalRaw(ClassAST* cls)
 	{
 		return itr->second;
 	}
-	string name;
-	MangleNameAndAppend(name, cls->GetUniqueName());
-	name += "0_typeinfo";
-
 	if (cls->vtabledef.empty())
 	{
+		string name;
+		MangleNameAndAppend(name, cls->GetUniqueName());
+		name += "0_typeinfo";
 		auto newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
 			true, GlobalVariable::LinkOnceODRLinkage, nullptr,
 			name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
@@ -1871,7 +1870,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			Proto->resolved_args[i]->PreGenerateForArgument(itr, i + 1 + param_offset);
 		}
 
-
 		bool hasret = Body.Generate();
 		if (!hasret)
 		{
@@ -1880,6 +1878,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			else
 				builder.CreateRet(Constant::getNullValue(myfunc->getReturnType()));
 		}
+
 		dinfo.LexicalBlocks.pop_back();
 		builder.restoreIP(IP);
 		helper.cur_llvm_func = func_backup;
