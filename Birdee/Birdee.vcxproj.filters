@@ -37,6 +37,9 @@
     <Filter Include="资源文件\blib\system\io">
       <UniqueIdentifier>{6c300b57-4ab4-4286-8b00-b4fc1cd3d64f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\blib\system\specific\unistd">
+      <UniqueIdentifier>{e54d7516-1413-479b-8af4-bad28f46152b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -157,6 +160,9 @@
     <Text Include="..\BirdeeHome\src\string_buffer.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
+    <Text Include="..\BirdeeHome\src\system\io\stdio.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\tests\ast_write_test.py">
@@ -192,11 +198,14 @@
     <None Include="..\BirdeeHome\pylib\bdconst.py">
       <Filter>资源文件\pylib</Filter>
     </None>
-    <None Include="..\BirdeeHome\pylib\bdassert.py">
-      <Filter>资源文件\pylib</Filter>
-    </None>
     <None Include="..\BirdeeHome\src\system\io\file.bdm">
       <Filter>资源文件\blib\system\io</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\io\filedef.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\unistd\file.bdm">
+      <Filter>资源文件\blib\system\specific\unistd</Filter>
     </None>
   </ItemGroup>
 </Project>

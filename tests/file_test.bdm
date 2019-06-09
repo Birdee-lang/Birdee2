@@ -1,17 +1,27 @@
 import system.io.file:*
 import system.io.stdio:*
+import system.io.filedef
 
-#dim scanner = new string_scanner(new input_file("tests/file_text.log"))
-dim scanner = new string_scanner(stdin)
+{@
+from system_0io_0filedef import *
+from bdassert import bdassert
+@}
+
+dim outf = new output_file("tests/file_text.log", {@CREATE_OVERWRITE()@})
+for dim i=0 to 1000
+	outf.writestr(int2str(i)+"\n")
+end
+outf.close()
+
+dim scanner = new string_scanner(new input_file("tests/file_text.log"))
+#dim scanner = new string_scanner(stdin)
 
 dim str as string = scanner.get_line()
+dim cnt=0
 while str.length()!=0
-	print(int2str(str.length()))
-	print(" Echo: " + str)
-	if str=="\r\n" then
-		break
-	end
+	{@bdassert('str==int2str(cnt)+"\\n"')@}
+	cnt = cnt +1
 	str = scanner.get_line()
 end
-
-stdout.write("HI\n".get_bytes(),0,3)
+{@bdassert("cnt==1001")@}
+stdout.writestr("Done\n")

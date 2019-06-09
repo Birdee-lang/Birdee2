@@ -301,6 +301,7 @@
     <None Include="..\BirdeeHome\src\list.bdm" />
     <None Include="..\BirdeeHome\src\system\io\file.bdm" />
     <None Include="..\BirdeeHome\src\system\io\filedef.bdm" />
+    <None Include="..\BirdeeHome\src\system\specific\unistd\file.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\win32\file.bdm" />
     <None Include="..\BirdeeHome\src\typedptr.bdm" />
     <None Include="..\tests\ast_write_test.py" />

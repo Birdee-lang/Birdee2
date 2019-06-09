@@ -1,7 +1,7 @@
 package system.io
 
 import system.io.file:*
-import system.specific.win32.file:*
+import {@"system.specific.win32.file" if get_os_name()=="windows" else "system.specific.unistd.file"@}:*
 import system.io.filedef
 
 {@

@@ -63,6 +63,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define BirdeeDerefObj_NAME "?BirdeeDerefObj@@YAXPEAX@Z"
 #define BirdeeGetOrigScope_NAME "?BirdeeGetOrigScope@@YAPEAXXZ"
 #define Birdee_Register_Module_NAME "?Birdee_Register_Module@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX@Z"
+#define Birdee_RunScriptForString_NAME "?Birdee_RunScriptForString@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV12@AEBUSourcePos@Birdee@@@Z"
 #else
 
 #include <dlfcn.h>
@@ -92,6 +93,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define BirdeeDerefObj_NAME "_Z14BirdeeDerefObjPv"
 #define BirdeeGetOrigScope_NAME "_Z18BirdeeGetOrigScopev"
 #define Birdee_Register_Module_NAME "_Z22Birdee_Register_ModuleRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPv"
+#define Birdee_RunScriptForString_NAME "_Z25Birdee_RunScriptForStringRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN6Birdee9SourcePosE"
 #endif
 
 static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
@@ -174,6 +176,18 @@ void Birdee_Register_Module(const string& name, void* globals)
 		impl = (PtrImpl)LoadBindingFunction(Birdee_Register_Module_NAME);
 	}
 	impl(name, globals);
+}
+
+
+string Birdee_RunScriptForString(const string& str, const SourcePos& pos)
+{
+	typedef string(*PtrImpl)(const string& name, const SourcePos& pos);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(Birdee_RunScriptForString_NAME);
+	}
+	return std::move(impl(str, pos));
 }
 #else
 extern void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);

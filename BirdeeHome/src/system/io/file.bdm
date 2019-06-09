@@ -1,6 +1,6 @@
 package system.io
 
-import system.specific.win32.file:*
+import {@"system.specific.win32.file" if get_os_name()=="windows" else "system.specific.unistd.file"@}:*
 
 import system.io.filedef:file_open_exception
 import vector:vector
@@ -33,6 +33,10 @@ class _file
 		return _fwrite(handle, addressof(buf[start]), len)
 	end
 
+	public function writestr(buf as string) as uint
+		return write(buf.get_bytes(), 0, buf.length())
+	end
+
 	public function seek(offset as long, from as uint) as long
 		return _fseek(handle, offset, from)
 	end
@@ -46,6 +50,7 @@ end
 class input_file : _file
 	public func __del__() => super.__del__()
 	private function write(buf as byte[], start as uint, len as uint) as uint => 0
+	private function writestr(buf as string) as uint =>  0
 	public function __init__(path as string) 
 		set_native(_fopen(path, {@ACCESS_READ()@}, {@CREATE_OPEN_ONLY()@}))
 	end
@@ -55,14 +60,14 @@ class output_file : _file
 	public func __del__() => super.__del__()
 	private function read(buf as byte[], start as uint, len as uint) as uint => 0
 	public function __init__(path as string, open_action as int) 
-		set_native(_fopen(path, {@ACCESS_READ()@}, open_action))
+		set_native(_fopen(path, {@ACCESS_WRITE()@}, open_action))
 	end
 end
 
 class file : _file
 	public func __del__() => super.__del__()
 	public function __init__(path as string, open_action as int) 
-		set_native(_fopen(path, {@ACCESS_READ()@}, open_action))
+		set_native(_fopen(path, {@ACCESS_READ()@} | {@ACCESS_WRITE()@}, open_action))
 	end
 end
 

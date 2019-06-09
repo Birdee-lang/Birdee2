@@ -150,6 +150,8 @@ a+ - open for reading and writing (append if file exists)
 	else if create_action == {@CREATE_APPEND()@} then
 		caction = {@OPEN_ALWAYS()@}
 		rw_access = {@FILE_APPEND_DATA()@}
+	else if create_action == {@CREATE_EXCLUSIVE_NEW()@} then
+		caction = {@CREATE_NEW()@}
 	end
 
 	dim ret = CreateFileA(path.get_raw(), access, {@FILE_SHARE_READ()@}, pointerof(null), caction, {@FILE_ATTRIBUTE_NORMAL()@},pointerof(null))
