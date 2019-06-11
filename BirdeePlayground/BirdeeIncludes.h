@@ -96,6 +96,12 @@ jit->addNative("birdee_0type__info_0get__parent",birdee_0type__info_0get__parent
 extern void birdee_0type__info_0is__parent__of();
 jit->addNative("birdee_0type__info_0is__parent__of",birdee_0type__info_0is__parent__of);
 
+extern void birdee_0runtime__exception_0____init____();
+jit->addNative("birdee_0runtime__exception_0____init____",birdee_0runtime__exception_0____init____);
+
+extern void birdee_0runtime__exception_0get__message();
+jit->addNative("birdee_0runtime__exception_0get__message",birdee_0runtime__exception_0get__message);
+
 extern void birdee_0_1main();
 jit->addNative("birdee_0_1main",birdee_0_1main);
 

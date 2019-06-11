@@ -141,6 +141,19 @@ BIRDEE_BINDING_API void Birdee_Register_Module(const string& name, void* globals
 	py::module::import("sys").attr("modules").attr("__setitem__")(pyname, m);
 }
 
+BIRDEE_BINDING_API string Birdee_RunScriptForString(const string& str, const SourcePos& pos)
+{
+	auto& env = InitPython();
+	try
+	{
+		return py::eval(str.c_str()).cast<string>();
+	}
+	catch (py::error_already_set& e)
+	{
+		throw CompileError(pos, string("\nScript exception:\n") + e.what());
+	}
+}
+
 BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, void* locals)
 {
 	cur_script_ast = ths;

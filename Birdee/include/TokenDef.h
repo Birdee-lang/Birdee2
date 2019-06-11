@@ -152,8 +152,6 @@ namespace Birdee
 		case tok_logic_or:
 		case tok_gt:
 		case tok_lt:
-		case tok_and:
-		case tok_or:
 		case tok_not:
 			return true;
 		}
