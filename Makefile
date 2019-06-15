@@ -49,11 +49,11 @@ playground: libraries
 	$(MAKE)  -C $(PLAYGROUND_DIR)
 	
 install:
-	cp -rf $(PWD_DIR)/BirdeeHome $(INSTALL_PATH)
-	ln -s -r $(INSTALL_PATH)/bin/birdeec $(PREFIX)/birdeec
-	ln -s -r $(INSTALL_PATH)/bin/birdeeplay $(PREFIX)/birdeeplay
-	ln -s -r $(INSTALL_PATH)/lib/libBirdeeCompilerCore.so $(PREFIX)/../lib/libBirdeeCompilerCore.so
-	ln -s -r $(INSTALL_PATH)/lib/libBirdeeBinding.so $(PREFIX)/../lib/libBirdeeBinding.so
+	cp -rfT $(PWD_DIR)/BirdeeHome $(INSTALL_PATH)
+	ln -s -r -f $(INSTALL_PATH)/bin/birdeec $(PREFIX)/birdeec
+	ln -s -r -f $(INSTALL_PATH)/bin/birdeeplay $(PREFIX)/birdeeplay
+	ln -s -r -f $(INSTALL_PATH)/lib/libBirdeeCompilerCore.so $(PREFIX)/../lib/libBirdeeCompilerCore.so
+	ln -s -r -f $(INSTALL_PATH)/lib/libBirdeeBinding.so $(PREFIX)/../lib/libBirdeeBinding.so
         
 uninstall:
 	rm -r $(INSTALL_PATH)
