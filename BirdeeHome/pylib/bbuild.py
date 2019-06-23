@@ -7,6 +7,7 @@ from threading import Thread
 from threading import Lock
 import locale
 import traceback
+import mangler 
 #run %comspec% /k "D:\ProgramFiles\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat" first!!
 
 source_dirs=[]
@@ -98,6 +99,9 @@ class compile_unit:
 
 	def add_reverse_dependency(self,cu):
 		self.reverse_dependency.add(cu)
+
+	def get_top_level_func_name(self):
+		return mangler.mangle_func(".".join(modu)+"_1main")
 
 	#decrease dependency_cnt by 1, return true when this cu is ready to compile
 	def dependency_done(self):
@@ -278,8 +282,8 @@ def compile_module(modu,src,is_main):
 		cmdarr.append(bpath)
 	cmdarr.append("-l")
 	cmdarr.append(outpath)
-	if is_main:
-		cmdarr.append("-e")
+	#if is_main:
+	#	cmdarr.append("-e")
 	print("Running command " + " ".join(cmdarr))
 	ret=subprocess.run(cmdarr)
 	if ret.returncode!=0:
@@ -306,6 +310,9 @@ def link_msvc():
 		lpath += obj_postfix
 		obj_files += ' "{lpath}"'.format(lpath=lpath)
 	cmd=msvc_command.format(linker_path,link_target,pdb_path,link_cmd,obj_files,link_target+".manifest")
+	if link_executable:
+		alias_cmd = "/alternatename:main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+		cmd += alias_cmd
 	print("Running command " + cmd)
 	ret=subprocess.run(cmd)
 	if ret.returncode!=0:
@@ -325,6 +332,9 @@ def link_gcc():
 	cmdarr.append("-Wl,--end-group")
 	if len(link_cmd):
 		cmdarr.append(link_cmd)
+	if link_executable:
+		alias_cmd = "-Wl,--defsym,main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+		cmdarr.append(alias_cmd)
 	print("Running command " + ' '.join(cmdarr))
 	ret=subprocess.run(cmdarr)
 	if ret.returncode!=0:
