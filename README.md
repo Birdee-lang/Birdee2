@@ -101,7 +101,7 @@ clear_compile_unit()
 
 ## Documents
 
-Please view our [wiki](https://github.com/Birdee-lang/Birdee2/wiki).
+Please view our [documents](https://birdee-lang.github.io/Doc/).
 
 ## Installing pre-built binaries of Birdee compiler and libraries
 
@@ -121,7 +121,7 @@ Birdee provides several useful tools to help develop Birdee programs.
 
 ### Birdee compiler
 
-The compiler compiles a single Birdee module source file (\*.bdm) into an native object file (\*.o or \*.obj) or LLVM IR file. The outcome of the compiler can be further linked into an executable file by external linkers (e.g. ld on Linux, link.exe of MSVC). Please note that Birdee compiler alone will not help you link the Birdee modules. You should link the modules by yourself or by the auto-building tool "bbuild". For more information on the compiler command line arguments, please refer to [here](https://github.com/Birdee-lang/Birdee2/wiki/Compiler-command-line-mannual).
+The compiler compiles a single Birdee module source file (\*.bdm) into an native object file (\*.o or \*.obj) or LLVM IR file. The outcome of the compiler can be further linked into an executable file by external linkers (e.g. ld on Linux, link.exe of MSVC). Please note that Birdee compiler alone will not help you link the Birdee modules. You should link the modules by yourself or by the auto-building tool "bbuild". For more information on the compiler command line arguments, please refer to [here](https://birdee-lang.github.io/Doc/Tools/Compiler-command-line-mannual/).
 
 Besides the object files, the Birdee compiler will generate an meta-data file (\*.bmm), for the compiled module, which is in JSON format. It contains information on the exported variables, classes and the function definitions of the module. This overcomes the issue that native object files will lose the important meta-data of the source code.
 
@@ -133,11 +133,11 @@ bbuild is a Python-based auto-building tool provided by Birdee, to compile multi
  * Automatically compile the modules from the source files.
  * Optionally link the object files into an executable/shared object file
 
-For more information on bbuild, please follow the [link](https://github.com/Birdee-lang/Birdee2/wiki/bbuild)
+For more information on bbuild, please follow the [link](https://birdee-lang.github.io/Doc/Tools/bbuild/)
 
 ### Birdee playground (REPL)
 
-To help to learn Birdee language and try Birdee programs, we provide a playground program, where you can simply type Birdee code and instantly see the results without compiling the whole program using the compiler. For each line of code you input, the playground will compile and execute it and prints the execution results on the console. Please follow the [link](https://github.com/Birdee-lang/Birdee2/wiki/Birdee-playground-(REPL)) to try it.
+To help to learn Birdee language and try Birdee programs, we provide a playground program, where you can simply type Birdee code and instantly see the results without compiling the whole program using the compiler. For each line of code you input, the playground will compile and execute it and prints the execution results on the console. Please follow the [link](https://birdee-lang.github.io/Doc/Tools/Birdee-playground-(REPL)/) to try it.
 
 ## Tips on running compiled Birdee programs
 

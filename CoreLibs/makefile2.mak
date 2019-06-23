@@ -7,7 +7,7 @@ $(BIRDEE_HOME)\blib\birdee.obj: $(BLIB_DIR) $(BIRDEE_HOME)\src\birdee.txt
 	$(BIRDEE_HOME)\bin\birdeec.exe -i $(BIRDEE_HOME)\src\birdee.txt -o $(BIRDEE_HOME)\blib\birdee.obj --corelib
 
 libs: $(BIRDEE_HOME)\blib\birdee.obj
-	python3 $(BIRDEE_HOME)/pylib/bbuild.py -i $(BIRDEE_HOME)/src -o $(BLIB_DIR) variant list hash tuple fmt vector queue stack unsafe concurrent.threading rtti system.io.stdio
+	python3 $(BIRDEE_HOME)/pylib/bbuild.py -i $(BIRDEE_HOME)/src -o $(BLIB_DIR) variant list hash tuple fmt vector queue stack unsafe concurrent.threading rtti system.io.stdio typedptr
 
 clean:
 	del $(BLIB_DIR)\*.obj
