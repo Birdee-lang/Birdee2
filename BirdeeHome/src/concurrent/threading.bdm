@@ -16,13 +16,13 @@ from bdutils import *
 osname =  get_os_name()
 def check_arg_is_functype(idx):
 	def checker(fn):
-		ty = get_function_arg_at(fn,0).resolved_type
+		ty = get_func_arg_at(fn,0).resolved_type
 		require_(is_prototype(ty))
 	return checker
 
 def check_arg_is_closure(idx):
 	def checker(fn):
-		ty = get_function_arg_at(fn,0).resolved_type
+		ty = get_func_arg_at(fn,0).resolved_type
 		require_(is_prototype(ty))
 		require_( (ty.get_detail().is_closure, lambda:"Expecting a closure"))
 	return checker
