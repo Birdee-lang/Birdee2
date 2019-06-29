@@ -563,6 +563,8 @@ llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 
 void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& package_name)
 {
+	if (llvm_value)
+		return;
 	auto type_n = helper.GetTypeNode(resolved_type);
 	auto type = type_n.llvm_ty;
 	DIType* ty = type_n.dty;
@@ -794,27 +796,7 @@ void Birdee::CompileUnit::SwitchModule()
 	//or orphan_class. We clear all llvm_func and llvm_value
 	for (auto& cls : orphan_class)
 		cls.second->ClearLLVMFunction();
-	ResetLLVMValuesForFunctionsAndGV(&cu.imported_packages);
-
-	for (auto& cls : imported_class_templates)
-	{
-		for (auto& inst : cls->template_param->instances)
-		{
-			for (auto& func : inst.second->funcs)
-			{
-				func.decl->isDeclare = true;
-				func.decl->isImported = true;
-			}
-		}
-	}
-	for (auto& func : imported_func_templates)
-	{
-		for (auto& inst : func->template_param->instances)
-		{
-			inst.second->isDeclare = true;
-			inst.second->isImported = true;
-		}
-	}
+	ResetLLVMValuesForFunctionsAndGV(&imported_packages);
 
 	gen_context._module = std::make_unique<Module>(name, context);
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
@@ -930,6 +912,33 @@ static void RestoreLinkOnceGlobals(vector<GlobalValue*>& weak_globals)
 		g->setLinkage(GlobalValue::LinkOnceODRLinkage);
 }
 
+//regenerate all imported llvm_value for VariableSingleDef
+static void RegenerateLLVMValuesForGV(ImportTree* tree, string& namebuffer)
+{
+	if (tree->map.empty() && tree->mod)
+	{
+		if (namebuffer == "!repl")
+			return;
+		for (auto& v : tree->mod->dimmap)
+		{
+			v.second.first->PreGenerateExternForGlobal(namebuffer);
+		}
+	}
+	else
+	{
+		auto sz = namebuffer.size();
+		for (auto& itr : tree->map)
+		{
+			if (sz != 0)
+				namebuffer += '.';
+			namebuffer += itr.first;
+			RegenerateLLVMValuesForGV(itr.second.get(), namebuffer);
+			namebuffer.resize(sz);
+		}
+	}
+
+}
+
 bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 {
 	if (ends_with(cu.targetpath, ".o"))
@@ -981,6 +990,11 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	for (auto cls : imported_class_templates)
 	{
 		cls->PreGenerateFuncs();
+	}
+	if (is_repl)
+	{
+		string buffer = string();
+		RegenerateLLVMValuesForGV(&imported_packages, buffer);
 	}
 	for (auto func : imported_func_templates)
 	{
@@ -1404,6 +1418,8 @@ void Birdee::FunctionAST::ClearLLVMFunction()
 		}
 		return;
 	}
+	isDeclare = true;
+	isImported = true;
 	llvm_func = nullptr;
 }
 DIType* Birdee::FunctionAST::PreGenerate()
