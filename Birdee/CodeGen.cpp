@@ -65,6 +65,7 @@ namespace Birdee
 {
 	extern ClassAST* GetStringClass();
 	extern ClassAST* GetTypeInfoClass();
+	extern BD_CORE_API std::pair<int, MemberFunctionDef*> FindClassMethod(ClassAST* class_ast, const string& member);
 }
 
 template<typename T>
@@ -1613,12 +1614,11 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	auto llvm_ele_ty = resolved_type.class_ast->llvm_type;
 	size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
 	dinfo.emitLocation(this);
-	string del_func = "__del__";
 	auto class_ast = resolved_type.class_ast;
-	auto itr = class_ast->funcmap.find(del_func);
+	auto method = FindClassMethod(class_ast, "__del__");
 	Value* finalizer;
-	if (itr != class_ast->funcmap.end())
-		finalizer = builder.CreatePointerCast(class_ast->funcs[itr->second].decl->GetLLVMFunc(), builder.getInt8PtrTy());
+	if (method.first != -1) //method is found
+		finalizer = builder.CreatePointerCast(method.second->decl->GetLLVMFunc(), builder.getInt8PtrTy());
 	else
 		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });

@@ -2228,7 +2228,7 @@ If usage vararg name is "", match the closest vararg
 		return ret;
 	}
 
-	static ResolvedType ResolveClassMember(ExprAST* obj, const string& member, const SourcePos& Pos,
+	ResolvedType ResolveClassMember(ExprAST* obj, const string& member, const SourcePos& Pos,
 		/*out parameters*/ int& casade_parents,
 		MemberExprAST::MemberType& kind, MemberFunctionDef*& thsfunc, FieldDef*& thsfield)
 	{
@@ -2237,8 +2237,8 @@ If usage vararg name is "", match the closest vararg
 			auto field = cur_cls->fieldmap.find(member);
 			if (field != cur_cls->fieldmap.end())
 			{
-				if (cur_cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
-					throw CompileError(Pos, "Accessing a private member outside of a class");
+				CompileAssert(cur_cls->fields[field->second].access == access_public || scope_mgr.IsCurrentClass(cur_cls), // if is private and we are not in the class
+					Pos, string("Accessing a private member") + member + " outside of a class");
 				kind = MemberExprAST::member_field;
 				thsfield = &(cur_cls->fields[field->second]);
 				return thsfield->decl->resolved_type;
@@ -2247,12 +2247,12 @@ If usage vararg name is "", match the closest vararg
 			if (func != cur_cls->funcmap.end())
 			{
 				thsfunc = &(cur_cls->funcs[func->second]);
-				if (dyncast_resolve_anno<SuperExprAST>(obj)) //if the object is "super", do not generate virtual call here
+				if (obj && dyncast_resolve_anno<SuperExprAST>(obj)) //if the object is "super", do not generate virtual call here
 					kind = MemberExprAST::member_function;
 				else
 					kind = thsfunc->virtual_idx == MemberFunctionDef::VIRT_NONE ? MemberExprAST::member_function : MemberExprAST::member_virtual_function;
-				if (thsfunc->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
-					throw CompileError(Pos, "Accessing a private member outside of a class");
+				CompileAssert(thsfunc->access == access_public || scope_mgr.IsCurrentClass(cur_cls), // if is private and we are not in the class
+					Pos, string("Accessing a private member") + member + " outside of a class");
 				return thsfunc->decl->resolved_type;
 			}
 			casade_parents++;
@@ -2272,6 +2272,25 @@ If usage vararg name is "", match the closest vararg
 			if (field != cur_cls->fieldmap.end())
 			{
 				auto thsfield = &(cur_cls->fields[field->second]);
+				return std::make_pair(casade_parents, thsfield);
+			}
+			casade_parents++;
+			cur_cls = cur_cls->parent_class;
+		}
+		return std::make_pair(-1, nullptr);
+	}
+
+	//returns the casade_parents & member definition of the member
+	//returns <-1,nullptr> if not found
+	BD_CORE_API std::pair<int, MemberFunctionDef*> FindClassMethod(ClassAST* class_ast, const string& member)
+	{
+		int casade_parents = 0;
+		ClassAST* cur_cls = class_ast;
+		while (cur_cls) {
+			auto field = cur_cls->funcmap.find(member);
+			if (field != cur_cls->funcmap.end())
+			{
+				auto thsfield = &(cur_cls->funcs[field->second]);
 				return std::make_pair(casade_parents, thsfield);
 			}
 			casade_parents++;
