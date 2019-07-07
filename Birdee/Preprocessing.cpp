@@ -1620,7 +1620,7 @@ namespace Birdee
 	{
 		const PrototypeAST* proto = this;
 		size_t v = proto->resolved_type.rawhash() << 3; //return type
-		v ^= (uintptr_t)proto->cls; //belonging class
+		//v ^= (uintptr_t)proto->cls; //belonging class
 		v ^= proto->is_closure;
 		int offset = 6;
 		for (auto& arg : proto->resolved_args) //argument types
@@ -1635,8 +1635,8 @@ namespace Birdee
 	{
 		if (ths.is_closure != other.is_closure) //if is_closure field is not the same
 			return false;
-		if (ths.cls != other.cls)
-			return false;
+		//if (ths.cls != other.cls)
+		//	return false;
 		return ths.IsSamePrototype(other);
 	}
 	bool ResolvedType::operator<(const ResolvedType & that) const
