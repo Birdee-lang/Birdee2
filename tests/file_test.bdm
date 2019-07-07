@@ -1,5 +1,5 @@
-import system.io.file:*
 import system.io.stdio:*
+import system.io.file:*
 import system.io.filedef
 
 {@
