@@ -125,7 +125,6 @@ println(int2str(ts.add22(10)))
 
 println(int2str(ts.pubget()))
 
-getchar()
 println("=============")
 
 println(int2str(ts.pa))
@@ -190,5 +189,3 @@ b.say("test")
 d.say("test2")
 d.speak("speak test")
 println("End")
-
-getchar()

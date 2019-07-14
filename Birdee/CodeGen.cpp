@@ -129,6 +129,9 @@ struct LLVMHelper {
 		DIType * dty=nullptr;
 	};
 	unordered_map<Birdee::ResolvedType, TypePair> typemap;
+	//since for member functions, the type & dtype cannot be put in typemap
+	//we put the types in another map: member function AST -> TypePair
+	unordered_map<Birdee::FunctionAST*, TypePair> memberfunc_typemap;
 	llvm::Type* GetType(const Birdee::ResolvedType& ty)
 	{
 		return  GetTypeNode(ty).llvm_ty;
@@ -138,11 +141,13 @@ struct LLVMHelper {
 		auto itr = typemap.find(ty);
 		if (itr != typemap.end())
 		{
+			assert(itr->second.llvm_ty);
 			return itr->second;
 		}
 		llvm::Type* ret;
 		DIType* dtype;
 		GenerateType(ty, dtype,ret);
+		assert(ret);
 		typemap[ty] = { ret,dtype };
 		return typemap[ty];
 	}
@@ -1006,7 +1011,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	}
 
 	FunctionType *FT =
-		FunctionType::get(llvm::Type::getVoidTy(context), false);
+		FunctionType::get(builder.getInt32Ty(), false);
 
 	std::string main_name;
 	if (is_repl)
@@ -1037,7 +1042,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		builder.CreateCondBr(builder.CreateLoad(check_init), BT, BF);
 
 		builder.SetInsertPoint(BT);
-		builder.CreateRetVoid();
+		builder.CreateRet(builder.getInt32(0));
 
 		builder.SetInsertPoint(BF);
 		lastinst = builder.CreateStore(builder.getInt1(true), check_init);
@@ -1086,12 +1091,12 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		if (!dyncast_resolve_anno<ReturnAST>(toplevel.back().get()))
 		{
 			dinfo.emitLocation(toplevel.back().get());
-			builder.CreateRetVoid();
+			builder.CreateRet(builder.getInt32(0));
 		}
 	}
 	else
 	{
-		builder.CreateRetVoid();
+		builder.CreateRet(builder.getInt32(0));
 	}
 
 	dinfo.LexicalBlocks.pop_back();
@@ -1433,7 +1438,16 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return nullptr;
 	}
 	if (llvm_func)
-		return helper.typemap[resolved_type].dty;
+	{
+		auto itr = helper.memberfunc_typemap.find(this);
+		if (itr != helper.memberfunc_typemap.end())
+		{
+			return itr->second.dty;
+		}
+		auto itr2 = helper.typemap.find(resolved_type);
+		assert(itr2 != helper.typemap.end());
+		return itr2->second.dty;
+	}
 	if (intrinsic_function) //if it is an intrinsic function, generate a null ptr
 	{
 		llvm_func = Constant::getNullValue(Proto->GenerateFunctionType()->getPointerTo());
@@ -1524,8 +1538,17 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		}
 		//if the function is a member function, don't put LLVM type in the cache:
 		//because it is not exactly right.
-		if (!resolved_type.proto_ast->is_closure || !resolved_type.proto_ast->cls) 
-			helper.typemap.insert(std::make_pair(resolved_type,tynode));
+		assert(tynode.llvm_ty);
+		if (!resolved_type.proto_ast->is_closure || !resolved_type.proto_ast->cls)
+		{
+			helper.typemap.insert(std::make_pair(resolved_type, tynode));
+		}
+		else
+		{
+			tynode.dty = ret;
+			tynode.llvm_ty = ftype->getPointerTo();
+			helper.memberfunc_typemap.insert(std::make_pair(this, tynode));
+		}
 	}
 
 	return ret;

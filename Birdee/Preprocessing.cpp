@@ -2192,6 +2192,7 @@ If usage vararg name is "", match the closest vararg
 		cls->template_source_class = src_cls;
 		cls->name += GetTemplateArgumentString(args);
 		scope_mgr.SetClassTemplateEnv(args, parameters, mod, pos);
+		scope_mgr.py_scope_dicts.push_back(ScopeManager::PyScope(mod));
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
 		for (auto& funcdef : cls->funcs)
 		{
@@ -2200,6 +2201,7 @@ If usage vararg name is "", match the closest vararg
 		cls->Phase0();
 		cls->Phase1();
 		scope_mgr.template_trace_back_stack.pop_back();
+		scope_mgr.py_scope_dicts.pop_back();
 		scope_mgr.RestoreClassTemplateEnv();
 	}
 

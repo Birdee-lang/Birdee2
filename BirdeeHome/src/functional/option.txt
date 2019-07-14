@@ -23,7 +23,7 @@ if T_is_not_reference():
 	class_body(get_cur_class(),"private _defined as boolean\n")
 	set_expr("_defined")
 else:
-	set_expr("obj!=null")
+	set_expr("obj!==null")
 @}
 	end
 	public function set(o as T)

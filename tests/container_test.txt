@@ -216,6 +216,5 @@ queue_test()
 stack_test()
 
 println("Done")
-getchar()
 
 
