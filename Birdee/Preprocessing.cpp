@@ -2913,12 +2913,16 @@ If usage vararg name is "", match the closest vararg
 		{
 			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
 			{
+				if(auto member = dyncast_resolve_anno<MemberExprAST>(indexexpr->Expr.get()))
+					preserved_member_obj = &member->Obj;
 				indexexpr->Phase1(true);
 				if (auto idxexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
 					func = idxexpr->instance;
 			}
 			else if (auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
 			{
+				if(auto member = dyncast_resolve_anno<MemberExprAST>(templexpr->expr.get()))
+					preserved_member_obj = &member->Obj;
 				templexpr->Phase1(true);
 				func = templexpr->instance;
 			}
@@ -2936,15 +2940,6 @@ If usage vararg name is "", match the closest vararg
 			{
 				ValidateOneTemplateArg(*e.args, func->template_param->params, Pos, i);
 				name2type[func->template_param->params[i].name] = std::move(e.args->at(i));
-			}
-			FunctionTemplateInstanceExprAST* templ = nullptr;
-			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
-				templ = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(indexexpr->instance.get());
-			else 
-				templ = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get());
-			{
-				if (auto member = dyncast_resolve_anno<MemberExprAST>(templexpr->expr.get()))
-					preserved_member_obj = &member->Obj;
 			}
 		}
 

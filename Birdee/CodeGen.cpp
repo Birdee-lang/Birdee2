@@ -700,7 +700,6 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 
 DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* type,SourcePos pos, ImportedModule* mod)
 {
-
 	// Create a subprogram DIE for this function.
 	DIFile *Unit = mod? DBuilder->createFile(mod->source_file,mod->source_dir) : dinfo.cu->getFile();
 	unsigned LineNo = pos.line;
@@ -1531,33 +1530,37 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		myfunc->setDSOLocal(true);
 	}
 	DIType* ret = Proto->GenerateDebugType();
-	auto itr = helper.typemap.find(resolved_type);
-	if(itr==helper.typemap.end())
+	//if the function is a member function, put the LLVM functype in memberfunc_typemap
+	if (resolved_type.proto_ast->is_closure && resolved_type.proto_ast->cls)
 	{
 		LLVMHelper::TypePair tynode;
-		if(resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
+		tynode.dty = ret;
+		tynode.llvm_ty = ftype->getPointerTo();
+		helper.memberfunc_typemap.insert(std::make_pair(this, tynode));
+
+	}
+	else
+	{
+		auto itr = helper.typemap.find(resolved_type);
+		if (itr == helper.typemap.end())
 		{
-			GenerateClosureTypes(ftype->getPointerTo(),ret,tynode.llvm_ty, tynode.dty, Pos.line);
-		}
-		else
-		{
-			tynode.dty = ret;
-			tynode.llvm_ty = ftype->getPointerTo();
-		}
-		//if the function is a member function, don't put LLVM type in the cache:
-		//because it is not exactly right.
-		assert(tynode.llvm_ty);
-		if (!resolved_type.proto_ast->is_closure || !resolved_type.proto_ast->cls)
-		{
+			LLVMHelper::TypePair tynode;		
+			if (resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
+			{//if it is a closure (not a class member function)
+				GenerateClosureTypes(ftype->getPointerTo(), ret, tynode.llvm_ty, tynode.dty, Pos.line);
+			}
+			else
+			{
+				tynode.dty = ret;
+				tynode.llvm_ty = ftype->getPointerTo();
+			}
+			//if the function is a member function, don't put LLVM type in the cache:
+			//because it is not exactly right.
+			assert(tynode.llvm_ty);
 			helper.typemap.insert(std::make_pair(resolved_type, tynode));
 		}
-		else
-		{
-			tynode.dty = ret;
-			tynode.llvm_ty = ftype->getPointerTo();
-			helper.memberfunc_typemap.insert(std::make_pair(this, tynode));
-		}
 	}
+
 
 	return ret;
 }
