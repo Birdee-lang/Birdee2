@@ -38,6 +38,14 @@ def expand_vararg(func, idx_start):
 @check_arg_is_closure(0)
 function unpack_closure[T](f as T) as closure_unpacked => unsafe.ptr_load[closure_unpacked](addressof(f))
 
+#@check_arg_is_closure(0)
+function pack_closure[TClosure, T](obj as T, funct as pointer) as TClosure 
+	dim v as closure_unpacked
+	v.funcptr = funct
+	v.data = pointerof(obj)
+	return unsafe.ptr_load[TClosure](addressof(v))
+end
+
 {@
 os_function_decl = {
 	'windows':{

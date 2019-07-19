@@ -2356,8 +2356,9 @@ If usage vararg name is "", match the closest vararg
 			}
 			vector<unique_ptr<ExprAST>> arg;
 			arg.push_back(std::move(Index));
-			auto inst = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
+			instance = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
 			Expr = nullptr;
+			auto inst = (FunctionTemplateInstanceExprAST*)instance.get();
 			inst->Phase1(is_in_call);
 			if (member) //if the expression is an identifier with implied "this", build a memberexpr
 			{
@@ -2367,8 +2368,8 @@ If usage vararg name is "", match the closest vararg
 				minst->resolved_type = inst->instance->resolved_type;
 				instance = std::move(minst);
 			}
-			else
-				instance = std::move(inst);
+			//else
+			//	instance = std::move(inst);
 			resolved_type = instance->resolved_type;
 			return;
 		}
@@ -2896,6 +2897,7 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
+	
 	//Deduce the template arguments & vararg. If this function sucessfully deduced the function template,
 	//it will return the template instance FunctionAST. Else, if the callee is a well defined function template instance,
 	//e.g. somefunc[int,float], the instance will be returned. Otherwise, null is returned.
@@ -2912,8 +2914,8 @@ If usage vararg name is "", match the closest vararg
 			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
 			{
 				indexexpr->Phase1(true);
-				if (isa<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
-					func = static_cast<FunctionTemplateInstanceExprAST*>(indexexpr->instance.get())->instance;
+				if (auto idxexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
+					func = idxexpr->instance;
 			}
 			else if (auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
 			{
@@ -2934,6 +2936,15 @@ If usage vararg name is "", match the closest vararg
 			{
 				ValidateOneTemplateArg(*e.args, func->template_param->params, Pos, i);
 				name2type[func->template_param->params[i].name] = std::move(e.args->at(i));
+			}
+			FunctionTemplateInstanceExprAST* templ = nullptr;
+			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
+				templ = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(indexexpr->instance.get());
+			else 
+				templ = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get());
+			{
+				if (auto member = dyncast_resolve_anno<MemberExprAST>(templexpr->expr.get()))
+					preserved_member_obj = &member->Obj;
 			}
 		}
 

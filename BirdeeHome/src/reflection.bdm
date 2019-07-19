@@ -1,0 +1,45 @@
+import hash:hash_map
+import concurrent.threading:unpack_closure
+import concurrent.threading:pack_closure
+import functional.option:*
+import unsafe:*
+
+@init_script
+{@
+from bdutils import *
+@}
+class class_metadata
+    public name as string
+    public func_map as hash_map[string, pointer]
+    public function __init__() => func_map = new hash_map[string, pointer]
+    public function get_function[TClosure, TObj](obj as TObj, fname as string) as option[TClosure]
+        dim itr = func_map.find(fname)
+        if itr == func_map.ends() then
+            return none[TClosure]()
+        else
+            return some(pack_closure[TClosure](obj, itr.getv()))
+        end
+    end
+end
+
+dim class_reflect_map = new hash_map[string, class_metadata]
+
+function register[T]()
+    dim meta = new class_metadata
+    {@T = get_func_type_templ_at(0).get_detail()@}
+    meta.name = {@set_str(T.name)@}
+    {@
+funcs = []
+for func in T.funcs:
+    if func.access == AccessModifier.PUBLIC:
+        funcs.append("meta.func_map.insert(\"{name}\", unpack_closure(ptr_cast[T](null).{name}).funcptr)".format(name=func.decl.proto.name))
+set_stmt("if true then\n"+"\n".join(funcs) + "\nend\n")
+    @}
+    class_reflect_map.insert(meta.name, meta)
+end
+
+register[string]()
+dim m = class_reflect_map["string"]
+closure clotype() as uint
+dim clo = m.get_function[clotype]("a", "length").get()
+println(int2str(clo()))

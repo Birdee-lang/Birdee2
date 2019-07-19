@@ -342,7 +342,9 @@ static const string& GetMangledSymbolPrefix()
 	return gen_context.mangled_symbol_prefix;
 }
 
-MemberExprAST* GetMemberExprASTOfMemberFunc(ExprAST* Callee)
+// Get member expr of an ExprAST. If it is a template instance, the
+// function instance will be returned to outfunc
+MemberExprAST* GetMemberExprASTOfMemberFunc(ExprAST* Callee, FunctionAST*& outfunc)
 {
 	auto proto = Callee->resolved_type.proto_ast;
 	MemberExprAST* obj = nullptr;
@@ -364,7 +366,10 @@ MemberExprAST* GetMemberExprASTOfMemberFunc(ExprAST* Callee)
 				auto ptr = static_cast<FunctionTemplateInstanceExprAST*> (pidx->instance.get());
 				pobj = dyncast_resolve_anno<MemberExprAST>(ptr->expr.get());
 				if (pobj && pobj->isMemberFunction())
+				{
 					obj = pobj;
+					outfunc = ptr->instance;
+				}
 			}
 			else if (isa<MemberExprAST>(pidx->instance.get()))
 			{
@@ -378,7 +383,10 @@ MemberExprAST* GetMemberExprASTOfMemberFunc(ExprAST* Callee)
 		{
 			pobj = dyncast_resolve_anno<MemberExprAST>(pfuncinst->expr.get());
 			if(pobj && pobj->isMemberFunction())
-				obj = pobj;
+			{
+					obj = pobj;
+					outfunc = pfuncinst->instance;
+			}
 		}
 		
 	}
@@ -2174,17 +2182,22 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	if (func_callee && func_callee->intrinsic_function) // if we can find the FunctionAST* from callee & it's an intrinsic function
 	{
 		Value* obj = nullptr;
-		if (auto member = GetMemberExprASTOfMemberFunc(Callee.get()))
+		FunctionAST* outfunc;
+		if (auto member = GetMemberExprASTOfMemberFunc(Callee.get(), outfunc))
 			obj= member->llvm_obj;
 		return func_callee->intrinsic_function->Generate(func_callee, obj, Args);
 	}
 	Value* func;
 	Value* obj;
-	auto memberexpr = GetMemberExprASTOfMemberFunc(Callee.get());
+	FunctionAST* outfunc = nullptr;
+	auto memberexpr = GetMemberExprASTOfMemberFunc(Callee.get(), outfunc);
 	if (memberexpr) //if it is a member expr AST of a member function
 	{
 		memberexpr->GenerateObj();
-		func = memberexpr->GenerateFunction();
+		if(outfunc)
+			func = outfunc->GetLLVMFunc();
+		else
+			func = memberexpr->GenerateFunction();
 		obj = memberexpr->llvm_obj;
 		assert(func && obj);
 	}
