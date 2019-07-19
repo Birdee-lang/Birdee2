@@ -113,6 +113,27 @@ dim e = c+d
 ''')
 
 
+assert_generate_ok('''
+class tttt
+	func a[T1,T2,T3](v1 as T2, v2 as T3)
+	end
+	func a[T1](v1 as T1)
+	end
+end
+
+dim p as tttt =  new tttt
+p.a[int,float,double](2.3,4.5)
+p.a[int]("s","b")
+p.b[int](1)
+p.b(1.4)
+''')
+
+assert_fail('''
+function v[T]()
+end
+v[int,float]()
+''')
+
 assert_ok('''
 {@set_ast(stmt("declare function getc() as int"))@}
 getc()

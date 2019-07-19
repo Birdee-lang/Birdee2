@@ -2936,6 +2936,8 @@ If usage vararg name is "", match the closest vararg
 		{
 			func = e.src_template;
 			assert(func->isTemplate());
+			CompileAssert(func->is_vararg || e.args->size() <= func->template_param->params.size(), Pos,
+				"Too many template arguments are given");
 			for (int i = 0; i < e.args->size(); i++)
 			{
 				ValidateOneTemplateArg(*e.args, func->template_param->params, Pos, i);

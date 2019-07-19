@@ -1,3 +1,4 @@
+#import functional.closures
 import concurrent.threading:*
 
 function add(a as int, b as int)

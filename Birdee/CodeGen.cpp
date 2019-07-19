@@ -505,8 +505,8 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		break;
 	case tok_func:
 	{
-		auto functy = type.proto_ast->GenerateFunctionType(true)->getPointerTo();
-		auto funcdty = type.proto_ast->GenerateDebugType(true);
+		auto functy = type.proto_ast->GenerateFunctionType()->getPointerTo();
+		auto funcdty = type.proto_ast->GenerateDebugType();
 		if (!type.proto_ast->is_closure)
 		{
 			base = functy;
@@ -607,7 +607,6 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 			dinfo.cu, var_name, var_name, dinfo.cu->getFile(), Pos.line, ty,
 			true);
 	llvm_value = v;
-	
 	v->addDebugInfo(D); 
 }
 

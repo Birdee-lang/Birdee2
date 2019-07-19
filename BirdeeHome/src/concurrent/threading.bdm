@@ -1,31 +1,17 @@
 package concurrent
 
+import functional.closures:*
 import unsafe
 
-struct closure_unpacked
-	public funcptr as pointer
-	public data as pointer
-end
+
 
 @init_script
 {@
 from traits import *
 from traits import _
 from bdutils import *
-
+from functional_0closures import *
 osname =  get_os_name()
-def check_arg_is_functype(idx):
-	def checker(fn):
-		ty = get_func_arg_at(fn,0).resolved_type
-		require_(is_prototype(ty))
-	return checker
-
-def check_arg_is_closure(idx):
-	def checker(fn):
-		ty = get_func_arg_at(fn,0).resolved_type
-		require_(is_prototype(ty))
-		require_( (ty.get_detail().is_closure, lambda:"Expecting a closure"))
-	return checker
 
 def expand_vararg(func, idx_start):
 	args = func.proto.args
@@ -35,16 +21,7 @@ def expand_vararg(func, idx_start):
 	return ret[:-1]
 @}
 
-@check_arg_is_closure(0)
-function unpack_closure[T](f as T) as closure_unpacked => unsafe.ptr_load[closure_unpacked](addressof(f))
 
-#@check_arg_is_closure(0)
-function pack_closure[TClosure, T](obj as T, funct as pointer) as TClosure 
-	dim v as closure_unpacked
-	v.funcptr = funct
-	v.data = pointerof(obj)
-	return unsafe.ptr_load[TClosure](addressof(v))
-end
 
 {@
 os_function_decl = {
@@ -104,7 +81,7 @@ class thread
 	public function __init__[T,...](fn as T, ...)
 {@
 func=get_cur_func()
-check_arg_is_functype(0)(func)
+check_templ_arg_is_functype(0)(func)
 @}
 		dim f = function ()
 			{@set_ast(expr("fn({})".format(expand_vararg(func,1))))@}
