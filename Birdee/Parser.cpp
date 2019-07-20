@@ -1790,7 +1790,7 @@ void ImportedModule::HandleImport()
 	}
 }
 
-void ParseImports(bool need_do_import)
+BD_CORE_API void ParseImports(bool need_do_import)
 {
 	for (;;)
 	{

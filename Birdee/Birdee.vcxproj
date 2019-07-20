@@ -257,6 +257,7 @@
     <ClInclude Include="include\TokenDef.h" />
     <ClInclude Include="include\Tokenizer.h" />
     <ClInclude Include="include\Util.h" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
@@ -306,6 +307,7 @@
     <None Include="..\BirdeeHome\src\typedptr.bdm" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\getset_test.py" />
+    <None Include="..\tests\makefile2.mak" />
     <None Include="..\tests\scripttest.py" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

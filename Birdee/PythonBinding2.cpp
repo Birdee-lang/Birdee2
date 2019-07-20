@@ -14,6 +14,7 @@ using namespace Birdee;
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel(bool autoimport=true);
+BD_CORE_API extern void ParseImports(bool need_do_import);
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
@@ -231,6 +232,15 @@ static int CompileTopLevel(char* src)
 	return ret;
 }
 
+static void CompileImports(char* src)
+{
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(src)), -1);
+	toknzr.CurTok = tok_import;
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	ParseImports(true);
+	SwitchTokenizer(std::move(old_tok));
+}
+
 static py::object GetNumberLiteral(NumberExprAST& ths)
 {
 	switch (ths.Val.type)
@@ -406,6 +416,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
+	m.def("imports", CompileImports);
 	m.def("get_os_name", []()->std::string {
 #ifdef _WIN32
 		return "windows";

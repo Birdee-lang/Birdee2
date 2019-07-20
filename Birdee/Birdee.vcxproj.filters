@@ -96,6 +96,9 @@
     <ClInclude Include="include\CompilerOptions.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -206,6 +209,9 @@
     </None>
     <None Include="..\BirdeeHome\src\system\specific\unistd\file.bdm">
       <Filter>资源文件\blib\system\specific\unistd</Filter>
+    </None>
+    <None Include="..\tests\makefile2.mak">
+      <Filter>资源文件</Filter>
     </None>
   </ItemGroup>
 </Project>

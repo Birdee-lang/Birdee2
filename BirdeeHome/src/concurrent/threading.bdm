@@ -10,6 +10,7 @@ import unsafe
 from traits import *
 from traits import _
 from bdutils import *
+imports("functional.closures")
 from functional_0closures import *
 osname =  get_os_name()
 
