@@ -40,8 +40,8 @@ function f1()
 	catch e as E2
 		e.print()
 		as_instance[E3](e).for_each(func (e3 as E3) => println(int2str(e3.dummy2)))
-	##catch e as E3
-		e.print()##
+	catch e as E3
+		e.print()
 	end
 	println("Continue")
 end
@@ -69,4 +69,4 @@ func aaa()
 	f()
 end
 
-aaa()
+#aaa()

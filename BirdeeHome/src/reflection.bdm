@@ -1,0 +1,47 @@
+import hash:hash_map
+import functional.closures:unpack_closure
+import functional.closures:pack_closure
+import functional.option:*
+import unsafe:*
+
+@init_script
+{@
+from bdutils import *
+from functional_0closures import check_templ_arg_is_functype
+@}
+class class_metadata
+    public name as string
+    public func_map as hash_map[string, pointer]
+    public function __init__() => func_map = new hash_map[string, pointer]
+    public function get_function[TClosure](fname as string) as option[TClosure]
+{@check_templ_arg_is_functype(0)(get_cur_func())@}
+        dim itr = func_map.find(fname)
+        if itr == func_map.ends() then
+            return none[TClosure]()
+        else
+            return some(bit_cast[TClosure](itr.getv()))
+        end
+    end
+end
+
+dim class_reflect_map = new hash_map[string, class_metadata]
+
+function register[T]()
+    dim meta = new class_metadata
+    {@T = get_func_type_templ_at(0).get_detail()@}
+    meta.name = {@set_str(T.name)@}
+    {@
+funcs = []
+for func in T.funcs:
+    if func.access == AccessModifier.PUBLIC:
+        funcs.append("meta.func_map.insert(\"{name}\", unpack_closure(ptr_cast[T](null).{name}).funcptr)".format(name=func.decl.proto.name))
+set_stmt("if true then\n"+"\n".join(funcs) + "\nend\n")
+    @}
+    class_reflect_map.insert(meta.name, meta)
+end
+
+register[string]()
+dim m = class_reflect_map["string"]
+functype clotype(v as string) as uint
+dim clo as clotype = m.get_function[clotype]("length").get()
+println(int2str(clo("hello")))

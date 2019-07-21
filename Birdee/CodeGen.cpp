@@ -65,6 +65,7 @@ namespace Birdee
 {
 	extern ClassAST* GetStringClass();
 	extern ClassAST* GetTypeInfoClass();
+	extern BD_CORE_API std::pair<int, MemberFunctionDef*> FindClassMethod(ClassAST* class_ast, const string& member);
 }
 
 template<typename T>
@@ -74,6 +75,11 @@ void Print(T* v)
 	llvm::raw_string_ostream rso(type_str);
 	v->print(rso);
 	std::cout << rso.str();
+}
+
+void PrintLLVMValue(Value* v)
+{
+	v->print(errs());
 }
 
 struct StringRefOrHolder
@@ -128,6 +134,9 @@ struct LLVMHelper {
 		DIType * dty=nullptr;
 	};
 	unordered_map<Birdee::ResolvedType, TypePair> typemap;
+	//since for member functions, the type & dtype cannot be put in typemap
+	//we put the types in another map: member function AST -> TypePair
+	unordered_map<Birdee::FunctionAST*, TypePair> memberfunc_typemap;
 	llvm::Type* GetType(const Birdee::ResolvedType& ty)
 	{
 		return  GetTypeNode(ty).llvm_ty;
@@ -137,11 +146,13 @@ struct LLVMHelper {
 		auto itr = typemap.find(ty);
 		if (itr != typemap.end())
 		{
+			assert(itr->second.llvm_ty);
 			return itr->second;
 		}
 		llvm::Type* ret;
 		DIType* dtype;
 		GenerateType(ty, dtype,ret);
+		assert(ret);
 		typemap[ty] = { ret,dtype };
 		return typemap[ty];
 	}
@@ -336,19 +347,22 @@ static const string& GetMangledSymbolPrefix()
 	return gen_context.mangled_symbol_prefix;
 }
 
-Value* GetObjOfMemberFunc(ExprAST* Callee)
+// Get member expr of an ExprAST. If it is a template instance, the
+// function instance will be returned to outfunc
+MemberExprAST* GetMemberExprASTOfMemberFunc(ExprAST* Callee, FunctionAST*& outfunc)
 {
 	auto proto = Callee->resolved_type.proto_ast;
-	Value* obj = nullptr;
+	MemberExprAST* obj = nullptr;
 	if (proto->cls)
 	{
 		auto pobj = dyncast_resolve_anno<MemberExprAST>(Callee);
-		if (pobj)
-			obj = pobj->llvm_obj;
+		if (pobj && pobj->isMemberFunction())
+			obj = pobj;
 		else if (auto piden = dyncast_resolve_anno<IdentifierExprAST>(Callee))
 		{
-			assert(dyncast_resolve_anno<MemberExprAST>(piden->impl.get()));
-			obj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get())->llvm_obj;
+			auto pobj = dyncast_resolve_anno<MemberExprAST>(piden->impl.get());
+			if (pobj && pobj->isMemberFunction())
+				obj = pobj;
 		}
 		else if (auto pidx = dyncast_resolve_anno<IndexExprAST>(Callee))
 		{
@@ -356,24 +370,28 @@ Value* GetObjOfMemberFunc(ExprAST* Callee)
 			{
 				auto ptr = static_cast<FunctionTemplateInstanceExprAST*> (pidx->instance.get());
 				pobj = dyncast_resolve_anno<MemberExprAST>(ptr->expr.get());
-				assert(pobj);
-				obj = pobj->llvm_obj;
+				if (pobj && pobj->isMemberFunction())
+				{
+					obj = pobj;
+					outfunc = ptr->instance;
+				}
 			}
-			else
+			else if (isa<MemberExprAST>(pidx->instance.get()))
 			{
-				assert(isa<MemberExprAST>(pidx->instance.get()));
 				pobj = static_cast<MemberExprAST*> (pidx->instance.get());
-				obj = pobj->llvm_obj;
+				if (pobj->isMemberFunction())
+					obj = pobj;
 			}
 
 		}
-		else 
+		else if(auto pfuncinst = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee))
 		{
-			auto pfuncinst = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee);
-			assert(pfuncinst);
 			pobj = dyncast_resolve_anno<MemberExprAST>(pfuncinst->expr.get());
-			assert(pobj);
-			obj = pobj->llvm_obj;
+			if(pobj && pobj->isMemberFunction())
+			{
+					obj = pobj;
+					outfunc = pfuncinst->instance;
+			}
 		}
 		
 	}
@@ -563,6 +581,8 @@ llvm::Value * Birdee::FunctionTemplateInstanceExprAST::Generate()
 
 void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& package_name)
 {
+	if (llvm_value)
+		return;
 	auto type_n = helper.GetTypeNode(resolved_type);
 	auto type = type_n.llvm_ty;
 	DIType* ty = type_n.dty;
@@ -592,7 +612,6 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 			dinfo.cu, var_name, var_name, dinfo.cu->getFile(), Pos.line, ty,
 			true);
 	llvm_value = v;
-	
 	v->addDebugInfo(D); 
 }
 
@@ -685,7 +704,6 @@ llvm::Value* Birdee::VariableSingleDefAST::Generate()
 
 DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* type,SourcePos pos, ImportedModule* mod)
 {
-
 	// Create a subprogram DIE for this function.
 	DIFile *Unit = mod? DBuilder->createFile(mod->source_file,mod->source_dir) : dinfo.cu->getFile();
 	unsigned LineNo = pos.line;
@@ -794,27 +812,7 @@ void Birdee::CompileUnit::SwitchModule()
 	//or orphan_class. We clear all llvm_func and llvm_value
 	for (auto& cls : orphan_class)
 		cls.second->ClearLLVMFunction();
-	ResetLLVMValuesForFunctionsAndGV(&cu.imported_packages);
-
-	for (auto& cls : imported_class_templates)
-	{
-		for (auto& inst : cls->template_param->instances)
-		{
-			for (auto& func : inst.second->funcs)
-			{
-				func.decl->isDeclare = true;
-				func.decl->isImported = true;
-			}
-		}
-	}
-	for (auto& func : imported_func_templates)
-	{
-		for (auto& inst : func->template_param->instances)
-		{
-			inst.second->isDeclare = true;
-			inst.second->isImported = true;
-		}
-	}
+	ResetLLVMValuesForFunctionsAndGV(&imported_packages);
 
 	gen_context._module = std::make_unique<Module>(name, context);
 	DBuilder = llvm::make_unique<DIBuilder>(*module);
@@ -930,6 +928,33 @@ static void RestoreLinkOnceGlobals(vector<GlobalValue*>& weak_globals)
 		g->setLinkage(GlobalValue::LinkOnceODRLinkage);
 }
 
+//regenerate all imported llvm_value for VariableSingleDef
+static void RegenerateLLVMValuesForGV(ImportTree* tree, string& namebuffer)
+{
+	if (tree->map.empty() && tree->mod)
+	{
+		if (namebuffer == "!repl")
+			return;
+		for (auto& v : tree->mod->dimmap)
+		{
+			v.second.first->PreGenerateExternForGlobal(namebuffer);
+		}
+	}
+	else
+	{
+		auto sz = namebuffer.size();
+		for (auto& itr : tree->map)
+		{
+			if (sz != 0)
+				namebuffer += '.';
+			namebuffer += itr.first;
+			RegenerateLLVMValuesForGV(itr.second.get(), namebuffer);
+			namebuffer.resize(sz);
+		}
+	}
+
+}
+
 bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 {
 	if (ends_with(cu.targetpath, ".o"))
@@ -982,6 +1007,11 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	{
 		cls->PreGenerateFuncs();
 	}
+	if (is_repl)
+	{
+		string buffer = string();
+		RegenerateLLVMValuesForGV(&imported_packages, buffer);
+	}
 	for (auto func : imported_func_templates)
 	{
 		func->PreGenerate();
@@ -992,7 +1022,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	}
 
 	FunctionType *FT =
-		FunctionType::get(llvm::Type::getVoidTy(context), false);
+		FunctionType::get(builder.getInt32Ty(), false);
 
 	std::string main_name;
 	if (is_repl)
@@ -1023,7 +1053,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		builder.CreateCondBr(builder.CreateLoad(check_init), BT, BF);
 
 		builder.SetInsertPoint(BT);
-		builder.CreateRetVoid();
+		builder.CreateRet(builder.getInt32(0));
 
 		builder.SetInsertPoint(BF);
 		lastinst = builder.CreateStore(builder.getInt1(true), check_init);
@@ -1072,12 +1102,12 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		if (!dyncast_resolve_anno<ReturnAST>(toplevel.back().get()))
 		{
 			dinfo.emitLocation(toplevel.back().get());
-			builder.CreateRetVoid();
+			builder.CreateRet(builder.getInt32(0));
 		}
 	}
 	else
 	{
-		builder.CreateRetVoid();
+		builder.CreateRet(builder.getInt32(0));
 	}
 
 	dinfo.LexicalBlocks.pop_back();
@@ -1191,16 +1221,15 @@ bool Birdee::CompileUnit::Generate()
 
 }
 
-llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
+llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType(bool gen_closure)
 {
 	std::vector<llvm::Type*> args;
-	if (cls) {
-		args.push_back(cls->llvm_type->getPointerTo());
-	}
-	if (is_closure)
+	if (gen_closure || (is_closure && !cls))
 	{
 		args.push_back(builder.getInt8PtrTy());
-		assert(cls == nullptr);
+	}
+	else if (cls) {
+		args.push_back(cls->llvm_type->getPointerTo());
 	}
 	for (auto& arg : resolved_args)
 	{
@@ -1210,19 +1239,19 @@ llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType()
 	return FunctionType::get(helper.GetType(resolved_type),args,false);
 }
 
-DIType * Birdee::PrototypeAST::GenerateDebugType()
+DIType * Birdee::PrototypeAST::GenerateDebugType(bool gen_closure)
 {
 	SmallVector<Metadata *, 8> dargs;
 	// Add the result type.
 	auto type_n = helper.GetTypeNode(resolved_type);
 	dargs.push_back(type_n.dty);
 	
-	if (cls) {
-		dargs.push_back(DBuilder->createPointerType(cls->llvm_dtype,64));
-	}
-	if (is_closure)
+	if (gen_closure || (is_closure && !cls))
 	{
 		dargs.push_back(DBuilder->createBasicType("pointer", 64, dwarf::DW_ATE_address));
+	}
+	else if (cls) {
+		dargs.push_back(DBuilder->createPointerType(cls->llvm_dtype, 64));
 	}
 	for (auto& arg : resolved_args)
 	{
@@ -1404,6 +1433,8 @@ void Birdee::FunctionAST::ClearLLVMFunction()
 		}
 		return;
 	}
+	isDeclare = true;
+	isImported = true;
 	llvm_func = nullptr;
 }
 DIType* Birdee::FunctionAST::PreGenerate()
@@ -1418,7 +1449,16 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		return nullptr;
 	}
 	if (llvm_func)
-		return helper.typemap[resolved_type].dty;
+	{
+		auto itr = helper.memberfunc_typemap.find(this);
+		if (itr != helper.memberfunc_typemap.end())
+		{
+			return itr->second.dty;
+		}
+		auto itr2 = helper.typemap.find(resolved_type);
+		assert(itr2 != helper.typemap.end());
+		return itr2->second.dty;
+	}
 	if (intrinsic_function) //if it is an intrinsic function, generate a null ptr
 	{
 		llvm_func = Constant::getNullValue(Proto->GenerateFunctionType()->getPointerTo());
@@ -1494,21 +1534,37 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		myfunc->setDSOLocal(true);
 	}
 	DIType* ret = Proto->GenerateDebugType();
-	auto itr = helper.typemap.find(resolved_type);
-	if(itr==helper.typemap.end())
+	//if the function is a member function, put the LLVM functype in memberfunc_typemap
+	if (resolved_type.proto_ast->is_closure && resolved_type.proto_ast->cls)
 	{
 		LLVMHelper::TypePair tynode;
-		if(resolved_type.proto_ast->is_closure)
-		{
-			GenerateClosureTypes(ftype->getPointerTo(),ret,tynode.llvm_ty, tynode.dty, Pos.line);
-		}
-		else
-		{
-			tynode.dty = ret;
-			tynode.llvm_ty = ftype->getPointerTo();
-		}
-		helper.typemap.insert(std::make_pair(resolved_type,tynode));
+		tynode.dty = ret;
+		tynode.llvm_ty = ftype->getPointerTo();
+		helper.memberfunc_typemap.insert(std::make_pair(this, tynode));
+
 	}
+	else
+	{
+		auto itr = helper.typemap.find(resolved_type);
+		if (itr == helper.typemap.end())
+		{
+			LLVMHelper::TypePair tynode;		
+			if (resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
+			{//if it is a closure (not a class member function)
+				GenerateClosureTypes(ftype->getPointerTo(), ret, tynode.llvm_ty, tynode.dty, Pos.line);
+			}
+			else
+			{
+				tynode.dty = ret;
+				tynode.llvm_ty = ftype->getPointerTo();
+			}
+			//if the function is a member function, don't put LLVM type in the cache:
+			//because it is not exactly right.
+			assert(tynode.llvm_ty);
+			helper.typemap.insert(std::make_pair(resolved_type, tynode));
+		}
+	}
+
 
 	return ret;
 }
@@ -1550,20 +1606,23 @@ Value* DoGenerateCall(Value* func,const vector<Value*>& args)
 Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args,SourcePos pos)
 {
 	vector<Value*> args;
-	if (obj)
-	{
-		args.push_back(obj);
-	}
 	if (proto->is_closure)
 	{
-		args.push_back(builder.CreateExtractValue(func, 1)); //push the closure capture
-		func = builder.CreateExtractValue(func, 0);
+		if (obj)
+		{
+			args.push_back(obj);
+		}
+		else
+		{
+			args.push_back(builder.CreateExtractValue(func, 1)); //push the closure capture
+			func = builder.CreateExtractValue(func, 0);
+		}
 	}
 	for (auto& vargs : Args)
 	{
 		args.push_back(vargs->Generate());
 	}
-
+	//module->print(errs(),nullptr);
 	builder.SetCurrentDebugLocation(
 		DebugLoc::get(pos.line, pos.pos, helper.cur_llvm_func->getSubprogram()));
 	return DoGenerateCall(func, args);
@@ -1597,12 +1656,11 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	auto llvm_ele_ty = resolved_type.class_ast->llvm_type;
 	size_t sz = module->getDataLayout().getTypeAllocSize(llvm_ele_ty);
 	dinfo.emitLocation(this);
-	string del_func = "__del__";
 	auto class_ast = resolved_type.class_ast;
-	auto itr = class_ast->funcmap.find(del_func);
+	auto method = FindClassMethod(class_ast, "__del__");
 	Value* finalizer;
-	if (itr != class_ast->funcmap.end())
-		finalizer = builder.CreatePointerCast(class_ast->funcs[itr->second].decl->GetLLVMFunc(), builder.getInt8PtrTy());
+	if (method.first != -1) //method is found
+		finalizer = builder.CreatePointerCast(method.second->decl->GetLLVMFunc(), builder.getInt8PtrTy());
 	else
 		finalizer = Constant::getNullValue(builder.getInt8PtrTy());
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
@@ -1770,10 +1828,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			param_offset = 1;
 			itr++;
 		}
-		if (Proto->is_closure)
+		if (Proto->is_closure && !Proto->cls)
 		{//if is closure, generate the imported captured var
 			imported_capture_pointer = builder.CreatePointerCast(itr,parent->exported_capture_type->getPointerTo());
-			size_t idx = (parent->capture_this || parent->capture_super) ? 1 : 0;
+			size_t idx_offset = (parent->capture_this || parent->capture_super) ? 1 : 0;
 			if (captured_parent_this) //if "this" is referenced in the function
 			{//get the real "this" in the imported captured context
 				captured_parent_this = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
@@ -1802,9 +1860,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
 				int impidx = v.second->capture_import_idx;
 				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
-					var->SetLLVMValue( builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }, var->name));
+					var->SetLLVMValue( builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx + idx_offset) }, var->name));
 				else
-					var->SetLLVMValue(builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }), var->name));
+					var->SetLLVMValue(builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, 
+						{ builder.getInt32(0),builder.getInt32(impidx + idx_offset) }), var->name));
 				// Create a debug descriptor for the variable.
 				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
 					true);
@@ -1812,7 +1871,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				DBuilder->insertDeclare(var->GetLLVMValue(), D, DBuilder->createExpression(),
 					DebugLoc::get(var->Pos.line, var->Pos.pos, dinfo.LexicalBlocks.back()),
 					builder.GetInsertBlock());
-				idx++;
 			}
 			itr++;
 		}
@@ -1846,7 +1904,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 			if (capture_this || capture_super)
 			{
 				auto target = builder.CreateGEP(exported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) });
-				if(Proto->is_closure)
+				if(Proto->is_closure && !Proto->cls)
 					builder.CreateStore(captured_parent_this, target);
 				else
 					builder.CreateStore(myfunc->args().begin(), target);
@@ -1885,7 +1943,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		gen_context.cur_func = curfunc_backup;
 		gen_context.landingpad = landingpad_backup;
 	}
-	if (Proto->is_closure)
+	if (Proto->is_closure && !Proto->cls)
 	{
 		myfunc->setLinkage(llvm::GlobalValue::LinkageTypes::InternalLinkage);
 		dinfo.emitLocation(this);
@@ -2130,13 +2188,33 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	dinfo.emitLocation(this);
 	if (func_callee && func_callee->intrinsic_function) // if we can find the FunctionAST* from callee & it's an intrinsic function
 	{
-		Value* obj = GetObjOfMemberFunc(Callee.get());
+		Value* obj = nullptr;
+		FunctionAST* outfunc;
+		if (auto member = GetMemberExprASTOfMemberFunc(Callee.get(), outfunc))
+			obj= member->llvm_obj;
 		return func_callee->intrinsic_function->Generate(func_callee, obj, Args);
 	}
-	auto func=Callee->Generate();
+	Value* func;
+	Value* obj;
+	FunctionAST* outfunc = nullptr;
+	auto memberexpr = GetMemberExprASTOfMemberFunc(Callee.get(), outfunc);
+	if (memberexpr) //if it is a member expr AST of a member function
+	{
+		memberexpr->GenerateObj();
+		if(outfunc)
+			func = outfunc->GetLLVMFunc();
+		else
+			func = memberexpr->GenerateFunction();
+		obj = memberexpr->llvm_obj;
+		assert(func && obj);
+	}
+	else
+	{
+		func = Callee->Generate();
+		obj = nullptr;
+	}
 	assert(Callee->resolved_type.type == tok_func);
 	auto proto = Callee->resolved_type.proto_ast;
-	Value* obj = GetObjOfMemberFunc(Callee.get());
 	return GenerateCall(func, proto, obj, Args,this->Pos);
 }
 
@@ -2174,50 +2252,17 @@ namespace Birdee
 	}
 }
 
-llvm::Value * Birdee::MemberExprAST::Generate()
-{
-	dinfo.emitLocation(this);
-	int field_offset = 0;	
-	if (Obj)
-	{
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
-		{
-			llvm_obj = Obj->GetLValue(false);
-			if (!llvm_obj)
-			{
-				if(auto thisexpr = dyncast_resolve_anno<ThisExprAST>(Obj.get()))
-					llvm_obj = thisexpr->GeneratePtr();
-			}
-		}
-		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
-		{
-			auto casade_llvm_obj = Obj->Generate();
-			ClassAST* curcls = Obj->resolved_type.class_ast;
-			llvm_obj = GenerateMemberParentGEP(casade_llvm_obj, curcls, casade_parents);
-			//if current class is a subclass, add 1 to offset,
-			//because field 0 is always the embeded parent class object
-			if (curcls->parent_class)
-				field_offset++;
-			else if(curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
-				field_offset++;
-		}
-		else
-		{
-			llvm_obj = Obj->Generate();
-			assert(llvm_obj);
-		}
 
-	}
-	dinfo.emitLocation(this);
-	if (kind == member_field)
-	{
-		if (llvm_obj)//if we have a pointer to the object
-		{
-			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
-		} else //else, we only have a RValue of struct
-			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
-	}
-	else if (kind == member_function)
+bool Birdee::MemberExprAST::isMemberFunction()
+{
+	if (kind == member_imported_function && Obj) //if there is an object in member expr and the function is imported
+		return true;
+	return kind == member_function || kind == member_virtual_function;
+}
+
+llvm::Value * Birdee::MemberExprAST::GenerateFunction()
+{
+	if (kind == member_function)
 	{
 		if (!gen_context.array_cls)
 			gen_context.array_cls = GetArrayClass();
@@ -2245,10 +2290,6 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 		v = builder.CreatePointerCast(v, Obj->resolved_type.class_ast->vtabledef[func->virtual_idx]->GetLLVMFunc()->getType());
 		return v;
 	}
-	else if (kind == member_imported_dim)
-	{
-		return builder.CreateLoad(import_dim->GetLLVMValue());
-	}
 	else if (kind == member_imported_function)
 	{
 		//function template instance will be "imported function" too.
@@ -2259,6 +2300,85 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 		}
 
 		return import_func->GetLLVMFunc();
+	}
+	assert(0 && "Bad kind for MemberExprAST::GenerateFunction");
+	return nullptr;
+}
+
+int Birdee::MemberExprAST::GenerateObj()
+{
+	int field_offset = 0;
+	if (Obj)
+	{
+		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
+		{
+			llvm_obj = Obj->GetLValue(false);
+			if (!llvm_obj)
+			{
+				if (auto thisexpr = dyncast_resolve_anno<ThisExprAST>(Obj.get()))
+					llvm_obj = thisexpr->GeneratePtr();
+			}
+		}
+		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
+		{
+			auto casade_llvm_obj = Obj->Generate();
+			ClassAST* curcls = Obj->resolved_type.class_ast;
+			llvm_obj = GenerateMemberParentGEP(casade_llvm_obj, curcls, casade_parents);
+			//if current class is a subclass, add 1 to offset,
+			//because field 0 is always the embeded parent class object
+			if (curcls->parent_class)
+				field_offset++;
+			else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+				field_offset++;
+		}
+		else
+		{
+			llvm_obj = Obj->Generate();
+			assert(llvm_obj);
+		}
+
+	}
+	return field_offset;
+}
+
+llvm::Value * Birdee::MemberExprAST::Generate()
+{
+	dinfo.emitLocation(this);
+	int field_offset = this->GenerateObj();
+	dinfo.emitLocation(this);
+	if (kind == member_field)
+	{
+		if (llvm_obj)//if we have a pointer to the object
+		{
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
+		} else //else, we only have a RValue of struct
+			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
+	}
+	else if (kind == member_function || kind == member_virtual_function || kind == member_imported_function)
+	{
+		Value* llvm_f = this->GenerateFunction();
+		if (!llvm_f)
+		{
+			//if it is a template function
+			return nullptr;
+		}
+		auto type = helper.GetType(resolved_type);
+		assert(resolved_type.type == tok_func);
+		if (!resolved_type.proto_ast->cls)
+		{
+			assert(!Obj && kind == member_imported_function);
+			return llvm_f;
+		}
+		assert(llvm::isa<StructType>(*type));
+		StructType* stype = (StructType*)type;
+		auto outfunc_value = builder.CreatePointerCast(llvm_f, stype->getElementType(0));
+		auto capture = builder.CreatePointerCast(llvm_obj, builder.getInt8PtrTy());
+		auto ptr = builder.CreateInsertValue(UndefValue::get(type), outfunc_value, 0);
+		return builder.CreateInsertValue(ptr, capture, 1);
+	}
+	else if (kind == member_imported_dim)
+	{
+		return builder.CreateLoad(import_dim->GetLLVMValue());
 	}
 	else if (kind == member_package)
 	{
@@ -2765,12 +2885,6 @@ Value * Birdee::FunctionToClosureAST::Generate()
 	StructType* stype = (StructType*)type;
 
 	dinfo.emitLocation(this);
-	if (func->resolved_type.proto_ast->cls) //if is binding for member function
-	{
-		outfunc_value = builder.CreatePointerCast(v,stype->getElementType(0));
-		capture = builder.CreatePointerCast(GetObjOfMemberFunc(func.get()),builder.getInt8PtrTy());
-	}
-	else
 	{
 		if (llvm::isa<Function>(*v))
 		{

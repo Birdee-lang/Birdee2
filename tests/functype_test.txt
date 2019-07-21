@@ -1,46 +1,38 @@
-##
 import test_package.b.functype_test_lib:*
 
+{@from bdassert import bdassert@}
 #pfunc(3,4)
 
 dim fa as tyfunc=function (a as int, b as int) as int => a-b
 
-fa(4,5)
+{@bdassert("fa(4,5)==0-1")@}
 
 dim fb as test_package.b.functype_test_lib.tyfunc=fa
 
-fb(3,2)
+{@bdassert("fb(3,2)==1")@}
 
-function caller(fun as tyfunc, a as int)
-	fun(a,3)
+
+function caller(fun as tyfunc, a as int) as int
+	return fun(a,3)
 end
 
-caller(function (a as int, b as int) as int => a*b ,  23)
+{@bdassert("caller(function (a as int, b as int) as int => a*b ,  23)==69")@}
 
-##
-
-closure consumer () 
 
 {@
 def dummy(f):
 	print(f)
 @}
 
-function aaa () as consumer
-	dim a=1,b=2
-	dim fun as consumer = function() => println("hello")
-	fun()
-	function my_function()
-	end
-	return function () => println(int2str(a+b))
-end
-
+dim result as int = 0
+closure consumer () 
 
 class clsa
 	private a as int
 	public function aaa()
 		dim b as int=3
-		dim fun as consumer = function () => println(int2str(a+b))
+		dim c as int =0
+		dim fun as consumer = function () => result = a + b + c
 		fun()			
 	end
 
@@ -49,21 +41,39 @@ class clsa
 	end
 end
 
+
+function aaa () as consumer
+	dim a=1,b=2
+	dim fun as consumer = function()
+		println("hello")
+		result=1
+	end
+	fun()
+	function my_function()
+	end
+	return function () => result =result + a+b
+end
+
+
+
+
 dim a = aaa()
 a()
+{@bdassert("result==4")@}
+
 dim b as clsa = new clsa
 (@dummy (b.aaa) )()
+{@bdassert("result==126")@}
+
 
 
 
 function nested(d as int) as consumer
 	dim a=1,b=2
-	dim fun as consumer = @stack_capture function my_function()
-		dim f = function ()
-			dim str as string
-			dim f2 = @stack_capture function(c as int) as string => int2str(a+b+c+d)
-			str=f2(3)
-			println(str)
+	dim fun as consumer = function my_function()
+		dim f = @stack_capture function ()
+			dim f2 = @stack_capture function(c as int) as int=> a+b+c+d
+			result=f2(3)
 		end
 		f()
 	end
@@ -71,3 +81,4 @@ function nested(d as int) as consumer
 end
 
 nested(3)()
+{@bdassert("result==9")@} 

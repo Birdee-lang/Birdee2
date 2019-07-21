@@ -1,5 +1,3 @@
-package py_module_test
-
 import py_module_test.a
 
 {@

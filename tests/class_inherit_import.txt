@@ -13,5 +13,3 @@ b.say("hello")
 d.say("hello2")
 d.speak("hello")
 println("import test ends")
-
-getchar()

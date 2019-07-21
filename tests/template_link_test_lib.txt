@@ -1,8 +1,8 @@
-import hash_map:hash_map
+import hash:hash_map
 
 function test()
-	dim a = new hash_map[string,int]:create()
-	a.set("123",add[int](21,23))
+	dim a = new hash_map[string,int]()
+	a.insert("123",add[int](21,23))
 end
 
 function add[T](a as T, b as T) as T

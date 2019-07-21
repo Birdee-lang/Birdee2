@@ -34,11 +34,11 @@ std::string GetCurrentWorkingDir(void) {
 
 
 #ifdef _WIN32
-extern void RunGenerativeScript();
+extern int RunGenerativeScript();
 #else
 #include <dlfcn.h>
 extern void* LoadBindingFunction(const char* name);
-	static void RunGenerativeScript()
+	static int RunGenerativeScript()
 	{
 		typedef void(*PtrImpl)();
 		static PtrImpl impl = nullptr;
@@ -244,8 +244,7 @@ int main(int argc,char** argv)
 
 	if (cu.is_script_mode)
 	{
-		RunGenerativeScript();
-		return 0;
+		return RunGenerativeScript();
 	}
 	int is_empty = false;
 	try {

@@ -48,7 +48,7 @@ def check_return(func):
 
 @return_123
 @check_return
-function func() as float
+function funct() as float
 	return 1
 end
 ''')

@@ -1,5 +1,11 @@
 package test_package.a
 
-function funct()
-	println("HAHA")
+class some_class
+	public b as float
+	public func __init__(v as float)=> b=v
+	public func get() as float => b
+end
+
+function funct() as string
+	return ("HAHA")
 end

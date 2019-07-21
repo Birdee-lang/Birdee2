@@ -1,7 +1,18 @@
 import rtti1:*
+import rtti:get_type_info
+{@from bdassert import bdassert@}
+
+class subcls1 : cls1
+
+end
 
 dim a = new cls1
-println(typeof(a).get_name())
+{@bdassert('''typeof(a).get_name()=="rtti1.cls1" ''')@}
 
 dim b = new cls2[int]
-println(typeof(b).get_name())
+{@bdassert('''typeof(b).get_name()=="rtti1.cls2[int]" ''')@}
+
+dim c = new subcls1
+{@bdassert("get_type_info[cls1]().is_parent_of(typeof(c))")@}
+
+println("RTTI test done!")

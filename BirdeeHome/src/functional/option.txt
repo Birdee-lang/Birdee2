@@ -3,68 +3,86 @@ package functional
 @init_script
 {@
 from traits import *
-def check_option(cls):
+from bdutils import *
+def T_is_not_reference():
+	cls=get_cur_class()
 	targ = cls.template_instance_args[0]
 	assert(targ.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE)
 	type = targ.resolved_type
-	if type.index_level==0 and (type.base!=BasicType.CLASS or type.get_detail().is_struct):
-		raise RuntimeError("option can only hold references. However, T is {}".format(type))
-
-def check_if_is_option(type):
-	option_class = get_cur_func().proto.cls.template_source_class
-	cls=type.get_detail()
-	if not isinstance(cls,ClassAST):
-		raise RuntimeError("Expecting a function that returns an option. However, the return type is {}".format(cls.get_unique_name()))
-	chk_src_class = cls.template_source_class
-	if chk_src_class != option_class:
-		raise RuntimeError("Expecting a function that returns an option. However, the return type is {}".format(cls.get_unique_name()))
+	if type.base==BasicType.VOID :
+		raise RuntimeError("T for option cannot be void")
+	return type.index_level==0 and (type.base!=BasicType.CLASS or type.get_detail().is_struct)
+		
 @}
 
-@check_option
 struct option[T]
 	private obj as T
-	
-	public function set(o as T) => obj = o
+	public function is_defined() as boolean
+return {@
+if T_is_not_reference():
+	class_body(get_cur_class(),"private _defined as boolean\n")
+	set_expr("_defined")
+else:
+	set_expr("obj!==null")
+@}
+	end
+	public function set(o as T)
+		obj = o
+{@
+if T_is_not_reference():
+	set_stmt("_defined = true")
+@}
+	end
+
+	public function reset()
+{@
+if T_is_not_reference():
+	set_stmt("_defined = false")
+else:
+	set_stmt("obj = null")
+@}
+	end
+
 	public function get() as T => obj
 	public function or_else(other as T) as T
-		if obj===null then
-			return other
-		else
+		if is_defined() then
 			return obj
+		else
+			return other
 		end
 	end
 
 	public function map[T2](map_func as closure(v as T) as T2) as option[T2]
 		dim ret as option[T2]
-		if obj!==null then
+		if is_defined() then
 			ret.set(map_func(obj))
 		else
-			ret.set(null)
+			ret.reset()
 		end
 		return ret
 	end
 
 	public function for_each(map_func as closure(v as T))
-		if obj!==null then
+		if is_defined() then
 			map_func(obj)
 		end
 	end
 
 	public function flat_map[T2](map_func as closure(v as T) as option[T2]) as option[T2]
-		if obj!==null then
+		if is_defined() then
 			return map_func(obj)
 		end
 		dim ret as option[T2]
-		ret.set(null)
+		ret.reset()
 		return ret
 	end
 
 	public function filter(predicate as closure (obj as T) as boolean) as option[T]
-		if obj!==null && predicate(obj) then
+		if is_defined() && predicate(obj) then
 			return this 
 		end
 		dim ret as option[T]
-		ret.set(null)
+		ret.reset()
 		return ret
 	end
 
@@ -78,7 +96,7 @@ end
 
 function none[T]() as option[T]
 	dim ret as option[T]
-	ret.set(null)
+	ret.reset()
 	return ret
 end
 

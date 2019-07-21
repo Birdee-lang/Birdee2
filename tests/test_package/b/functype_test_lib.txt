@@ -1,5 +1,7 @@
 package test_package.b
 
+{@from bdassert import bdassert@}
+
 functype tyfunc(a as int, b as int) as int
 functype tyfunc2(a as int, b as float) as string
 closure closure1(a as int, b as int) as int
@@ -19,11 +21,11 @@ pclosure = pfunc
 
 pclosure = pfunc2
 
-pclosure(1,2)
+{@bdassert("pclosure(1,2)==3")@}
 ##
 
 closure pstradd(other as string) as string
 
 dim stradd as pstradd= "hello".__add__
 
-stradd("hi")
+{@bdassert('''stradd("hi")=="hellohi" ''')@}

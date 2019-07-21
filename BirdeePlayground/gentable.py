@@ -46,6 +46,11 @@ def parse_bmm(*pkg):
 	with open(os.path.join(os.environ['BIRDEE_HOME'],'blib',*pkg) + '.bmm') as f:
 		data = json.load(f)
 		pkgname = '.'.join(pkg) + '.'
+		for var in data['Variables']:
+			fstr=""
+			fstr=mangle_func(pkgname+var['name'])
+			print(fstr)
+			outf.write(get_code(fstr))
 		for func in data['Functions']:
 			fstr=""
 			if 'link_name' in func:

@@ -117,6 +117,15 @@ jit->addNative("system_0io_0filedef_0file__exception_0get__message",system_0io_0
 extern void system_0io_0filedef_0_1main();
 jit->addNative("system_0io_0filedef_0_1main",system_0io_0filedef_0_1main);
 
+extern void system_0io_0stdio_0stderr();
+jit->addNative("system_0io_0stdio_0stderr",system_0io_0stdio_0stderr);
+
+extern void system_0io_0stdio_0stdin();
+jit->addNative("system_0io_0stdio_0stdin",system_0io_0stdio_0stdin);
+
+extern void system_0io_0stdio_0stdout();
+jit->addNative("system_0io_0stdio_0stdout",system_0io_0stdio_0stdout);
+
 extern void system_0io_0stdio_0_1main();
 jit->addNative("system_0io_0stdio_0_1main",system_0io_0stdio_0_1main);
 
@@ -144,14 +153,11 @@ jit->addNative("system_0specific_0win32_0file_0__getstd",system_0specific_0win32
 extern void system_0specific_0win32_0file_0_1main();
 jit->addNative("system_0specific_0win32_0file_0_1main",system_0specific_0win32_0file_0_1main);
 
-extern void birdee_0print();
-jit->addNative("birdee_0print",birdee_0print);
-
-extern void birdee_0int2str();
-jit->addNative("birdee_0int2str",birdee_0int2str);
-
 extern void birdee_0bool2str();
 jit->addNative("birdee_0bool2str",birdee_0bool2str);
+
+extern void birdee_0print();
+jit->addNative("birdee_0print",birdee_0print);
 
 extern void birdee_0println();
 jit->addNative("birdee_0println",birdee_0println);

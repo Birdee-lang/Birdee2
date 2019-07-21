@@ -1,9 +1,14 @@
+#import functional.closures
 import concurrent.threading:*
 
+{@from bdassert import bdassert@}
+dim v = 0
 function add(a as int, b as int)
 	println(int2str(a+b))
+	v = a+b
 end
 
 dim th = new thread(add, 1, 2)
-sleep(10000)
+sleep(2000)
 println("end")
+{@bdassert("v==3")@}

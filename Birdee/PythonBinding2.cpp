@@ -14,6 +14,7 @@ using namespace Birdee;
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel(bool autoimport=true);
+BD_CORE_API extern void ParseImports(bool need_do_import);
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
@@ -89,7 +90,7 @@ static_assert(sizeof(py::object) == sizeof(void*), "expecting sizeof(py::object)
 
 
 
-BIRDEE_BINDING_API void RunGenerativeScript()
+BIRDEE_BINDING_API int RunGenerativeScript()
 {
 	try
 	{
@@ -98,11 +99,14 @@ BIRDEE_BINDING_API void RunGenerativeScript()
 	catch (py::error_already_set& e)
 	{
 		std::cerr<<e.what();
+		return 1;
 	}
 	catch (std::runtime_error& e)
 	{
 		std::cerr << e.what();
+		return 2;
 	}
+	return 0;
 }
 /*the python internal data structure, for debug use*/
 /*
@@ -229,6 +233,15 @@ static int CompileTopLevel(char* src)
 	int ret = ParseTopLevel();
 	SwitchTokenizer(std::move(old_tok));
 	return ret;
+}
+
+static void CompileImports(char* src)
+{
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(src)), -1);
+	toknzr.CurTok = tok_import;
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	ParseImports(true);
+	SwitchTokenizer(std::move(old_tok));
 }
 
 static py::object GetNumberLiteral(NumberExprAST& ths)
@@ -406,6 +419,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
+	m.def("imports", CompileImports);
 	m.def("get_os_name", []()->std::string {
 #ifdef _WIN32
 		return "windows";
