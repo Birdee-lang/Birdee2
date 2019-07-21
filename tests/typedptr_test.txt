@@ -1,23 +1,6 @@
 import typedptr:*
 
-@enable_rtti
-class assertion_exception
-
-end
-
-{@
-from bdutils import *
-def line_pos():
-	strpos = str(get_cur_script().pos)
-	set_ast(StringLiteralAST.new(strpos))
-@}
-
-function assert(v as boolean, msg as string)
-	if !v then
-		println("Assertion failed :" + msg)
-		throw new assertion_exception
-	end
-end
+{@from bdassert import bdassert@}
 
 
 struct mystruct
@@ -33,25 +16,25 @@ dim b as int[] = [1,2,3,4]
 dim c as mystruct
 
 dim pa = mkref[int](addressof(a))
-assert(pa.get()==32, {@line_pos()@})
+{@bdassert("pa.get()==32")@}
 
 pa.set(64)
-assert(a==64, {@line_pos()@})
-assert(pa==mkref[int](addressof(a)), {@line_pos()@})
+{@bdassert("a==64")@}
+{@bdassert("pa==mkref[int](addressof(a))")@}
 pa=mkref[int](addressof(a2))
-assert(pa==mkref[int](addressof(a2)), {@line_pos()@})
+{@bdassert("pa==mkref[int](addressof(a2))")@}
 
 pa = mkref[int](addressof(b[0]))
-assert(pa.get()==1, {@line_pos()@})
+{@bdassert("pa.get()==1")@}
 pa = pa + 1
-assert(pa.get()==2, {@line_pos()@})
+{@bdassert("pa.get()==2")@}
 
 c.a=1
 c.b=2
 c.c="sadas"
 dim pc = mkref[mystruct](addressof(c))
-assert(pc.f["a"]()==1, {@line_pos()@})
-assert(pc.fptr["b"]().get()==2, {@line_pos()@})
-assert(pc.f["c"]()=="sadas", {@line_pos()@})
+{@bdassert("pc.f[\"a\"]()==1")@}
+{@bdassert("pc.fptr[\"b\"]().get()==2")@}
+{@bdassert("pc.f[\"c\"]()==\"sadas\"")@}
 println("Should be sadas: " + pc.f["c"]())
 println("test done")

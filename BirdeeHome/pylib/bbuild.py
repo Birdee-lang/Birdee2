@@ -302,7 +302,8 @@ def init_path():
 
 def link_msvc():
 	linker_path='link.exe'
-	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" {} /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64 /INCREMENTAL /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
+	#removed flag: /INCREMENTAL
+	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" {} /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64  /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
 	runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
 	pdb_path= os.path.splitext(link_target)[0]+".pdb"
 	obj_files='"{runtime_lib_path}"'.format(runtime_lib_path=runtime_lib_path)

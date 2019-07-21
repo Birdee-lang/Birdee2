@@ -538,6 +538,8 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	{
 		anno.push_back(tokenizer.IdentifierStr);
 		tokenizer.GetNextToken();
+		while (tokenizer.CurTok == tok_newline)
+			tokenizer.GetNextToken();
 	}
 	auto push_expr = [&anno, &firstexpr](std::unique_ptr<ExprAST>&& st)
 	{

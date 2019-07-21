@@ -1,10 +1,10 @@
 #gcc -o  tests/bin/template_link_test tests/bin/template_link_test.o tests/bin/template_link_test_lib.o BirdeeHome/bin/blib/birdee.o BirdeeHome/bin/blib/list.o BirdeeHome/bin/blib/hash_map.o lib/libBirdeeRuntime.a  -lgc
 
 import template_link_test_lib
-import hash_map:hash_map
+import hash:hash_map
 
-dim map = new hash_map[string,int]:create()
-map.set("123",321)
+dim map = new hash_map[string,int]()
+map.insert("123",321)
 
 template_link_test_lib.test()
 

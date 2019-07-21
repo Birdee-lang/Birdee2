@@ -115,9 +115,6 @@
     <Text Include="..\BirdeeHome\src\template_test.txt">
       <Filter>资源文件\template</Filter>
     </Text>
-    <Text Include="..\tests\hash_map_test.txt">
-      <Filter>资源文件\tests</Filter>
-    </Text>
     <Text Include="..\tests\logic_obj_cmp.txt">
       <Filter>资源文件\tests</Filter>
     </Text>

@@ -112,12 +112,12 @@ dim e = c+d
 
 ''')
 
-
+#tests for member function templates
 assert_generate_ok('''
 class tttt
-	func a[T1,T2,T3](v1 as T2, v2 as T3)
+	public func a[T1,T2,T3](v1 as T2, v2 as T3)
 	end
-	func a[T1](v1 as T1)
+	public func b[T1](v1 as T1)
 	end
 end
 
@@ -128,6 +128,13 @@ p.b[int](1)
 p.b(1.4)
 ''')
 
+#test for binding member functions
+assert_generate_ok('''
+dim a = "asa".length
+dim b as closure () as uint = "asa".length
+''')
+
+#test for "too many template arguments"
 assert_fail('''
 function v[T]()
 end

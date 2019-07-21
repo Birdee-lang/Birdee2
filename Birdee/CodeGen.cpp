@@ -77,6 +77,11 @@ void Print(T* v)
 	std::cout << rso.str();
 }
 
+void PrintLLVMValue(Value* v)
+{
+	v->print(errs());
+}
+
 struct StringRefOrHolder
 {
 private:
@@ -1826,7 +1831,7 @@ llvm::Value * Birdee::FunctionAST::Generate()
 		if (Proto->is_closure && !Proto->cls)
 		{//if is closure, generate the imported captured var
 			imported_capture_pointer = builder.CreatePointerCast(itr,parent->exported_capture_type->getPointerTo());
-			size_t idx = (parent->capture_this || parent->capture_super) ? 1 : 0;
+			size_t idx_offset = (parent->capture_this || parent->capture_super) ? 1 : 0;
 			if (captured_parent_this) //if "this" is referenced in the function
 			{//get the real "this" in the imported captured context
 				captured_parent_this = builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(0) }), "this");
@@ -1855,9 +1860,10 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				assert(v.second->capture_import_type != VariableSingleDefAST::CAPTURE_NONE);
 				int impidx = v.second->capture_import_idx;
 				if(v.second->capture_import_type==VariableSingleDefAST::CAPTURE_VAL)
-					var->SetLLVMValue( builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }, var->name));
+					var->SetLLVMValue( builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx + idx_offset) }, var->name));
 				else
-					var->SetLLVMValue(builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, { builder.getInt32(0),builder.getInt32(impidx) }), var->name));
+					var->SetLLVMValue(builder.CreateLoad(builder.CreateGEP(imported_capture_pointer, 
+						{ builder.getInt32(0),builder.getInt32(impidx + idx_offset) }), var->name));
 				// Create a debug descriptor for the variable.
 				DILocalVariable *D = DBuilder->createAutoVariable(dinfo.LexicalBlocks.back(), var->name, dinfo.cu->getFile(), var->Pos.line, ty,
 					true);
@@ -1865,7 +1871,6 @@ llvm::Value * Birdee::FunctionAST::Generate()
 				DBuilder->insertDeclare(var->GetLLVMValue(), D, DBuilder->createExpression(),
 					DebugLoc::get(var->Pos.line, var->Pos.pos, dinfo.LexicalBlocks.back()),
 					builder.GetInsertBlock());
-				idx++;
 			}
 			itr++;
 		}
@@ -2250,7 +2255,9 @@ namespace Birdee
 
 bool Birdee::MemberExprAST::isMemberFunction()
 {
-	return kind == member_function || kind == member_imported_function || kind == member_virtual_function;
+	if (kind == member_imported_function && Obj) //if there is an object in member expr and the function is imported
+		return true;
+	return kind == member_function || kind == member_virtual_function;
 }
 
 llvm::Value * Birdee::MemberExprAST::GenerateFunction()
@@ -2350,7 +2357,18 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 	else if (kind == member_function || kind == member_virtual_function || kind == member_imported_function)
 	{
 		Value* llvm_f = this->GenerateFunction();
+		if (!llvm_f)
+		{
+			//if it is a template function
+			return nullptr;
+		}
 		auto type = helper.GetType(resolved_type);
+		assert(resolved_type.type == tok_func);
+		if (!resolved_type.proto_ast->cls)
+		{
+			assert(!Obj && kind == member_imported_function);
+			return llvm_f;
+		}
 		assert(llvm::isa<StructType>(*type));
 		StructType* stype = (StructType*)type;
 		auto outfunc_value = builder.CreatePointerCast(llvm_f, stype->getElementType(0));

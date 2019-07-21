@@ -90,7 +90,7 @@ static_assert(sizeof(py::object) == sizeof(void*), "expecting sizeof(py::object)
 
 
 
-BIRDEE_BINDING_API void RunGenerativeScript()
+BIRDEE_BINDING_API int RunGenerativeScript()
 {
 	try
 	{
@@ -99,11 +99,14 @@ BIRDEE_BINDING_API void RunGenerativeScript()
 	catch (py::error_already_set& e)
 	{
 		std::cerr<<e.what();
+		return 1;
 	}
 	catch (std::runtime_error& e)
 	{
 		std::cerr << e.what();
+		return 2;
 	}
+	return 0;
 }
 /*the python internal data structure, for debug use*/
 /*

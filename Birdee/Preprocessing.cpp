@@ -1758,7 +1758,7 @@ namespace Birdee
 			//if is not a template, fall through to the following code
 		}
 		impl->Phase1();
-		Birdee_RunAnnotationsOn(anno,this,impl->Pos, globals);
+		Birdee_RunAnnotationsOn(anno,impl.get(),impl->Pos, globals);
 		if (is_expr)
 		{
 			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
