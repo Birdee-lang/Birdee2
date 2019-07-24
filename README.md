@@ -149,3 +149,16 @@ To run Birdee programs that are compiled with Birdee compiler on Windows, make s
 
 If you use the pre-compiled binaries of Birdee, these DLLs can be found in the "bin" directory. These DLL files can also be downloaded via the following links. [BaiduYun](https://pan.baidu.com/s/1FWnHpQkxj5PC4DP1PEMRlg) or [GoogleDrive](https://drive.google.com/open?id=1GIH-YDe2IFMnaYE91uOXAJlnXJjX3PvT). Note that "libgcc_s_seh-1.dll" and "libwinpthread-1.dll" are extracted from mingw64.
 
+## Testing Birdee
+
+On Windows, you need to open a Visual Studio x64 Commmand Prompt. Then switch to "tests" directory in Birdee's source code. Make sure the required runtime DLL files (see the above section) are copied to the directory "tests/bin/". Finally, run
+
+```cmd
+nmake -f makefile2.mak
+```
+
+On Linux, you need to switch to the root directory of Birdee source code directory, and run 
+
+```shell
+make tests
+```

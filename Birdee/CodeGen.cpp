@@ -1433,9 +1433,14 @@ void Birdee::FunctionAST::ClearLLVMFunction()
 		}
 		return;
 	}
+	if (isDeclare && !isImported && link_name.empty()) //if it is a c-style decl without linkname
+	{
+		link_name = Proto->GetName();
+	}
 	isDeclare = true;
 	isImported = true;
 	llvm_func = nullptr;
+
 }
 DIType* Birdee::FunctionAST::PreGenerate()
 {
