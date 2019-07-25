@@ -510,8 +510,8 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		break;
 	case tok_func:
 	{
-		auto functy = type.proto_ast->GenerateFunctionType()->getPointerTo();
-		auto funcdty = type.proto_ast->GenerateDebugType();
+		auto functy = type.proto_ast->GenerateFunctionType(true)->getPointerTo();
+		auto funcdty = type.proto_ast->GenerateDebugType(true);
 		if (!type.proto_ast->is_closure)
 		{
 			base = functy;
@@ -1224,7 +1224,8 @@ bool Birdee::CompileUnit::Generate()
 llvm::FunctionType * Birdee::PrototypeAST::GenerateFunctionType(bool gen_closure)
 {
 	std::vector<llvm::Type*> args;
-	if (gen_closure || (is_closure && !cls))
+	//if gen_closure then always use closure mode instead of class mode
+	if (is_closure && (!cls || gen_closure))
 	{
 		args.push_back(builder.getInt8PtrTy());
 	}
@@ -1246,7 +1247,7 @@ DIType * Birdee::PrototypeAST::GenerateDebugType(bool gen_closure)
 	auto type_n = helper.GetTypeNode(resolved_type);
 	dargs.push_back(type_n.dty);
 	
-	if (gen_closure || (is_closure && !cls))
+	if (is_closure && (!cls || gen_closure))
 	{
 		dargs.push_back(DBuilder->createBasicType("pointer", 64, dwarf::DW_ATE_address));
 	}

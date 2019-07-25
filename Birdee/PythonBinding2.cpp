@@ -572,6 +572,12 @@ void RegisiterClassForBinding(py::module& m)
 		.value("IMPORTED_FUNCTION", MemberExprAST::MemberType::member_imported_function);
 
 	member_cls
+		.def_static("new", [](UniquePtrStatementAST& obj, string& member) {
+			return new UniquePtrStatementAST(make_unique<MemberExprAST>(obj.move_expr(), member));
+		})
+		.def_static("new_func_member", [](UniquePtrStatementAST& obj, MemberFunctionDef& member) {
+			return new UniquePtrStatementAST(make_unique<MemberExprAST>(obj.move_expr(), &member, tokenizer.GetSourcePos()));
+		})
 		.def_property("func", [](MemberExprAST& ths) {
 			return ths.kind == MemberExprAST::MemberType::member_function ? GetRef(ths.func) : GetNullRef<MemberFunctionDef>();
 		}, [](MemberExprAST& ths,  MemberFunctionDef* v) {
