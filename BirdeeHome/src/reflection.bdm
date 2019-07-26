@@ -3,16 +3,22 @@ import functional.closures:unpack_closure
 import functional.closures:pack_closure
 import functional.option:*
 import unsafe:*
+import typedptr:get_field_ptr
 
 @init_script
 {@
+imports("functional.closures")
 from bdutils import *
 from functional_0closures import check_templ_arg_is_functype
 @}
 class class_metadata
     public name as string
     public func_map as hash_map[string, pointer]
-    public function __init__() => func_map = new hash_map[string, pointer]
+    public field_map as hash_map[string, uint]
+    public function __init__()
+        func_map = new hash_map[string, pointer]
+        field_map = new hash_map[string, uint]
+    end
     public function get_function[TClosure](fname as string) as option[TClosure]
 {@check_templ_arg_is_functype(0)(get_cur_func())@}
         dim itr = func_map.find(fname)
@@ -22,26 +28,84 @@ class class_metadata
             return some(bit_cast[TClosure](itr.getv()))
         end
     end
+
+    public function get_field_offset(fname as string) as option[uint]
+        dim itr = field_map.find(fname)
+        if itr == field_map.ends() then
+            return none[uint]()
+        else
+            return some(itr.getv())
+        end
+    end
 end
 
+@private
 dim class_reflect_map = new hash_map[string, class_metadata]
 
+function get_class_metadata(name as string) as option[class_metadata]
+    dim itr = class_reflect_map.find(name)
+    if itr == class_reflect_map.ends() then
+        return none[class_metadata]()
+    else
+        return some(itr.getv())
+    end
+end
+
+function get_class_field_ptr[fname as string,T](obj as T) as pointer
+    return get_field_ptr[fname, T](pointerof(obj))
+end
+
 function register[T]()
+    {@
+T = get_func_type_templ_at(0).get_detail()
+if not isinstance(T, ClassAST) or T.is_struct:
+    raise RuntimeException("T should be a class (Structs cannot be accepted here)")
+    @}
+    dim dummy as T = null
+    dim clsname = {@set_str(T.get_unique_name())@}
+    if class_reflect_map.has(clsname) then
+        return
+    end
     dim meta = new class_metadata
-    {@T = get_func_type_templ_at(0).get_detail()@}
-    meta.name = {@set_str(T.name)@}
+    meta.name = clsname
     {@
 funcs = []
-for func in T.funcs:
-    if func.access == AccessModifier.PUBLIC:
-        funcs.append("meta.func_map.insert(\"{name}\", unpack_closure(ptr_cast[T](null).{name}).funcptr)".format(name=func.decl.proto.name))
+#this function generates a static call to "virtual" member function
+def member(idx):
+    memb = MemberExprAST.new_func_member(expr("dummy"),
+        get_func_type_templ_at(0).get_detail().funcs[idx])
+    memb.get().kind = MemberExprAST.MemberType.FUNCTION
+    set_ast(memb)
+
+for idx, func in enumerate(T.funcs):
+    #tN is the closure of dummy.XXXXX
+    funcs.append("dim t{idx} = {{@member({idx})@".format(idx = idx) + "}")
+    #extract the function pointer
+    funcs.append("meta.func_map.insert(\"{name}\", unpack_closure(t{idx}).funcptr)"
+        .format(name=func.decl.proto.name, idx = idx))
 set_stmt("if true then\n"+"\n".join(funcs) + "\nend\n")
     @}
+    {@
+fields = []
+for field in T.fields:
+    fields.append("meta.field_map.insert(\"{name}\", ptr_cast[uint,pointer](get_class_field_ptr[\"{name}\"](dummy)))".format(name=field.decl.name))
+set_stmt("if true then\n"+"\n".join(fields) + "\nend\n")
+    @}   
     class_reflect_map.insert(meta.name, meta)
 end
 
-register[string]()
-dim m = class_reflect_map["string"]
-functype clotype(v as string) as uint
-dim clo as clotype = m.get_function[clotype]("length").get()
-println(int2str(clo("hello")))
+class cls
+    private v as int
+    @virtual
+    func hidden() as string=>"Hidden" + int2str(v)
+    public func __init__() => v=32
+end
+register[cls]()
+#register[int]()
+dim m = class_reflect_map["reflection.cls"]
+functype clotype(obj as cls) as string
+dim clo as clotype = m.get_function[clotype]("hidden").get()
+dim obj = new cls
+println(clo(obj))
+dim ptr = ptr_cast[pointer](ptr_cast[ulong](obj) + m.get_field_offset("v").get())
+println(int2str(ptr_load[int](ptr)))

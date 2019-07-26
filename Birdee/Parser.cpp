@@ -1429,7 +1429,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		else
 		{
 			// TODO, make it better
-			if (ret->funcs.rbegin()->is_abstract) {
+			if (!ret->funcs.empty() && ret->funcs.rbegin()->is_abstract) {
 				throw CompileError("Expected member declarations, are you trying to implement a pure virtual function?");
 			}
 			else {
