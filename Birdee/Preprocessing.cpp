@@ -427,6 +427,11 @@ public:
 		template_class_stack.pop_back();
 	}
 
+	bool IsInTopLevel() 
+	{
+		return function_scopes.empty();
+	}
+
 	void PushBasicBlock()
 	{
 		py_scope_dicts.back().scope_dicts.push_back(nullptr);
@@ -1723,6 +1728,7 @@ namespace Birdee
 		}
 		rty.index_level++;
 		resolved_type = rty;
+		is_static = scope_mgr.IsInTopLevel() && scope_mgr.top_level_scopes.empty();
 	}
 
 	void Birdee::AnnotationStatementAST::Phase1()

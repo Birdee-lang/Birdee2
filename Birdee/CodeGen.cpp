@@ -2071,36 +2071,58 @@ llvm::Value * Birdee::ArrayInitializerExprAST::Generate()
 	ety.index_level--;
 	auto element_type = helper.GetType(ety);
 
-	vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(element_type, values.size()) };
-	auto cur_array_ty = StructType::create(context, types);
-
-	vector<Constant*> const_init;
-	vector<std::pair<int, Value*>> manually_init;
-	const_init.reserve(values.size());
-	int idx = 0;
-	for (auto& v : values)
+	if (is_static) //if static, generate a GV to hold the array
 	{
-		Value* val = v->Generate();
-		if (llvm::isa<Constant>(*val))
+		vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),ArrayType::get(element_type, values.size()) };
+		auto cur_array_ty = StructType::create(context, types);
+
+		vector<Constant*> const_init;
+		vector<std::pair<int, Value*>> manually_init;
+		const_init.reserve(values.size());
+		int idx = 0;
+		for (auto& v : values)
 		{
-			auto cons = static_cast<Constant*>(val);
-			const_init.push_back(cons);
+			Value* val = v->Generate();
+			if (llvm::isa<Constant>(*val))
+			{
+				auto cons = static_cast<Constant*>(val);
+				const_init.push_back(cons);
+			}
+			else
+			{
+				const_init.push_back(Constant::getNullValue(element_type));
+				manually_init.push_back(std::make_pair(idx, val));
+			}
+			idx++;
 		}
-		else
-		{
-			const_init.push_back(Constant::getNullValue(element_type));
-			manually_init.push_back(std::make_pair(idx,val));
-		}
-		idx++;
+		auto array_data = ConstantArray::get(ArrayType::get(element_type, values.size()), const_init);
+		GlobalVariable* vobj = new GlobalVariable(*module, cur_array_ty, false, GlobalValue::PrivateLinkage,
+			ConstantStruct::get(cur_array_ty, { builder.getInt32(values.size()), array_data }));
+		dinfo.emitLocation(this);
+		for (auto& init_v : manually_init)
+			builder.CreateStore(init_v.second, builder.CreateGEP(vobj,
+				{ builder.getInt32(0), builder.getInt32(1), builder.getInt32(init_v.first) }));
+		return builder.CreatePointerCast(vobj, arr_type);
 	}
-	auto array_data = ConstantArray::get(ArrayType::get(element_type, values.size()), const_init);
-	GlobalVariable* vobj = new GlobalVariable(*module, cur_array_ty, false, GlobalValue::PrivateLinkage,
-		ConstantStruct::get(cur_array_ty, { builder.getInt32(values.size()), array_data }));
-	dinfo.emitLocation(this);
-	for (auto& init_v : manually_init)
-		builder.CreateStore(init_v.second, builder.CreateGEP(vobj, 
-			{ builder.getInt32(0), builder.getInt32(1), builder.getInt32(init_v.first) }));
-	return builder.CreatePointerCast(vobj, arr_type);
+	else
+	{
+		size_t sz = module->getDataLayout().getTypeAllocSize(element_type);
+		vector<Value*> LArgs;
+		LArgs.push_back(builder.getInt32(sz));
+		LArgs.push_back(builder.getInt32(1));
+		LArgs.push_back(builder.getInt32(values.size()));
+		dinfo.emitLocation(this);
+		Value* ret = builder.CreateCall(GetMallocArr(), LArgs);
+		ret = builder.CreatePointerCast(ret, helper.GetType(resolved_type));
+		auto ptr = builder.CreateGEP(ret, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(0) });
+		for (auto i=0; i< values.size();i++)
+		{
+			auto p = builder.CreateGEP(ptr, builder.getInt32(i));
+			builder.CreateStore(values[i]->Generate(), p);
+		}
+		return ret;
+	}
+
 }
 
 llvm::Value * Birdee::VariableMultiDefAST::Generate()
