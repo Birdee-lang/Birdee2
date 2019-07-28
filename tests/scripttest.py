@@ -43,6 +43,19 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_generate_ok('''
+class meme
+	private func say()=>println("hi")
+end
+dim v = new meme
+dim clo = {@
+cls = resolve_type("meme").get_detail()
+memb = MemberExprAST.new_func_member(expr("v"),cls.funcs[0])
+set_ast(memb)
+@}
+clo()
+''')
+
+assert_generate_ok('''
 dim a=int2str(1)+pointer2str(pointerof(null))+double2str(3.0)
 a.get_raw()
 breakpoint()

@@ -563,15 +563,22 @@ void RegisiterClassForBinding(py::module& m)
 
 
 	auto member_cls = py::class_ < MemberExprAST, ResolvedIdentifierExprAST>(m, "MemberExprAST");
-	py::enum_ < MemberExprAST::MemberType>(member_cls, "AccessModifier")
+	py::enum_ < MemberExprAST::MemberType>(member_cls, "MemberType")
 		.value("ERROR", MemberExprAST::MemberType::member_error)
 		.value("PACKAGE", MemberExprAST::MemberType::member_package)
 		.value("FIELD", MemberExprAST::MemberType::member_field)
 		.value("FUNCTION", MemberExprAST::MemberType::member_function)
 		.value("IMPORTED_DIM", MemberExprAST::MemberType::member_imported_dim)
+		.value("VIRTUAL_FUNCTION", MemberExprAST::MemberType::member_virtual_function)
 		.value("IMPORTED_FUNCTION", MemberExprAST::MemberType::member_imported_function);
 
 	member_cls
+		.def_static("new", [](UniquePtrStatementAST& obj, string& member) {
+			return new UniquePtrStatementAST(make_unique<MemberExprAST>(obj.move_expr(), member));
+		})
+		.def_static("new_func_member", [](UniquePtrStatementAST& obj, MemberFunctionDef& member) {
+			return new UniquePtrStatementAST(make_unique<MemberExprAST>(obj.move_expr(), &member, tokenizer.GetSourcePos()));
+		})
 		.def_property("func", [](MemberExprAST& ths) {
 			return ths.kind == MemberExprAST::MemberType::member_function ? GetRef(ths.func) : GetNullRef<MemberFunctionDef>();
 		}, [](MemberExprAST& ths,  MemberFunctionDef* v) {

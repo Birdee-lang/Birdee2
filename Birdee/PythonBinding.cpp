@@ -150,6 +150,15 @@ void RegisiterClassForBinding2(py::module& m) {
 	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
 	//BasicTypeExprAST
+	py::class_<ArrayInitializerExprAST, ExprAST>(m, "ArrayInitializerExprAST")
+		.def_static("new", [](vector<unique_ptr<ExprAST>>& expr) {
+			return new UniquePtrStatementAST(
+				make_unique<ArrayInitializerExprAST>(std::move(expr), tokenizer.GetSourcePos())); })
+		.def_property("expr", [](ReturnAST& ths) {return GetRef(ths.Val); },
+			[](ReturnAST& ths, UniquePtrStatementAST& v) {ths.Val = v.move_expr(); })
+		.def("run", [](ArrayInitializerExprAST& ths, py::object& func) {
+			for(auto& itr: ths.values)
+				func(GetRef(itr)); });
 	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
 		.def_static("new", [](UniquePtrStatementAST& expr) {return new UniquePtrStatementAST(make_unique<ReturnAST>(expr.move_expr(),tokenizer.GetSourcePos())); })
 		.def_property("expr", [](ReturnAST& ths) {return GetRef(ths.Val); },

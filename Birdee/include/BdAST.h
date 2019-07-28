@@ -704,6 +704,8 @@ namespace Birdee {
 	class BD_CORE_API ArrayInitializerExprAST : public ExprAST {
 	public:
 		vector<unique_ptr<ExprAST>> values;
+		//whether use static global variable space to hold the array
+		bool is_static = false;
 		unique_ptr<ExprAST> dummy; //MSVC shows an error here it we remove this line. I don't know why.
 		void Phase1();
 		llvm::Value* Generate();
