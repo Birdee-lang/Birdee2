@@ -1,0 +1,24 @@
+import reflection
+import unsafe:ptr_cast
+import unsafe:ptr_load
+
+class cls
+    private v as int
+    @virtual
+    func hidden() as string=>"Hidden" + int2str(v)
+    public func __init__() => v=32
+end
+reflection.register[cls]()
+dim m = reflection.get_class_metadata("reflection_test.cls").get()
+functype clotype(obj as cls) as string
+dim clo as clotype = m.get_function[clotype]("hidden").get()
+dim obj = new cls
+dim result = clo(obj)
+{@
+from bdassert import bdassert
+bdassert('''result == "Hidden32"''')
+@}
+dim ptr = ptr_cast[pointer](ptr_cast[ulong](obj) + m.get_field_offset("v").get())
+dim result2 = ptr_load[int](ptr)
+{@bdassert("result2==32")@}
+println("Done")

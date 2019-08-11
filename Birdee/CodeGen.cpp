@@ -605,7 +605,8 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 	auto type_n = helper.GetTypeNode(resolved_type);
 	auto type = type_n.llvm_ty;
 	DIType* ty = type_n.dty;
-	string var_name = GetMangledSymbolPrefix() + name;
+	string var_name = GetMangledSymbolPrefix();
+	MangleNameAndAppend(var_name, name);
 	GlobalVariable* v = new GlobalVariable(*module, type,false,GlobalValue::CommonLinkage,
 		Constant::getNullValue(type), var_name);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
