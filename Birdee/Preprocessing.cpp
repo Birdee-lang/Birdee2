@@ -209,10 +209,10 @@ do\
 }while(0)\
 
 template<typename T>
-inline T* FindModuleGlobal(unordered_map<string, std::pair<unique_ptr<T>, bool>>& v,const string& name)
+inline T* FindModuleGlobal(unordered_map<string, std::pair<unique_ptr<T>, bool>>& v,const string& name, bool can_read_private)
 {
 	auto itr = v.find(name);
-	if (itr != v.end() && itr->second.second)
+	if (itr != v.end() && (can_read_private || itr->second.second) )
 		return itr->second.first.get();
 	return nullptr;
 }
@@ -485,7 +485,7 @@ public:
 			if (!vec.empty() && vec.back().imported_mod)
 			{
 				auto& dimmap = vec.back().imported_mod->dimmap;
-				if (auto v = FindModuleGlobal(dimmap, name))
+				if (auto v = FindModuleGlobal(dimmap, name, true))
 					return v;
 				auto& dimmap2 = vec.back().imported_mod->imported_dimmap;
 				auto var2 = dimmap2.find(name);
@@ -606,7 +606,7 @@ public:
 			if (!v.empty() && v.back().imported_mod)
 			{
 				auto& funcmap = v.back().imported_mod->funcmap;
-				if(auto var = FindModuleGlobal(funcmap, name))
+				if(auto var = FindModuleGlobal(funcmap, name, true))
 					return make_unique<ResolvedFuncExprAST>(var, pos);
 				auto& funcmap2 = v.back().imported_mod->imported_funcmap;
 				auto var2 = funcmap2.find(name);
@@ -1381,7 +1381,7 @@ namespace Birdee
 			{
 				//we are now acting as if we are compiling another module
 				auto& functypemap = env.imported_mod->functypemap;
-				if (auto fitr = FindModuleGlobal(functypemap, str))
+				if (auto fitr = FindModuleGlobal(functypemap, str, true))
 				{
 					ths.type = tok_func;
 					ths.proto_ast = fitr;
@@ -1397,7 +1397,7 @@ namespace Birdee
 				}
 
 				auto& classmap = env.imported_mod->classmap;
-				if (auto cls = FindModuleGlobal(classmap, str))
+				if (auto cls = FindModuleGlobal(classmap, str, true))
 				{
 					ths.type = tok_class;
 					ths.class_ast = cls;
@@ -1457,14 +1457,14 @@ namespace Birdee
 				throw CompileError(pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
 			}
 			auto& functypemap2 = node->mod->functypemap;
-			if (auto fitr = FindModuleGlobal(functypemap2, clsname))
+			if (auto fitr = FindModuleGlobal(functypemap2, clsname, false))
 			{
 				this->type = tok_func;
 				this->proto_ast = fitr;
 			}
 			else
 			{
-				auto itr = FindModuleGlobal(node->mod->classmap, clsname);
+				auto itr = FindModuleGlobal(node->mod->classmap, clsname, false);
 				CompileAssert(itr, pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
 				this->type = tok_class;
 				this->class_ast = itr;
@@ -2723,7 +2723,7 @@ If usage vararg name is "", match the closest vararg
 			ImportTree* node = Obj->resolved_type.import_node;
 			if (node->map.size() == 0)
 			{
-				auto ret1 = FindModuleGlobal(node->mod->dimmap, member);
+				auto ret1 = FindModuleGlobal(node->mod->dimmap, member, false);
 				if (ret1)
 				{
 					kind = member_imported_dim;
@@ -2732,7 +2732,7 @@ If usage vararg name is "", match the closest vararg
 					resolved_type = ret1->resolved_type;
 					return;
 				}
-				auto ret2 = FindModuleGlobal(node->mod->funcmap, member);
+				auto ret2 = FindModuleGlobal(node->mod->funcmap, member, false);
 				if (ret2)
 				{
 					kind = member_imported_function;

@@ -59,7 +59,7 @@ function register[T]()
     {@
 T = get_func_type_templ_at(0).get_detail()
 if not isinstance(T, ClassAST) or T.is_struct:
-    raise RuntimeException("T should be a class (Structs cannot be accepted here)")
+    raise RuntimeError("T should be a class (Structs cannot be accepted here)")
     @}
     dim dummy as T = null
     dim clsname = {@set_str(T.get_unique_name())@}
@@ -93,19 +93,3 @@ set_stmt("if true then\n"+"\n".join(fields) + "\nend\n")
     @}   
     class_reflect_map.insert(meta.name, meta)
 end
-
-class cls
-    private v as int
-    @virtual
-    func hidden() as string=>"Hidden" + int2str(v)
-    public func __init__() => v=32
-end
-register[cls]()
-#register[int]()
-dim m = class_reflect_map["reflection.cls"]
-functype clotype(obj as cls) as string
-dim clo as clotype = m.get_function[clotype]("hidden").get()
-dim obj = new cls
-println(clo(obj))
-dim ptr = ptr_cast[pointer](ptr_cast[ulong](obj) + m.get_field_offset("v").get())
-println(int2str(ptr_load[int](ptr)))
