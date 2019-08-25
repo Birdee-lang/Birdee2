@@ -1,0 +1,115 @@
+package system.specific.win32
+
+import system.specific.win32.file:CloseHandle
+import system.specific.win32.file:GetLastError
+import functional.option:*
+import unsafe:*
+import concurrent.syncdef
+import concurrent.syncdef:wait_exception
+
+declare function WaitForSingleObject(hHandle as pointer, dwMilliseconds as int) as int
+declare function CreateEventA(lpEventAttributes as pointer, bManualReset as boolean, bInitialState as boolean, lpName as pointer) as pointer
+declare function SetEvent(hEvent as pointer) as boolean
+declare function CreateMutexA(lpMutexAttributes as pointer, bInitialOwner as boolean, lpName as pointer) as pointer
+declare function ReleaseMutex(hMutex as pointer) as int
+declare function CreateThread(lpThreadAttributes as pointer, dwStackSize as ulong, lpStartAddress as pointer, arg as pointer, dwCreationFlags as int, lpThreadId as pointer) as pointer
+declare function ExitThread(status as int)
+declare function Sleep(ms as int)
+
+@init_script
+{@
+from bdconst import *
+define("WAIT_ABANDONED", 0x00000080)
+define("WAIT_OBJECT_0", 0)
+define("WAIT_TIMEOUT", 0x00000102)
+define("WAIT_FAILED", 0xFFFFFFFF)
+@}
+
+struct mutex_t
+	private v as pointer
+	public function init()
+		v = CreateMutexA(pointerof(null), false, pointerof(null))
+	end
+
+	public function enter()
+		do_wait(v)
+	end
+
+	public function leave()
+		if ReleaseMutex(v) == 0 then
+			throw new wait_exception(GetLastError())
+		end
+	end
+
+	public function del()
+		CloseHandle(v)
+	end
+end
+
+
+@private
+function do_wait(handle as pointer)
+	if WaitForSingleObject(handle, 0-1) != {@WAIT_OBJECT_0()@} then
+		throw new wait_exception(GetLastError())
+	end
+end
+
+class future_impl[T] : concurrent.syncdef.future[T]
+	private data as T
+	private is_success as boolean
+	private native as pointer
+	public function __init__()
+		is_success = false
+		native = CreateEventA(pointerof(null), true, false, pointerof(null))
+	end
+
+	public function preset(data as T) => this.data = data
+	public function success(data as T)
+		is_success = true
+		this.data = data
+		SetEvent(native)
+	end
+
+	public function fail()
+		is_success = false
+		SetEvent(native)
+	end
+
+	public function await() as option[T]
+		do_wait(native)
+		__del__()
+		if is_success then
+			return some(data)
+		else
+			return none[T]()
+		end
+	end
+
+
+	public function __del__()
+		if native != pointerof(null) then
+			CloseHandle(native)
+			native = pointerof(null)
+		end
+	end
+end
+
+function do_create_thread(routine as pointer, arg as pointer) as pointer
+	return CreateThread(pointerof(null),0,routine,arg,0,pointerof(null))
+end
+
+function do_exit_thread()
+	ExitThread(0)
+end
+
+function _sleep(ms as int)
+	Sleep(ms)
+end
+
+function _join_thread(handle as pointer)
+	do_wait(handle)
+end
+
+function _close_thread(handle as pointer)
+	CloseHandle(handle)
+end

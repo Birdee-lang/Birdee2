@@ -1331,6 +1331,11 @@ void Birdee::ClassAST::PreGenerate()
 	}
 	for (auto& field : fields)
 	{
+		if (field.decl->resolved_type.type == tok_class
+			&& field.decl->resolved_type.class_ast->is_struct)
+		{
+			field.decl->resolved_type.class_ast->PreGenerate();
+		}
 		auto& node2 = helper.GetTypeNode(field.decl->resolved_type);
 		types.push_back(node2.llvm_ty);
 		ty_nodes.push_back(&node2);
@@ -1739,6 +1744,19 @@ llvm::Value * Birdee::ThisExprAST::Generate()
 		return builder.CreateLoad(GeneratePtr());
 	else
 		return GeneratePtr();
+}
+
+llvm::Value * Birdee::ThisExprAST::GetLValue(bool checkHas)
+{
+	assert(resolved_type.type == tok_class);
+	if (resolved_type.class_ast->is_struct)
+	{
+		if (checkHas)
+			return (llvm::Value *)1;
+		else
+			return GeneratePtr();
+	}
+	return nullptr;
 }
 
 llvm::Value * Birdee::ThisExprAST::GeneratePtr()

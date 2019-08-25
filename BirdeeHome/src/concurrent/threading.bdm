@@ -2,6 +2,7 @@ package concurrent
 
 import functional.closures:*
 import unsafe
+import {@"system.specific.win32.concurrent" if get_os_name()=="windows" else "system.specific.unistd.concurrent"@}:*
 
 
 
@@ -22,58 +23,8 @@ def expand_vararg(func, idx_start):
 	return ret[:-1]
 @}
 
-
-
-{@
-os_function_decl = {
-	'windows':{
-		'create':'declare function CreateThread(lpThreadAttributes as pointer, dwStackSize as ulong, lpStartAddress as pointer, arg as pointer, dwCreationFlags as int, lpThreadId as pointer) as pointer',
-		'exit': 'declare function ExitThread(status as int)',
-		'sleep': 'declare function Sleep(ms as int)'
-	},
-	'linux':{
-		'create':'declare function pthread_create(ptr_thread_id as pointer, attr as pointer, routine as pointer, arg as pointer) as int',
-		'exit': 'declare function pthread_exit(p as pointer)',
-		'sleep': 'declare function Sleep alias "sleep" (seconds as int) '
-	}
-}
-set_ast(stmt(os_function_decl[osname]['create']))
-@}
-{@set_ast(stmt(os_function_decl[osname]['exit']))@}
-{@set_ast(stmt(os_function_decl[osname]['sleep']))@}
-
 function sleep(ms as int)
-	ms = ms / {@
-if osname=='windows':
-	set_int(1)
-else:
-	set_int(1000)
-@}
-	Sleep(ms)
-end
-
-function do_create_thread(routine as pointer, arg as pointer) as pointer
-	dim ret as pointer
-{@
-if osname=='windows':
-	set_ast(expr("ret=CreateThread(pointerof(null),0,routine,arg,0,pointerof(null))"))
-elif osname=='linux':
-	set_ast(expr("pthread_create(addressof(ret),pointerof(null),routine,arg)"))
-else:
-	assert(False)
-@}
-	return ret
-end
-
-function do_exit_thread()
-{@
-if osname=='windows':
-	set_expr("ExitThread(0)")
-elif osname=='linux':
-	set_expr("pthread_exit(pointerof(null))")
-else:
-	assert(False)
-@}
+	_sleep(ms)
 end
 
 class thread
@@ -90,6 +41,14 @@ check_templ_arg_is_functype(0)(func)
 		end
 		dim unpacked = unpack_closure(f)
 		handle = do_create_thread(unpacked.funcptr,unpacked.data)
+	end
+
+	public function join()
+		_join_thread(handle)
+	end
+
+	public function __del__()
+		_close_thread(handle)
 	end
 end
 

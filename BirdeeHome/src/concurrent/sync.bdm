@@ -1,0 +1,25 @@
+package concurrent
+
+import {@"system.specific.win32.concurrent" if get_os_name()=="windows" else "system.specific.unistd.concurrent"@}:*
+import concurrent.syncdef:*
+
+class mutex
+	private storage as mutex_t
+	public function __init__()
+		storage.init()
+	end
+
+	public function acquire()
+		storage.enter()
+	end
+
+	public function release()
+		storage.leave()
+	end
+
+	public function __del__()
+		storage.del()
+	end
+end
+
+function create_future[T]() as future[T] => new future_impl[T]()

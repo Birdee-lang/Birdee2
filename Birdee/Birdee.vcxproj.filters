@@ -40,6 +40,9 @@
     <Filter Include="资源文件\blib\system\specific\unistd">
       <UniqueIdentifier>{e54d7516-1413-479b-8af4-bad28f46152b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\blib\concurrent">
+      <UniqueIdentifier>{75037a91-ffd2-4f5d-a414-bf3bbe42a83b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -209,6 +212,24 @@
     </None>
     <None Include="..\tests\makefile2.mak">
       <Filter>资源文件</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\win32\concurrent.bdm">
+      <Filter>资源文件\blib\system\specific\win32</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\concurrent\sync.bdm">
+      <Filter>资源文件\blib\concurrent</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\concurrent\threading.bdm">
+      <Filter>资源文件\blib\concurrent</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\concurrent\syncdef.bdm">
+      <Filter>资源文件\blib\concurrent</Filter>
+    </None>
+    <None Include="..\tests\concurrent_test.bdm">
+      <Filter>资源文件\tests</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\unistd\concurrent.bdm">
+      <Filter>资源文件\blib\system\specific\unistd</Filter>
     </None>
   </ItemGroup>
 </Project>

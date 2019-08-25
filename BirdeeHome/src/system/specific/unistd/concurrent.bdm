@@ -1,0 +1,151 @@
+package system.specific.unistd
+
+import functional.option:*
+
+declare function pthread_create(ptr_thread_id as pointer, attr as pointer, routine as pointer, arg as pointer) as int
+declare function pthread_exit(p as pointer)
+declare function sleep (seconds as int)
+declare function pthread_cond_init(cv as pointer,cattr as pointer) as int
+declare function pthread_cond_wait(cv as pointer,mutex as pointer) as int
+declare function pthread_cond_signal(cv as pointer) as int
+declare function pthread_cond_destroy(cv as pointer) as int
+declare function pthread_mutex_destroy(mutex as pointer) as int
+declare function pthread_mutex_init(mutex as pointer,attr as pointer) as int
+declare function pthread_mutex_lock(mutex as pointer) as int
+declare function pthread_mutex_trylock(mutex as pointer) as int
+declare function pthread_mutex_unlock(mutex as pointer) as int
+declare function pthread_join(thread as pointer, retval as pointer) as int
+{@
+assert(get_os_name()=='linux' and get_target_bits()==64)
+@}
+
+struct mutex_t
+	private v1 as pointer
+	private v2 as pointer
+	private v3 as pointer
+	private v4 as pointer
+	private v5 as pointer
+
+	public function init()
+		pthread_mutex_init(addressof(this), pointerof(null))
+	end
+
+	public function enter()
+		pthread_mutex_lock(addressof(this))
+	end
+
+	public function leave()
+		pthread_mutex_unlock(addressof(this))
+	end
+
+	public function del()
+		pthread_mutex_destroy(addressof(this))
+	end
+end
+
+
+struct cond_t
+	private v1 as pointer
+	private v2 as pointer
+	private v3 as pointer
+	private v4 as pointer
+	private v5 as pointer
+	private v6 as pointer
+end
+
+struct _event
+	private mutex as mutex_t
+	private cond as cond_t
+	private is_triggered as boolean
+
+	public function init()
+		mutex.init()
+		pthread_cond_init(addressof(cond), pointerof(null))
+		is_triggered = false
+	end
+
+	public function set()
+		mutex.enter()
+		is_triggered = true
+		pthread_cond_signal(addressof(cond))
+		mutex.leave()
+	end
+
+	public function await()
+		mutex.enter()
+		while !is_triggered
+			pthread_cond_wait(addressof(cond), addressof(mutex))
+		end
+		mutex.leave()
+	end
+
+	public function del()
+		mutex.del()
+		pthread_cond_destroy(addressof(cond))
+	end
+end
+
+class future_impl[T] : concurrent.syncdef.future[T]
+	private data as T
+	private is_success as boolean
+	private event as _event
+	private is_event_destroyed as boolean
+
+	public function __init__()
+		is_success = false
+		event.init()
+		is_event_destroyed = false
+	end
+
+	public function preset(data as T) => this.data = data
+	public function success(data as T)
+		is_success = true
+		this.data = data
+		event.set()
+	end
+
+	public function fail()
+		is_success = false
+		event.set()
+	end
+
+	public function await() as option[T]
+		event.await()
+		__del__()
+		if is_success then
+			return some(data)
+		else
+			return none[T]()
+		end
+	end
+
+
+	public function __del__()
+		if !is_event_destroyed then
+			event.del()
+			is_event_destroyed = true
+		end
+	end
+end
+
+function do_create_thread(routine as pointer, arg as pointer) as pointer
+	dim ret as pointer
+	pthread_create(addressof(ret),pointerof(null),routine,arg)
+	return ret
+end
+
+function do_exit_thread()
+	pthread_exit(pointerof(null))
+end
+
+function _sleep(ms as int)
+	sleep(ms/1000)
+end
+
+function _join_thread(handle as pointer)
+	pthread_join(handle, pointerof(null))
+end
+
+function _close_thread(handle as pointer)
+	#nothing
+end
