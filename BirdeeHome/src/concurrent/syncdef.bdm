@@ -1,0 +1,18 @@
+package concurrent
+
+import functional.option:*
+
+class future[T]
+	public abstract function preset(data as T)
+	public abstract function success(data as T)
+	public abstract function fail()
+	public abstract function await() as option[T]
+end
+
+class wait_exception  : runtime_exception
+	public error_code as int
+	public func __init__( _error_code as int)
+		error_code = _error_code
+	end
+	@virtual public func get_message() as string => "Waiting for object failed, error code: " + int2str(error_code)
+end

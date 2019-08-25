@@ -156,7 +156,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\*.obj;$(BIRDEE_HOME)blib\concurrent\threading.obj;$(BIRDEE_HOME)blib\system\io\file.obj;$(BIRDEE_HOME)blib\system\io\filedef.obj;$(BIRDEE_HOME)blib\system\io\stdio.obj;$(BIRDEE_HOME)blib\system\specific\win32\file.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>BirdeeCompilerCore.lib;BirdeeRuntime.lib;$(BIRDEE_HOME)blib\*.obj;$(BIRDEE_HOME)blib\concurrent\threading.obj;$(BIRDEE_HOME)blib\concurrent\sync.obj;$(BIRDEE_HOME)blib\concurrent\syncdef.obj;$(BIRDEE_HOME)blib\system\io\file.obj;$(BIRDEE_HOME)blib\system\io\filedef.obj;$(BIRDEE_HOME)blib\system\io\stdio.obj;$(BIRDEE_HOME)blib\system\specific\win32\file.obj;$(BIRDEE_HOME)blib\system\specific\win32\concurrent.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)dependency/bin/;$(SolutionDir)dependency/bin/llvm-debug;$(SolutionDir)/x64/$(Configuration)</AdditionalLibraryDirectories>
       <ForceSymbolReferences>
       </ForceSymbolReferences>

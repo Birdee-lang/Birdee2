@@ -517,6 +517,7 @@ namespace Birdee {
 		llvm::Value* GeneratePtr();
 		//for struct types, this will generate a value rather than a pointer
 		llvm::Value* Generate();
+		llvm::Value* GetLValue(bool checkHas) override;
 		ThisExprAST()   {}
 		std::unique_ptr<StatementAST> Copy();
 		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
