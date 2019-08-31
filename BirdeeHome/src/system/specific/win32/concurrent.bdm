@@ -4,8 +4,7 @@ import system.specific.win32.file:CloseHandle
 import system.specific.win32.file:GetLastError
 import functional.option:*
 import unsafe:*
-import concurrent.syncdef
-import concurrent.syncdef:wait_exception
+import concurrent.syncdef:*
 
 declare function WaitForSingleObject(hHandle as pointer, dwMilliseconds as int) as int
 declare function CreateEventA(lpEventAttributes as pointer, bManualReset as boolean, bInitialState as boolean, lpName as pointer) as pointer
@@ -15,6 +14,7 @@ declare function ReleaseMutex(hMutex as pointer) as int
 declare function CreateThread(lpThreadAttributes as pointer, dwStackSize as ulong, lpStartAddress as pointer, arg as pointer, dwCreationFlags as int, lpThreadId as pointer) as pointer
 declare function ExitThread(status as int)
 declare function Sleep(ms as int)
+declare function WaitForMultipleObjects(nCount as int,lpHandles as pointer, bWaitAll as boolean, dwMilliseconds as int) as int
 
 @init_script
 {@
@@ -75,9 +75,9 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		SetEvent(native)
 	end
 
-	public function await() as option[T]
-		do_wait(native)
-		__del__()
+	public function get_native_handle() as pointer => native
+	public function do_then() => __del__()
+	public function get_result() as option[T]
 		if is_success then
 			return some(data)
 		else
@@ -85,6 +85,7 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		end
 	end
 
+	public function do_await() => do_wait(native)
 
 	public function __del__()
 		if native != pointerof(null) then
@@ -112,4 +113,21 @@ end
 
 function _close_thread(handle as pointer)
 	CloseHandle(handle)
+end
+
+function _await_multiple_awaitables(aw as awaitable[], timeout as int) as awaitable
+	dim natives = new pointer * aw.length()
+	for dim i =0 till aw.length()
+		natives[i] = aw[i].get_native_handle()
+		if natives[i] == pointerof(null) then
+			throw new runtime_exception("_await_multiple_awaitables expects all awaitables having native handlers")
+		end
+	end
+	dim ret = WaitForMultipleObjects(natives.length(), natives.get_raw(), false, timeout)
+	if ret >= {@WAIT_OBJECT_0()@} && ret < aw.length() + {@WAIT_OBJECT_0()@} then
+		return aw[ret - {@WAIT_OBJECT_0()@}]
+	else if ret == {@WAIT_TIMEOUT()@} then
+		return null
+	end
+	throw new wait_exception(GetLastError())
 end

@@ -1215,7 +1215,7 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
 		CompileAssert(!cls->is_struct, "The \'virtual\' annotation can only be applied on class functions");
-		CompileAssert(!cls->isTemplate(), "The \'virtual\' annotation cannot be applied on class templates");
+		CompileAssert(!cls->funcs[index].decl->isTemplate(), "The \'virtual\' annotation cannot be applied on function templates");
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;

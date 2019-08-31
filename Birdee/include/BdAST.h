@@ -847,6 +847,7 @@ namespace Birdee {
 			CAPTURE_REF,  //the variable is in "context" object of another function, this variable is a reference to it
 		}capture_import_type= CAPTURE_NONE, capture_export_type=CAPTURE_NONE;
 
+		unique_ptr<VariableSingleDefAST> CopyNoInitializer();
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
 		void PreGenerateExternForGlobal(const string& package_name);

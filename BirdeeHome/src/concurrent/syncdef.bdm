@@ -2,11 +2,46 @@ package concurrent
 
 import functional.option:*
 
-class future[T]
+class awaitable
+	public abstract function do_await()
+	public abstract function get_native_handle() as pointer
+end
+
+class future[T] : awaitable
 	public abstract function preset(data as T)
 	public abstract function success(data as T)
 	public abstract function fail()
-	public abstract function await() as option[T]
+	public abstract function do_then()
+	public abstract function get_result() as option[T]
+	@virtual
+	public function await() as option[T]
+		do_await()
+		do_then()
+		return get_result()
+	end
+	@virtual
+	public function and_then(thenfunc as closure (result as option[T])) as future[T] => new future_then[T](this, thenfunc)
+end
+
+class future_then[T] : future[T]
+	private impl as future[T]
+	private thenfunc as closure (result as option[T])
+	public function __init__(impl as future[T], thenfunc as closure (result as option[T]))
+		this.impl = impl
+		this.thenfunc = thenfunc
+	end
+
+	public function preset(data as T) => impl.preset(data)
+	public function success(data as T) => impl.success(data)
+	public function fail() => impl.fail()
+	public function do_await() => impl.do_await()
+	public function get_native_handle() as pointer => impl.get_native_handle()
+	public function do_then()
+		impl.do_then()
+		thenfunc(get_result())
+	end
+	public function get_result() as option[T] => impl.get_result()
+
 end
 
 class wait_exception  : runtime_exception

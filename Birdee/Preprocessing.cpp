@@ -532,7 +532,7 @@ public:
 					//"v" is defined in function "*itr2"
 					//first export v from *itr2
 					auto capture_idx = itr2->func->CaptureVariable(v);
-					unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(v->Copy());
+					unique_ptr<VariableSingleDefAST> var = v->CopyNoInitializer();
 					
 					//then create a variable to import the variable
 					var->capture_import_type = v->capture_export_type;

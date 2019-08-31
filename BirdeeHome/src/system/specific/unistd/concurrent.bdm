@@ -109,9 +109,9 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		event.set()
 	end
 
-	public function await() as option[T]
-		event.await()
-		__del__()
+	public function get_native_handle() as pointer => pointerof(null)
+	public function do_then() => __del__()
+	public function get_result() as option[T]
 		if is_success then
 			return some(data)
 		else
@@ -119,7 +119,7 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		end
 	end
 
-
+	public function do_await() => event.await()
 	public function __del__()
 		if !is_event_destroyed then
 			event.del()
