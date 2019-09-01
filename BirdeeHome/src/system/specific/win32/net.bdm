@@ -1,0 +1,156 @@
+package system.specific.win32
+
+import unsafe
+
+# fix me, make sure it is a little endian arch 
+struct USHORT
+	public lo as byte
+	public hi as byte
+end
+
+@init_script
+{@
+from bdutils import *
+from bdconst import *
+define("AF_UNSPEC",       0)               # unspecified
+define("AF_UNIX",         1)               # local to host (pipes, portals)
+define("AF_INET",         2)               # internetwork: UDP, TCP, etc.
+define("AF_IMPLINK",      3)               # arpanet imp addresses
+define("AF_PUP",          4)               # pup protocols: e.g. BSP
+define("AF_CHAOS",        5)               # mit CHAOS protocols
+define("AF_NS",           6)               # XEROX NS protocols
+define("AF_IPX",          _AF_NS)           # IPX protocols: IPX, SPX, etc.
+define("AF_ISO",          7)               # ISO protocols
+define("AF_OSI",          _AF_ISO)          # OSI is ISO
+define("AF_ECMA",         8)               # european computer manufacturers
+define("AF_DATAKIT",      9)               # datakit protocols
+define("AF_CCITT",        10)              # CCITT protocols, X.25 etc
+define("AF_SNA",          11)              # IBM SNA
+define("AF_DECnet",       12)              # DECnet
+define("AF_DLI",          13)              # Direct data link interface
+define("AF_LAT",          14)              # LAT
+define("AF_HYLINK",       15)              # NSC Hyperchannel
+define("AF_APPLETALK",    16)              # AppleTalk
+define("AF_NETBIOS",      17)              # NetBios-style addresses
+define("AF_VOICEVIEW",    18)              # VoiceView
+define("AF_FIREFOX",      19)              # Protocols from Firefox
+define("AF_UNKNOWN1",     20)              # Somebody is using this!
+define("AF_BAN",          21)              # Banyan
+define("AF_ATM",          22)              # Native ATM Services
+define("AF_INET6",        23)              # Internetwork Version 6
+define("AF_CLUSTER",      24)              # Microsoft Wolfpack
+define("AF_12844",        25)              # IEEE 1284.4 WG AF
+define("AF_IRDA",         26)              # IrDA
+define("AF_NETDES",       28)              # Network Designers OSI & gateway
+
+
+define("SOCK_STREAM"     ,1)
+define("SOCK_DGRAM"      ,2)
+define("SOCK_RAW"        ,3)
+define("SOCK_RDM"        ,4)
+define("SOCK_SEQPACKET"  ,5)
+
+
+define("IPPROTO_HOPOPTS"       ,0)  # IPv6 Hop-by-Hop options
+define("IPPROTO_ICMP"          ,1)
+define("IPPROTO_IGMP"          ,2)
+define("IPPROTO_GGP"           ,3)
+define("IPPROTO_IPV4"          ,4)
+define("IPPROTO_ST"            ,5)
+define("IPPROTO_TCP"           ,6)
+define("IPPROTO_CBT"           ,7)
+define("IPPROTO_EGP"           ,8)
+define("IPPROTO_IGP"           ,9)
+define("IPPROTO_PUP"           ,12)
+define("IPPROTO_UDP"           ,17)
+define("IPPROTO_IDP"           ,22)
+define("IPPROTO_RDP"           ,27)
+define("IPPROTO_IPV6"          ,41) # IPv6 header
+define("IPPROTO_ROUTING"       ,43) # IPv6 Routing header
+define("IPPROTO_FRAGMENT"      ,44) # IPv6 fragmentation header
+define("IPPROTO_ESP"           ,50) # encapsulating security payload
+define("IPPROTO_AH"            ,51) # authentication header
+define("IPPROTO_ICMPV6"        ,58) # ICMPv6
+define("IPPROTO_NONE"          ,59) # IPv6 no next header
+define("IPPROTO_DSTOPTS"       ,60) # IPv6 Destination options
+define("IPPROTO_ND"            ,77)
+define("IPPROTO_ICLFXBM"       ,78)
+define("IPPROTO_PIM"           ,103)
+define("IPPROTO_PGM"           ,113)
+define("IPPROTO_L2TP"          ,115)
+define("IPPROTO_SCTP"          ,132)
+define("IPPROTO_RAW"           ,255)
+define("IPPROTO_MAX"           ,256)
+#
+#  These are reserved for internal use by Windows.
+#
+define("IPPROTO_RESERVED_RAW"  ,257)
+define("IPPROTO_RESERVED_IPSEC"  ,258)
+define("IPPROTO_RESERVED_IPSECOFFLOAD"  ,259)
+define("IPPROTO_RESERVED_WNV" ,260)
+define("IPPROTO_RESERVED_MAX"  ,261)
+
+define("INADDR_ANY"              ,0x00000000)
+define("INADDR_LOOPBACK"         ,0x7f000001)
+define("INADDR_BROADCAST"        ,0xffffffff)
+define("INADDR_NONE"             ,0xffffffff)
+
+define_signed("SOCKET_ERROR"    ,-1)
+@}
+
+struct SOCKET 
+	public sock as pointer
+	public function close()
+		if sock != pointerof(null) then
+			closesocket(this)
+			sock = pointerof(null)
+		end
+	end
+
+	public function ok() as boolean => unsafe.ptr_cast[long](sock) != 0-1
+end
+
+declare function socket(af as int, type as int,protocol as int) as SOCKET
+declare function bind(s as SOCKET,##sockaddr## name as pointer, namelen as int) as int
+declare function listen(s as SOCKET, backlog as int) as int
+declare function WSAGetLastError() as int
+declare function accept(s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
+declare function closesocket(s as SOCKET) as int
+declare function htons(hostshort as ulong) as USHORT
+declare function send(s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function recv(s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function WSAStartup(wVersionRequested as int, lpWSAData as pointer) as int
+declare function connect(s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
+
+
+dim vWSAData = new byte * 408
+
+if WSAStartup({@set_int(2 | 2<<8)@}, vWSAData.get_raw()) != 0 then
+	throw new runtime_exception("WSAStartup failed")
+end
+
+function get_socket_error() as int => WSAGetLastError()
+
+function mk_ushort(v as int) as USHORT
+	dim ret as USHORT
+	ret.lo = v & {@set_int(0xff)@}
+	ret.hi = (v & {@set_int(0xff00)@}) / 256
+	return ret
+end
+
+struct sockaddr_in 
+    public sin_family as USHORT
+    public sin_port as USHORT
+    public sin_addr as uint
+    public sin_zero as ulong
+end
+
+function mk_sockaddr_in() as sockaddr_in
+	dim ret as sockaddr_in
+	ret.sin_family = mk_ushort(0)
+	ret.sin_port =  mk_ushort(0)
+	ret.sin_addr = 0
+	ret.sin_zero = 0
+	return ret
+end
+

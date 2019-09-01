@@ -1,0 +1,100 @@
+package system.io
+
+import system.specific.win32.net:*
+import typedptr:sizeof
+
+{@from system_0specific_0win32_0net import *@}
+
+class socket_exception  : runtime_exception
+	public error_code as int
+	public func __init__(msg as string)
+		super.__init__(msg)
+		error_code = get_socket_error()
+	end
+
+	public func with_error_code(msg as string, _error_code as int)
+		super.__init__(msg)
+		error_code = _error_code
+	end
+	@virtual public func get_message() as string => msg+ ", error code: " + int2str(error_code)
+end
+
+class server_bind
+	public sock as SOCKET
+	public function __init__(port as int)
+		sock = socket({@AF_INET()@}, {@SOCK_STREAM()@}, {@IPPROTO_TCP()@})
+		if !sock.ok() then
+			throw new socket_exception("Socket error")
+		end
+		
+	    dim sin = mk_sockaddr_in()
+		sin.sin_family = mk_ushort({@AF_INET()@})
+		dim short_port = mk_ushort(port)
+		sin.sin_port.lo = short_port.hi
+		sin.sin_port.hi = short_port.lo
+		sin.sin_addr = {@INADDR_ANY()@} 
+		if bind(sock, addressof(sin), sizeof[sockaddr_in]()) == {@SOCKET_ERROR()@} then
+			dim err = get_socket_error()
+			sock.close()
+			throw new socket_exception:with_error_code("Bind error", err)
+		end
+		if listen(sock, 5) == {@SOCKET_ERROR()@} then
+			dim err = get_socket_error()
+			sock.close()
+			throw new socket_exception:with_error_code("Listen error", err)
+		end
+	end
+
+	public function accept() as socket
+		dim ret = system.specific.win32.net.accept(sock, pointerof(null), pointerof(null))
+		if !ret.ok() then
+			throw new socket_exception("Accept error")
+		end
+		return new socket(ret)
+	end
+
+	public function close() => sock.close()
+	public function __del__() => sock.close()
+end
+
+class socket
+	public sock as SOCKET
+	public function __init__(sock as SOCKET)
+		this.sock = sock
+	end
+	
+	public function send(buf as byte[], offset as uint, len as uint) as uint
+		dim retlen = system.specific.win32.net.send(sock, addressof(buf[offset]), len, 0)
+		if retlen != len then
+			dim err = get_socket_error()
+			if err != 0 then
+				throw new socket_exception("Send error")
+			end
+		end
+		return retlen
+	end
+
+	public function recv(buf as byte[], offset as uint, len as uint) as uint
+		dim retlen = system.specific.win32.net.recv(sock, addressof(buf[offset]), len, 0)
+		if retlen != len then
+			dim err = get_socket_error()
+			if err != 0 then
+				throw new socket_exception("Send error")
+			end
+		end
+		return retlen
+	end
+
+	public function close() => sock.close()
+	public function __del__() => sock.close()
+end
+
+dim server = new server_bind(10086)
+dim s = server.accept()
+dim buf = new byte * 5
+for dim i=0 till 5
+	dim len = s.recv(buf, 0, 5)
+	s.send(buf, 0, len)
+end
+s.close()
+server.close()

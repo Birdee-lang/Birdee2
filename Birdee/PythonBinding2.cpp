@@ -286,8 +286,10 @@ static auto NewNumberExpr(Token tok, py::object& obj) {
 	{
 		if(tok == tok_float || tok == tok_double)
 			val.v_double = (double)obj.cast<uint64_t>();
-		else
+		else if (tok == tok_uint || tok == tok_ulong)
 			val.v_long = obj.cast<uint64_t>();
+		else
+			val.v_long = obj.cast<int64_t>();
 	}
 	else if (py::isinstance<py::float_>(obj))
 	{

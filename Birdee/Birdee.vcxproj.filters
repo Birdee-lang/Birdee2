@@ -231,5 +231,11 @@
     <None Include="..\BirdeeHome\src\system\specific\unistd\concurrent.bdm">
       <Filter>资源文件\blib\system\specific\unistd</Filter>
     </None>
+    <None Include="..\BirdeeHome\src\system\specific\win32\net.bdm">
+      <Filter>资源文件\blib\system\specific\win32</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\io\net.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
+    </None>
   </ItemGroup>
 </Project>

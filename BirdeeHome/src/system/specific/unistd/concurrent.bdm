@@ -1,6 +1,7 @@
 package system.specific.unistd
 
 import functional.option:*
+import concurrent.syncdef:awaitable
 
 declare function pthread_create(ptr_thread_id as pointer, attr as pointer, routine as pointer, arg as pointer) as int
 declare function pthread_exit(p as pointer)
@@ -148,4 +149,8 @@ end
 
 function _close_thread(handle as pointer)
 	#nothing
+end
+
+function _await_multiple_awaitables(aw as awaitable[], timeout as int) as awaitable
+	throw new runtime_exception("Not implemented")
 end
