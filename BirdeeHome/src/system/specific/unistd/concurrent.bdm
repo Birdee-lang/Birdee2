@@ -98,7 +98,11 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		is_event_destroyed = false
 	end
 
-	public function preset(data as T) => this.data = data
+	public function preset(data as T)
+		this.data = data
+		is_success = true
+	end
+
 	public function success(data as T)
 		is_success = true
 		this.data = data

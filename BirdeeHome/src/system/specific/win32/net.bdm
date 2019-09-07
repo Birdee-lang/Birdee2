@@ -95,6 +95,42 @@ define("INADDR_LOOPBACK"         ,0x7f000001)
 define("INADDR_BROADCAST"        ,0xffffffff)
 define("INADDR_NONE"             ,0xffffffff)
 
+
+define("FD_READ_BIT",      0)
+define("FD_READ",          (1 << _FD_READ_BIT))
+
+define("FD_WRITE_BIT",     1)
+define("FD_WRITE",         (1 << _FD_WRITE_BIT))
+
+define("FD_OOB_BIT",       2)
+define("FD_OOB",           (1 << _FD_OOB_BIT))
+
+define("FD_ACCEPT_BIT",    3)
+define("FD_ACCEPT",        (1 << _FD_ACCEPT_BIT))
+
+define("FD_CONNECT_BIT",   4)
+define("FD_CONNECT",       (1 << _FD_CONNECT_BIT))
+
+define("FD_CLOSE_BIT",     5)
+define("FD_CLOSE",         (1 << _FD_CLOSE_BIT))
+
+define("FD_QOS_BIT",       6)
+define("FD_QOS",           (1 << _FD_QOS_BIT))
+
+define("FD_GROUP_QOS_BIT", 7)
+define("FD_GROUP_QOS",     (1 << _FD_GROUP_QOS_BIT))
+
+define("FD_ROUTING_INTERFACE_CHANGE_BIT", 8)
+define("FD_ROUTING_INTERFACE_CHANGE",     (1 << _FD_ROUTING_INTERFACE_CHANGE_BIT))
+
+define("FD_ADDRESS_LIST_CHANGE_BIT", 9)
+define("FD_ADDRESS_LIST_CHANGE",     (1 << _FD_ADDRESS_LIST_CHANGE_BIT))
+
+define("FD_MAX_EVENTS",    10)
+define("FD_ALL_EVENTS",    ((1 << _FD_MAX_EVENTS) - 1))
+
+define("WSA_IO_PENDING",    997)
+
 define_signed("SOCKET_ERROR"    ,-1)
 @}
 
@@ -110,6 +146,47 @@ struct SOCKET
 	public function ok() as boolean => unsafe.ptr_cast[long](sock) != 0-1
 end
 
+
+struct WSABUF
+	public len as ulong
+	public buf as pointer
+end
+
+class WSAOVERLAPPED
+	public Internal as pointer
+	public InternalHigh as pointer
+	public Offset as int
+	public OffsetHigh as int
+	public hEvent as pointer
+
+	public function __init__(hevent as pointer)
+		Internal = pointerof(null)
+		InternalHigh = pointerof(null)
+		Offset =0 
+		OffsetHigh=0
+		hEvent=hevent
+	end
+end
+
+class WSAOVERLAPPEDWithBuffer
+	public Internal as pointer
+	public InternalHigh as pointer
+	public Offset as int
+	public OffsetHigh as int
+	public hEvent as pointer
+	public wsabuf as WSABUF
+	public function __init__(hevent as pointer, buf as pointer, len as uint)
+		Internal = pointerof(null)
+		InternalHigh = pointerof(null)
+		Offset =0 
+		OffsetHigh=0
+		hEvent=hevent
+		wsabuf.buf=buf
+		wsabuf.len=len
+	end
+end
+
+
 declare function socket(af as int, type as int,protocol as int) as SOCKET
 declare function bind(s as SOCKET,##sockaddr## name as pointer, namelen as int) as int
 declare function listen(s as SOCKET, backlog as int) as int
@@ -121,7 +198,12 @@ declare function send(s as SOCKET, buf as pointer, len as int, flags as int) as 
 declare function recv(s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function WSAStartup(wVersionRequested as int, lpWSAData as pointer) as int
 declare function connect(s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
-
+declare function WSAEventSelect(s as SOCKET,hEventObject as pointer, lNetworkEvents as long) as int
+declare function WSARecv(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, lpFlags as pointer##LPDWORD##, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
+declare function WSASend(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, Flags as int, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
+declare function WSAGetOverlappedResult(s as SOCKET, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpcbTransfer as pointer ##LPDWORD##, fWait as boolean, lpdwFlags as pointer ##LPDWORD##) as boolean
+declare function WSAWaitForMultipleEvents(cEvents as int, lphEvents as pointer,fWaitAll as boolean,dwTimeout as int,fAlertable as boolean) as int
+declare function WSACreateEvent() as pointer
 
 dim vWSAData = new byte * 408
 

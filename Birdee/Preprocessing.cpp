@@ -2946,6 +2946,8 @@ If usage vararg name is "", match the closest vararg
 		}
 		catch (TemplateArgumentNumberError& e)
 		{
+			if (!e.src_template)
+				throw e;
 			func = e.src_template;
 			assert(func->isTemplate());
 			CompileAssert(func->is_vararg || e.args->size() <= func->template_param->params.size(), Pos,

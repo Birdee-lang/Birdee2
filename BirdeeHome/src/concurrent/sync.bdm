@@ -26,7 +26,7 @@ end
 function create_future[T]() as future[T] => new future_impl[T]()
 
 function await_multi[T](futures as future[T][], timeout as int) as future[T]
-	dim ret = _await_multiple_awaitables(ptr_cast[awaitable[]](futures), timeout)
+	dim ret = _await_multiple_awaitables(ptr_cast[awaitable[]](futures), 0, futures.length(), timeout)
 	dim retf = ptr_cast[future[T]](ret)
 	retf.do_then()
 	return retf

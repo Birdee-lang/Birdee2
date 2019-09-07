@@ -2,6 +2,11 @@ package system.io
 
 import system.specific.win32.net:*
 import typedptr:sizeof
+import system.specific.win32.concurrent:future_impl
+import concurrent.syncdef:*
+import concurrent.sync:*
+import functional.option:*
+import vector:vector
 
 {@from system_0specific_0win32_0net import *@}
 
@@ -19,45 +24,7 @@ class socket_exception  : runtime_exception
 	@virtual public func get_message() as string => msg+ ", error code: " + int2str(error_code)
 end
 
-class server_bind
-	public sock as SOCKET
-	public function __init__(port as int)
-		sock = socket({@AF_INET()@}, {@SOCK_STREAM()@}, {@IPPROTO_TCP()@})
-		if !sock.ok() then
-			throw new socket_exception("Socket error")
-		end
-		
-	    dim sin = mk_sockaddr_in()
-		sin.sin_family = mk_ushort({@AF_INET()@})
-		dim short_port = mk_ushort(port)
-		sin.sin_port.lo = short_port.hi
-		sin.sin_port.hi = short_port.lo
-		sin.sin_addr = {@INADDR_ANY()@} 
-		if bind(sock, addressof(sin), sizeof[sockaddr_in]()) == {@SOCKET_ERROR()@} then
-			dim err = get_socket_error()
-			sock.close()
-			throw new socket_exception:with_error_code("Bind error", err)
-		end
-		if listen(sock, 5) == {@SOCKET_ERROR()@} then
-			dim err = get_socket_error()
-			sock.close()
-			throw new socket_exception:with_error_code("Listen error", err)
-		end
-	end
-
-	public function accept() as socket
-		dim ret = system.specific.win32.net.accept(sock, pointerof(null), pointerof(null))
-		if !ret.ok() then
-			throw new socket_exception("Accept error")
-		end
-		return new socket(ret)
-	end
-
-	public function close() => sock.close()
-	public function __del__() => sock.close()
-end
-
-class socket
+class socket_t
 	public sock as SOCKET
 	public function __init__(sock as SOCKET)
 		this.sock = sock
@@ -85,16 +52,185 @@ class socket
 		return retlen
 	end
 
+	public function recv_async(buf as byte[], offset as uint, len as uint) as future[int]
+		dim fut = new socket_future
+		dim overlapped = new WSAOVERLAPPEDWithBuffer(fut.get_native_handle(), addressof(buf[offset]), len)
+		dim recv_bytes as int =0, flags as int =0
+		if WSARecv(sock, addressof(overlapped.wsabuf), 1, addressof(recv_bytes), addressof(flags), pointerof(overlapped), pointerof(null)) == {@SOCKET_ERROR()@} then
+            dim err =  WSAGetLastError()
+			if err != {@WSA_IO_PENDING()@} then
+				throw new socket_exception:with_error_code("WSARecv error", err)
+			end			
+			return fut.and_then(func (v as option[int]) as option[int]
+				dim transfered as int = 0, flags as int = 0
+				if !WSAGetOverlappedResult(sock, pointerof(overlapped), addressof(transfered), false,  addressof(flags)) then
+					throw new socket_exception("WSAGetOverlappedResult error")
+				end
+				system.specific.win32.concurrent.ResetEvent(overlapped.hEvent)
+				return some(transfered)
+			end) 
+		else
+			fut.__del__()
+			dim ret = new future_impl[int]
+			ret.success(recv_bytes)
+			return ret
+		end
+	end
+
+	public function send_async(buf as byte[], offset as uint, len as uint) as future[int]
+		dim fut = new socket_future
+		dim overlapped = new WSAOVERLAPPEDWithBuffer(fut.get_native_handle(), addressof(buf[offset]), len)
+		dim recv_bytes as int =0
+		if WSASend(sock, addressof(overlapped.wsabuf), 1, addressof(recv_bytes), 0, pointerof(overlapped), pointerof(null)) == {@SOCKET_ERROR()@} then
+            dim err =  WSAGetLastError()
+			if err != {@WSA_IO_PENDING()@} then
+				throw new socket_exception:with_error_code("WSASend error", err)
+			end			
+			return fut.and_then(func (v as option[int]) as option[int]
+				dim transfered as int = 0, flags as int = 0
+				if !WSAGetOverlappedResult(sock, pointerof(overlapped), addressof(transfered), false,  addressof(flags)) then
+					throw new socket_exception("WSAGetOverlappedResult error")
+				end
+				system.specific.win32.concurrent.ResetEvent(overlapped.hEvent)
+				return some(transfered)
+			end) 
+		else
+			fut.__del__()
+			dim ret = new future_impl[int]
+			ret.success(recv_bytes)
+			return ret
+		end
+	end
+
 	public function close() => sock.close()
 	public function __del__() => sock.close()
 end
 
-dim server = new server_bind(10086)
-dim s = server.accept()
-dim buf = new byte * 5
-for dim i=0 till 5
-	dim len = s.recv(buf, 0, 5)
-	s.send(buf, 0, len)
+
+class socket_future: future_impl[int]
+	public function do_then()
+
+	end
 end
-s.close()
+
+class server_bind
+	public sock as SOCKET
+	private async_sock as socket_future
+	public function __init__(port as int)
+		async_sock = null
+		sock = socket({@AF_INET()@}, {@SOCK_STREAM()@}, {@IPPROTO_TCP()@})
+		if !sock.ok() then
+			throw new socket_exception("Socket error")
+		end
+		
+	    dim sin = mk_sockaddr_in()
+		sin.sin_family = mk_ushort({@AF_INET()@})
+		dim short_port = mk_ushort(port)
+		sin.sin_port.lo = short_port.hi
+		sin.sin_port.hi = short_port.lo
+		sin.sin_addr = {@INADDR_ANY()@} 
+		if bind(sock, addressof(sin), sizeof[sockaddr_in]()) == {@SOCKET_ERROR()@} then
+			dim err = get_socket_error()
+			sock.close()
+			throw new socket_exception:with_error_code("Bind error", err)
+		end
+		if listen(sock, 5) == {@SOCKET_ERROR()@} then
+			dim err = get_socket_error()
+			sock.close()
+			throw new socket_exception:with_error_code("Listen error", err)
+		end
+	end
+
+	public function accept() as socket_t
+		dim ret = system.specific.win32.net.accept(sock, pointerof(null), pointerof(null))
+		if !ret.ok() then
+			throw new socket_exception("Accept error")
+		end
+		return new socket_t(ret)
+	end
+
+	public function accept_async() as future[socket_t]
+		if async_sock === null then
+			async_sock = new socket_future
+			async_sock.preset(1)
+			if WSAEventSelect(sock, async_sock.get_native_handle(), {@FD_ACCEPT()@}) == {@SOCKET_ERROR()@} then
+				throw new socket_exception("Select Accept error")
+			end
+		end
+		return async_sock.and_then(func (v as option[int]) as option[socket_t]
+				system.specific.win32.concurrent.ResetEvent(async_sock.get_native_handle())
+				if v.is_defined() then
+					dim ret = system.specific.win32.net.accept(sock, pointerof(null), pointerof(null))
+					if !ret.ok() then
+						throw new socket_exception("Accept error")
+					end
+					return some(new socket_t(ret))
+				else
+					return none[socket_t]()
+				end
+			end)
+
+	end
+
+	public function close()
+		sock.close()
+		async_sock.__del__()
+	end
+	public function __del__() => sock.close()
+end
+
+
+
+dim server = new server_bind(10086)
+dim futures = new vector[awaitable](1)
+
+func replace_future(old as awaitable, newv as awaitable)
+	for dim i = 0 till futures.size()
+		if futures[i] === old then
+			futures[i] = newv
+			break
+		end
+	end
+end
+
+func remove_future(old as awaitable)
+	for dim i = 0 till futures.size()
+		if futures[i] === old then
+			futures.remove_at(i)
+		end
+	end
+end
+
+func accept_callback(sock as option[socket_t]) as option[int]
+	println("ACCEPT")
+	dim s = sock.get()
+	dim buf = new byte * 10
+	dim last_fut as awaitable
+	dim recv_callback as closure (sz as option[int]) as option[int]
+	recv_callback = func (sz as option[int]) as option[int]
+		println("RECV")
+		dim len = sz.get()
+		if len != 0 then
+			s.send_async(buf, 0, len).await().get()
+			dim newfut = s.recv_async(buf, 0, 10).and_then(recv_callback)
+			replace_future(last_fut, newfut)
+			last_fut = newfut
+		else
+			s.close()
+			remove_future(last_fut)
+			last_fut.close()
+		end
+		return sz
+	end
+	last_fut = s.recv_async(buf,0,10).and_then(recv_callback)
+	futures.push_back(last_fut)
+	futures[0] = server.accept_async().and_then(accept_callback)
+	return some(0)
+end
+
+futures[0] = server.accept_async().and_then(accept_callback)
+
+while true
+	system.specific.win32.concurrent._await_multiple_awaitables(futures.buffer(),0,futures.size(), 0-1).do_then()
+end
 server.close()

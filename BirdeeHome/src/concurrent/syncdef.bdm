@@ -3,8 +3,10 @@ package concurrent
 import functional.option:*
 
 class awaitable
+	public abstract function do_then()
 	public abstract function do_await()
 	public abstract function get_native_handle() as pointer
+	public abstract function close()
 end
 
 class future[T] : awaitable
@@ -19,29 +21,33 @@ class future[T] : awaitable
 		do_then()
 		return get_result()
 	end
-	@virtual
-	public function and_then(thenfunc as closure (result as option[T])) as future[T] => new future_then[T](this, thenfunc)
+
+	public function and_then[T2](thenfunc as closure (result as option[T]) as option[T2]) as future[T2] => new future_then[T,T2](this, thenfunc)
 end
 
-class future_then[T] : future[T]
+class future_then[T, T2] : future[T2]
 	private impl as future[T]
-	private thenfunc as closure (result as option[T])
-	public function __init__(impl as future[T], thenfunc as closure (result as option[T]))
+	private data as option[T2]
+	private thenfunc as closure (result as option[T]) as option[T2]
+	public function __init__(impl as future[T], thenfunc as closure (result as option[T]) as option[T2])
 		this.impl = impl
 		this.thenfunc = thenfunc
+		data = none[T2]()
 	end
 
-	public function preset(data as T) => impl.preset(data)
-	public function success(data as T) => impl.success(data)
+	public function preset(data as T2) => this.data = some(data)
+	public function success(data as T2)
+		# fix-me: throw an exception here
+	end
 	public function fail() => impl.fail()
 	public function do_await() => impl.do_await()
 	public function get_native_handle() as pointer => impl.get_native_handle()
 	public function do_then()
 		impl.do_then()
-		thenfunc(get_result())
+		data = thenfunc(impl.get_result())
 	end
-	public function get_result() as option[T] => impl.get_result()
-
+	public function get_result() as option[T2] => data
+	public function close() => impl.close()
 end
 
 class wait_exception  : runtime_exception
