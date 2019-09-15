@@ -3,8 +3,9 @@ package system.specific.win32
 import system.specific.win32.file:CloseHandle
 import system.specific.win32.file:GetLastError
 import functional.option:*
-import unsafe:*
 import concurrent.syncdef:*
+import hash:*
+import vector:vector
 
 declare function WaitForSingleObject(hHandle as pointer, dwMilliseconds as int) as int
 declare function CreateEventA(lpEventAttributes as pointer, bManualReset as boolean, bInitialState as boolean, lpName as pointer) as pointer
@@ -120,15 +121,15 @@ function _close_thread(handle as pointer)
 	CloseHandle(handle)
 end
 
-function _await_multiple_awaitables(aw as awaitable[],offset as uint, len as uint ,timeout as int) as awaitable
-	dim natives = new pointer * len
+#waits for events in aw, uses natives as a buffer. size of natives should > len
+function _await_multiple_awaitables_with_buffer(aw as awaitable[],offset as uint, len as uint, natives as pointer[], timeout as int) as awaitable
 	for dim i =0 till len
 		natives[i] = aw[i + offset].get_native_handle()
 		if natives[i] == pointerof(null) then
 			throw new runtime_exception("_await_multiple_awaitables expects all awaitables having native handlers")
 		end
 	end
-	dim ret = WaitForMultipleObjects(natives.length(), natives.get_raw(), false, timeout)
+	dim ret = WaitForMultipleObjects(len, natives.get_raw(), false, timeout)
 	if ret >= {@WAIT_OBJECT_0()@} && ret < len + {@WAIT_OBJECT_0()@} then
 		return aw[ret - {@WAIT_OBJECT_0()@} + offset]
 	else if ret == {@WAIT_TIMEOUT()@} then
@@ -136,3 +137,74 @@ function _await_multiple_awaitables(aw as awaitable[],offset as uint, len as uin
 	end
 	throw new wait_exception(GetLastError())
 end
+
+function _await_multiple_awaitables(aw as awaitable[],offset as uint, len as uint, timeout as int) as awaitable
+	return _await_multiple_awaitables_with_buffer(aw, offset, len, new pointer * len, timeout)
+end
+
+class poller
+	private fut_set as hash_set[awaitable_wrapper]
+	private futures as vector[awaitable]
+	private handles as pointer[]
+
+	public function __init__()
+		fut_set = new hash_set[awaitable_wrapper]
+		futures = new vector[awaitable](0)
+		handles = null
+	end
+
+	private function perpare_handle_buffer()
+		if handles === null || handles.length() < futures.size() then
+			handles = new pointer * futures.size()
+		end
+	end
+
+	public function add(ev as awaitable) as awaitable_wrapper
+		dim ret = new awaitable_wrapper(ev)
+		fut_set.insert(ret)
+		return ret
+	end
+
+	public function replace(itr as awaitable_wrapper, newev as awaitable)
+		itr.fut = newev
+	end
+
+	public function remove(itr as awaitable_wrapper)
+		fut_set.remove(itr)
+	end
+
+	public function await(timeout as uint) as awaitable
+		dim itr = fut_set.front()
+		while itr!=fut_set.ends()
+			futures.push_back(itr.getk().fut)
+			itr.forward()
+		end
+		perpare_handle_buffer()
+		dim ret = _await_multiple_awaitables_with_buffer(futures.buffer() ,0,fut_set.size(), handles, 0-1)
+		ret.do_then()
+		futures.clear()
+		return ret
+	end
+end
+
+##
+function await_multiple_awaitables(gen_native as closure (idx as uint) as awaitable, len as uint,timeout as int) as int
+	dim natives = new pointer * len
+	for dim i=0 till len
+		natives[i] = gen_native(i).get_native_handle()
+		if natives[i] == pointerof(null) then
+			throw new runtime_exception("await_multiple_awaitables expects all awaitables having native handlers")
+		end
+	end
+	return _await_multiple_awaitable_handles(natives, timeout)
+end
+
+function _await_multiple_awaitable_handles(natives as pointer[],timeout as int) as int
+	dim ret = WaitForMultipleObjects(natives.length(), natives.get_raw(), false, timeout)
+	if ret >= {@WAIT_OBJECT_0()@} && ret < len + {@WAIT_OBJECT_0()@} then
+		return ret - {@WAIT_OBJECT_0()@}
+	else if ret == {@WAIT_TIMEOUT()@} then
+		return 0-1
+	end
+	throw new wait_exception(GetLastError())
+end##

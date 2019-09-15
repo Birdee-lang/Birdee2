@@ -305,6 +305,7 @@
     <None Include="..\BirdeeHome\src\system\io\file.bdm" />
     <None Include="..\BirdeeHome\src\system\io\filedef.bdm" />
     <None Include="..\BirdeeHome\src\system\io\net.bdm" />
+    <None Include="..\BirdeeHome\src\system\io\netdef.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\unistd\concurrent.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\unistd\file.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\win32\concurrent.bdm" />

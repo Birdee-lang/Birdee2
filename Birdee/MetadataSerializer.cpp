@@ -138,6 +138,7 @@ int ConvertClassToIndex(ClassAST* class_ast)
 				args.push_back(BuildTemplateArgumentJson(arg));
 			}
 			outjson["template_arguments"] = args;
+			outjson["template_source"] = ConvertClassToIndex(class_ast->template_source_class);
 		}
 		imported_class[out_idx] = std::move(outjson);
 		return current_idx;
@@ -339,6 +340,13 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 {
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
+
+	if (dump_qualified_name && cls.isTemplate()) // if is imported && is a template
+	{
+		// redirect to the class definition in another module
+		return json_cls;
+	}
+
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
 	if (cls.parent_class)

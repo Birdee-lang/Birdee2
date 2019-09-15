@@ -73,7 +73,6 @@ class vector[T]
 		check_index(0)
 		len = len - 1
 	end
-
 end
 
 

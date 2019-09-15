@@ -1,6 +1,7 @@
 package concurrent
 
 import functional.option:*
+import unsafe
 
 class awaitable
 	public abstract function do_then()
@@ -56,4 +57,11 @@ class wait_exception  : runtime_exception
 		error_code = _error_code
 	end
 	@virtual public func get_message() as string => "Waiting for object failed, error code: " + int2str(error_code)
+end
+
+class awaitable_wrapper
+	public fut as awaitable
+	public func __init__(the_fut as awaitable) => fut = the_fut
+	public func __hash__() as uint => unsafe.ptr_cast[uint](pointerof(this))
+	public func __eq__(other as awaitable_wrapper) as boolean => this === other
 end

@@ -237,5 +237,8 @@
     <None Include="..\BirdeeHome\src\system\io\net.bdm">
       <Filter>资源文件\blib\system\io</Filter>
     </None>
+    <None Include="..\BirdeeHome\src\system\io\netdef.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
+    </None>
   </ItemGroup>
 </Project>

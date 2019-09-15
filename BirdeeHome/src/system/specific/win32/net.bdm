@@ -1,6 +1,14 @@
 package system.specific.win32
 
 import unsafe
+import system.specific.win32.concurrent:future_impl
+import concurrent.syncdef:*
+import concurrent.sync:*
+import functional.option:*
+import vector:vector
+import hash:hash_set
+import typedptr:ref
+import system.io.netdef:*
 
 # fix me, make sure it is a little endian arch 
 struct USHORT
@@ -138,7 +146,7 @@ struct SOCKET
 	public sock as pointer
 	public function close()
 		if sock != pointerof(null) then
-			closesocket(this)
+			_closesocket(this)
 			sock = pointerof(null)
 		end
 	end
@@ -187,17 +195,17 @@ class WSAOVERLAPPEDWithBuffer
 end
 
 
-declare function socket(af as int, type as int,protocol as int) as SOCKET
-declare function bind(s as SOCKET,##sockaddr## name as pointer, namelen as int) as int
-declare function listen(s as SOCKET, backlog as int) as int
+declare function _socket alias "socket" (af as int, type as int,protocol as int) as SOCKET
+declare function _bind alias "bind" (s as SOCKET,##sockaddr## name as pointer, namelen as int) as int
+declare function _listen alias "listen" (s as SOCKET, backlog as int) as int
 declare function WSAGetLastError() as int
-declare function accept(s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
-declare function closesocket(s as SOCKET) as int
-declare function htons(hostshort as ulong) as USHORT
-declare function send(s as SOCKET, buf as pointer, len as int, flags as int) as int
-declare function recv(s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function _accept alias "accept" (s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
+declare function _closesocket alias "closesocket" (s as SOCKET) as int
+declare function _htons alias "htons" (hostshort as ulong) as USHORT
+declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function WSAStartup(wVersionRequested as int, lpWSAData as pointer) as int
-declare function connect(s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
+declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
 declare function WSAEventSelect(s as SOCKET,hEventObject as pointer, lNetworkEvents as long) as int
 declare function WSARecv(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, lpFlags as pointer##LPDWORD##, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
 declare function WSASend(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, Flags as int, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
@@ -236,3 +244,86 @@ function mk_sockaddr_in() as sockaddr_in
 	return ret
 end
 
+class socket_future: future_impl[int]
+	public function do_then()
+
+	end
+end
+
+function mksocket_exception(msg as string) as socket_exception => new socket_exception(msg, WSAGetLastError())
+
+function _recv_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
+	dim fut = new socket_future
+	dim overlapped = new WSAOVERLAPPEDWithBuffer(fut.get_native_handle(), addressof(buf[offset]), len)
+	dim recv_bytes as int =0, flags as int =0
+	if WSARecv(sock, addressof(overlapped.wsabuf), 1, addressof(recv_bytes), addressof(flags), pointerof(overlapped), pointerof(null)) == {@SOCKET_ERROR()@} then
+        dim err =  WSAGetLastError()
+		if err != {@WSA_IO_PENDING()@} then
+			throw new socket_exception("WSARecv error", err)
+		end			
+		return fut.and_then(func (v as option[int]) as option[int]
+			dim transfered as int = 0, flags as int = 0
+			if !WSAGetOverlappedResult(sock, pointerof(overlapped), addressof(transfered), false,  addressof(flags)) then
+				throw mksocket_exception("WSAGetOverlappedResult error")
+			end
+			system.specific.win32.concurrent.ResetEvent(overlapped.hEvent)
+			return some(transfered)
+		end) 
+	else
+		fut.__del__()
+		dim ret = new future_impl[int]
+		ret.success(recv_bytes)
+		return ret
+	end
+end
+
+function _send_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
+	dim fut = new socket_future
+	dim overlapped = new WSAOVERLAPPEDWithBuffer(fut.get_native_handle(), addressof(buf[offset]), len)
+	dim recv_bytes as int =0
+	if WSASend(sock, addressof(overlapped.wsabuf), 1, addressof(recv_bytes), 0, pointerof(overlapped), pointerof(null)) == {@SOCKET_ERROR()@} then
+        dim err =  WSAGetLastError()
+		if err != {@WSA_IO_PENDING()@} then
+			throw new socket_exception("WSASend error", err)
+		end			
+		return fut.and_then(func (v as option[int]) as option[int]
+			dim transfered as int = 0, flags as int = 0
+			if !WSAGetOverlappedResult(sock, pointerof(overlapped), addressof(transfered), false,  addressof(flags)) then
+				throw mksocket_exception("WSAGetOverlappedResult error")
+			end
+			system.specific.win32.concurrent.ResetEvent(overlapped.hEvent)
+			return some(transfered)
+		end) 
+	else
+		fut.__del__()
+		dim ret = new future_impl[int]
+		ret.success(recv_bytes)
+		return ret
+	end
+end
+
+
+
+function _accept_async(sock as SOCKET, pasync_sock as ref[socket_future]) as future[SOCKET]
+	dim async_sock = pasync_sock.get()
+	if async_sock === null then
+		async_sock = new socket_future
+		pasync_sock.set(async_sock)
+		async_sock.preset(1)
+		if WSAEventSelect(sock, async_sock.get_native_handle(), {@FD_ACCEPT()@}) == {@SOCKET_ERROR()@} then
+			throw mksocket_exception("Select Accept error")
+		end
+	end
+	return async_sock.and_then(func (v as option[int]) as option[SOCKET]
+			system.specific.win32.concurrent.ResetEvent(async_sock.get_native_handle())
+			if v.is_defined() then
+				dim ret = _accept(sock, pointerof(null), pointerof(null))
+				if !ret.ok() then
+					throw mksocket_exception("Accept error")
+				end
+				return some(ret)
+			else
+				return none[SOCKET]()
+			end
+		end)
+end

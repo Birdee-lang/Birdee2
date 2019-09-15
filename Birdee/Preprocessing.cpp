@@ -1840,6 +1840,7 @@ namespace Birdee
     
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
+			assert(template_source_class);
 			if (template_source_class->template_param->mod)
 			{
 				for (auto& funcdef : funcs)
@@ -2312,10 +2313,22 @@ If usage vararg name is "", match the closest vararg
 		}
 		return std::make_pair(-1, nullptr);
 	}
-
+	static void RunPhase0OnClass(ClassAST* classast)
+	{
+		if (classast->done_phase < 1)
+		{
+			assert(!classast->isTemplateInstance());
+			scope_mgr.SetEmptyClassTemplateEnv();
+			scope_mgr.SetEmptyTemplateEnv(ScopeManager::PyScope(nullptr));
+			classast->Phase0();
+			scope_mgr.RestoreTemplateEnv();
+			scope_mgr.RestoreClassTemplateEnv();
+		}
+	}
 	static unique_ptr<MemberExprAST> ResolveAndCreateMemberExpr(unique_ptr<ExprAST>&& obj, const string& name, SourcePos& Pos)
 	{
 		auto classast = obj->resolved_type.class_ast;
+		RunPhase0OnClass(classast);
 		int cascade_parents = 0;
 		MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
 		MemberFunctionDef* outfunc = nullptr;
