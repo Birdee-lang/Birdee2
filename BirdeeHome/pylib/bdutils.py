@@ -19,6 +19,10 @@ def make_ulong(n):
 	return NumberExprAST.new(BasicType.ULONG,n)
 def set_ulong(n):
 	set_ast(make_ulong(n))
+	
+def set_char(c):
+	assert(isinstance(c,str) and len(c)==1)
+	set_int(ord(c))
 
 def make_float(n):
 	return NumberExprAST.new(BasicType.FLOAT,n)
@@ -78,23 +82,32 @@ def get_func_arg_at(func,idx):
 	return args[idx]
 
 
-def get_func_templ_at(idx):
-	thecls = get_cur_func()
-	require_(is_template_inst(thecls), index_within(idx,0,len(thecls.template_instance_args)))
-	return thecls.template_instance_args[idx]
+def get_func_templ_at(idx, thefunc = None):
+	if not thefunc:
+		thefunc = get_cur_func()
+	require_(is_template_inst(thefunc), index_within(idx,0,len(thefunc.template_instance_args)))
+	return thefunc.template_instance_args[idx]
 
-def get_func_type_templ_at(idx):
-	arg = get_func_templ_at(idx)
+def get_func_type_templ_at(idx, thefunc = None):
+	if not thefunc:
+		thefunc = get_cur_func()
+	arg = get_func_templ_at(idx, thefunc)
 	require_(is_type_templ_arg(arg,idx))
 	return arg.resolved_type
 
-def get_func_expr_templ_at(idx):
-	arg = get_func_templ_at(idx)
+def get_func_expr_templ_at(idx, thefunc = None):
+	if not thefunc:
+		thefunc = get_cur_func()
+	arg = get_func_templ_at(idx, thefunc)
 	require_(is_expr_templ_arg(arg,idx))
 	return arg.expr
 
-def func_templ_type_at(idx):
-	set_type(get_func_type_templ_at(idx))
+def func_templ_type_at(idx, thefunc = None):
+	if not thefunc:
+		thefunc = get_cur_func()
+	set_type(get_func_type_templ_at(idx, thefunc))
 
-def func_templ_expr_at(idx):
-	set_ast(get_func_expr_templ_at(idx))
+def func_templ_expr_at(idx, thefunc = None):
+	if not thefunc:
+		thefunc = get_cur_func()
+	set_ast(get_func_expr_templ_at(idx, thefunc))

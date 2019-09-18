@@ -517,6 +517,7 @@ namespace Birdee {
 		llvm::Value* GeneratePtr();
 		//for struct types, this will generate a value rather than a pointer
 		llvm::Value* Generate();
+		llvm::Value* GetLValue(bool checkHas) override;
 		ThisExprAST()   {}
 		std::unique_ptr<StatementAST> Copy();
 		ThisExprAST(ClassAST* cls, SourcePos pos) { resolved_type.type = tok_class; resolved_type.class_ast = cls; Pos = pos; }
@@ -704,6 +705,8 @@ namespace Birdee {
 	class BD_CORE_API ArrayInitializerExprAST : public ExprAST {
 	public:
 		vector<unique_ptr<ExprAST>> values;
+		//whether use static global variable space to hold the array
+		bool is_static = false;
 		unique_ptr<ExprAST> dummy; //MSVC shows an error here it we remove this line. I don't know why.
 		void Phase1();
 		llvm::Value* Generate();
@@ -834,7 +837,7 @@ namespace Birdee {
 		std::unique_ptr<ExprAST> val;
 		ResolvedType resolved_type;
 
-		//the capture index in the "context" object
+		//the capture index in the "context" object, you need to add 1 to it if there is a captured "this"
 		int capture_import_idx = -1;
 		int capture_export_idx = -1;
 		enum CaptureType
@@ -953,17 +956,19 @@ namespace Birdee {
 		ResolvedType resolved_type;
 		std::unique_ptr<VariableDefAST> Args;
 		vector<unique_ptr<VariableSingleDefAST>> resolved_args;
-		llvm::FunctionType* GenerateFunctionType();
-		llvm::DIType* GenerateDebugType();
+		//gen_closure: force to generate a closure
+		llvm::FunctionType* GenerateFunctionType(bool gen_closure = false);
+		llvm::DIType* GenerateDebugType(bool gen_closure = false);
 		//Put the definitions of arguments into a vector
 		//resolve the types in the arguments and the returned value 
 		void Phase0();
 
 		void Phase1(bool register_in_basic_block);
 		PrototypeAST(const std::string &Name, vector<unique_ptr<VariableSingleDefAST>>&& ResolvedArgs, const ResolvedType& ResolvedType, ClassAST* cls, int prefix_idx, bool is_closure)
-			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)), resolved_type(ResolvedType),prefix_idx(prefix_idx), is_closure(is_closure){}
+			: Name(Name), Args(nullptr), RetType(nullptr), cls(cls), pos(0,0,0), resolved_args(std::move(ResolvedArgs)),
+			resolved_type(ResolvedType),prefix_idx(prefix_idx), is_closure(cls || is_closure){}
 		PrototypeAST(const std::string &Name, std::unique_ptr<VariableDefAST>&& Args, std::unique_ptr<Type>&& RetType,ClassAST* cls,SourcePos pos, bool is_closure)
-			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls), is_closure(is_closure){}
+			: Name(Name), Args(std::move(Args)), RetType(std::move(RetType)),pos(pos),cls(cls), is_closure(cls || is_closure){}
 
 		const std::string &GetName() const { return Name; }
 		void print(int level)
@@ -1334,6 +1339,10 @@ namespace Birdee {
 			member_imported_function,
 			member_virtual_function,
 		}kind;
+		bool isMemberFunction();
+		llvm::Value* GenerateFunction();
+		//generate the object, returns the field_offset of the object
+		int GenerateObj();
 		void Phase1();
 		bool isMutable() {
 			return kind == member_field || kind==member_imported_dim;

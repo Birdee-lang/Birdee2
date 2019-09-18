@@ -14,6 +14,7 @@ using namespace Birdee;
 extern Birdee::Tokenizer SwitchTokenizer(Birdee::Tokenizer&& tokzr);
 extern std::unique_ptr<ExprAST> ParseExpressionUnknown();
 extern int ParseTopLevel(bool autoimport=true);
+BD_CORE_API extern void ParseImports(bool need_do_import);
 extern std::reference_wrapper<FunctionAST> GetCurrentPreprocessedFunction();
 BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
@@ -89,7 +90,7 @@ static_assert(sizeof(py::object) == sizeof(void*), "expecting sizeof(py::object)
 
 
 
-BIRDEE_BINDING_API void RunGenerativeScript()
+BIRDEE_BINDING_API int RunGenerativeScript()
 {
 	try
 	{
@@ -98,11 +99,14 @@ BIRDEE_BINDING_API void RunGenerativeScript()
 	catch (py::error_already_set& e)
 	{
 		std::cerr<<e.what();
+		return 1;
 	}
 	catch (std::runtime_error& e)
 	{
 		std::cerr << e.what();
+		return 2;
 	}
+	return 0;
 }
 /*the python internal data structure, for debug use*/
 /*
@@ -139,6 +143,19 @@ BIRDEE_BINDING_API void Birdee_Register_Module(const string& name, void* globals
 	py::str pyname = py::str(name);
 	m.attr("__name__") = pyname;
 	py::module::import("sys").attr("modules").attr("__setitem__")(pyname, m);
+}
+
+BIRDEE_BINDING_API string Birdee_RunScriptForString(const string& str, const SourcePos& pos)
+{
+	auto& env = InitPython();
+	try
+	{
+		return py::eval(str.c_str()).cast<string>();
+	}
+	catch (py::error_already_set& e)
+	{
+		throw CompileError(pos, string("\nScript exception:\n") + e.what());
+	}
 }
 
 BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, void* locals)
@@ -216,6 +233,15 @@ static int CompileTopLevel(char* src)
 	int ret = ParseTopLevel();
 	SwitchTokenizer(std::move(old_tok));
 	return ret;
+}
+
+static void CompileImports(char* src)
+{
+	Birdee::Tokenizer toknzr(std::make_unique<Birdee::StringStream>(std::string(src)), -1);
+	toknzr.CurTok = tok_import;
+	auto old_tok = SwitchTokenizer(std::move(toknzr));
+	ParseImports(true);
+	SwitchTokenizer(std::move(old_tok));
 }
 
 static py::object GetNumberLiteral(NumberExprAST& ths)
@@ -393,6 +419,7 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
 		cu.InitForGenerate();
 	}
+	m.def("imports", CompileImports);
 	m.def("get_os_name", []()->std::string {
 #ifdef _WIN32
 		return "windows";
@@ -536,15 +563,22 @@ void RegisiterClassForBinding(py::module& m)
 
 
 	auto member_cls = py::class_ < MemberExprAST, ResolvedIdentifierExprAST>(m, "MemberExprAST");
-	py::enum_ < MemberExprAST::MemberType>(member_cls, "AccessModifier")
+	py::enum_ < MemberExprAST::MemberType>(member_cls, "MemberType")
 		.value("ERROR", MemberExprAST::MemberType::member_error)
 		.value("PACKAGE", MemberExprAST::MemberType::member_package)
 		.value("FIELD", MemberExprAST::MemberType::member_field)
 		.value("FUNCTION", MemberExprAST::MemberType::member_function)
 		.value("IMPORTED_DIM", MemberExprAST::MemberType::member_imported_dim)
+		.value("VIRTUAL_FUNCTION", MemberExprAST::MemberType::member_virtual_function)
 		.value("IMPORTED_FUNCTION", MemberExprAST::MemberType::member_imported_function);
 
 	member_cls
+		.def_static("new", [](UniquePtrStatementAST& obj, string& member) {
+			return new UniquePtrStatementAST(make_unique<MemberExprAST>(obj.move_expr(), member));
+		})
+		.def_static("new_func_member", [](UniquePtrStatementAST& obj, MemberFunctionDef& member) {
+			return new UniquePtrStatementAST(make_unique<MemberExprAST>(obj.move_expr(), &member, tokenizer.GetSourcePos()));
+		})
 		.def_property("func", [](MemberExprAST& ths) {
 			return ths.kind == MemberExprAST::MemberType::member_function ? GetRef(ths.func) : GetNullRef<MemberFunctionDef>();
 		}, [](MemberExprAST& ths,  MemberFunctionDef* v) {

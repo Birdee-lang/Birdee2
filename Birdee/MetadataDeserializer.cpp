@@ -475,8 +475,9 @@ void PreBuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 					  //if no instance, add a placeholder to the instance set
 						auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //placeholder
 						classdef = newclass.get();
+						auto& vec = *pargs;
 						classdef->template_instance_args = std::move(pargs);
-						src->template_param->AddImpl(*pargs, std::move(newclass));
+						src->template_param->AddImpl(vec, std::move(newclass));
 					}
 				}
 				else

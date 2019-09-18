@@ -279,3 +279,4 @@ __pycache__/
 /Birdee/DynLLVM
 /BirdeeBinding/DynLLVM/BirdeeBinding.tlog
 /BirdeeCompilerCore/DynLLVM/BirdeeCo.793F4745.tlog
+*.tgz

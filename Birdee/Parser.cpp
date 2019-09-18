@@ -538,6 +538,8 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 	{
 		anno.push_back(tokenizer.IdentifierStr);
 		tokenizer.GetNextToken();
+		while (tokenizer.CurTok == tok_newline)
+			tokenizer.GetNextToken();
 	}
 	auto push_expr = [&anno, &firstexpr](std::unique_ptr<ExprAST>&& st)
 	{
@@ -1427,7 +1429,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		else
 		{
 			// TODO, make it better
-			if (ret->funcs.rbegin()->is_abstract) {
+			if (!ret->funcs.empty() && ret->funcs.rbegin()->is_abstract) {
 				throw CompileError("Expected member declarations, are you trying to implement a pure virtual function?");
 			}
 			else {
@@ -1455,17 +1457,51 @@ std::unique_ptr<ClassAST> ParseClass(bool is_struct)
 	ParseClassInPlace(ret.get(), is_struct);
 	return std::move(ret);
 }
+
+
+extern string Birdee_RunScriptForString(const string& str, const SourcePos& pos);
+
+void SplitString(const string& str, char delimiter, vector<string>& ret)
+{
+	size_t prev = 0;
+	
+	for (size_t cur = 0;cur<str.length();)
+	{
+		cur = str.find_first_of(delimiter, cur);
+		if (cur != string::npos)
+		{
+			ret.push_back(str.substr(prev, cur - prev));
+			cur++;
+			prev = cur;
+		}
+		else
+		{
+			ret.push_back(str.substr(prev));
+			break;
+		}
+	}
+}
+
 void ParsePackageName(vector<string>& ret)
 {
-	CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
-	ret.push_back(tokenizer.IdentifierStr);
-	tokenizer.GetNextToken();
-	while (tokenizer.CurTok==tok_dot)
+	if (tokenizer.CurTok == tok_script)
 	{
+		string str = Birdee_RunScriptForString(tokenizer.IdentifierStr, tokenizer.GetSourcePos());
+		SplitString(str, '.', ret);
 		tokenizer.GetNextToken();
+	}
+	else
+	{
 		CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
 		ret.push_back(tokenizer.IdentifierStr);
 		tokenizer.GetNextToken();
+		while (tokenizer.CurTok == tok_dot)
+		{
+			tokenizer.GetNextToken();
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Unexpected token in the package name");
+			ret.push_back(tokenizer.IdentifierStr);
+			tokenizer.GetNextToken();
+		}
 	}
 }
 
@@ -1473,7 +1509,7 @@ vector<string> ParsePackageName()
 {
 	vector<string> ret;
 	ParsePackageName(ret);
-	return ret;;
+	return ret;
 }
 
 namespace Birdee
@@ -1756,7 +1792,7 @@ void ImportedModule::HandleImport()
 	}
 }
 
-void ParseImports(bool need_do_import)
+BD_CORE_API void ParseImports(bool need_do_import)
 {
 	for (;;)
 	{
@@ -1779,6 +1815,18 @@ void ParseImports(bool need_do_import)
 			else if (tokenizer.CurTok == tok_colon)
 			{
 				tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_script)
+				{
+					string str = Birdee_RunScriptForString(tokenizer.IdentifierStr, tokenizer.GetSourcePos());
+					if (str == "*")
+						tokenizer.CurTok = tok_mul;
+					else
+					{
+						tokenizer.CurTok = tok_identifier;
+						tokenizer.IdentifierStr = std::move(str);
+					}
+				}
+				//a script will "generate" a symbol name for the following code
 				if (tokenizer.CurTok == tok_identifier)
 				{
 					string name = tokenizer.IdentifierStr;

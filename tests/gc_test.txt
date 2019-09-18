@@ -1,17 +1,25 @@
 dim i=0
 dim a =new ulong*128
+dim instances = 0
+
+{@from bdassert import bdassert@}
 class clstest
 	public a as int
 	public function __init__(va as int)
 		a=va
+		instances = instances +1
 	end
 	public function __del__()
-		println("finalizer"+int2str(a))
+		#println("finalizer"+int2str(a))
+		instances = instances  - 1
 	end	
 end
-breakpoint()
-while true
-	println("Hello"+int2str(i))
+
+println("creating many objects...")
+for i =0 to 10000
+	dim tmp = "Hello"+int2str(i)
 	a[0]=1
 	new clstest(32)
 end
+println("# of instances = " + int2str(instances))
+{@bdassert("instances<10000")@}

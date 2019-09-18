@@ -1,0 +1,144 @@
+package system.specific.unistd
+
+import system.io.filedef:*
+import unsafe:ptr_cast
+import unsafe:ptr_load
+
+{@
+from system_0io_0filedef import *
+from bdutils import *
+@}
+
+@init_script
+{@
+from bdconst import *
+
+define("O_ACCMODE",	  0o003)
+define("O_RDONLY",	    0o0)
+define("O_WRONLY",	    0o1)
+define("O_RDWR",		    0o2)
+define("O_CREAT",	  0o100	)
+define("O_EXCL",		  0o200	)
+define("O_NOCTTY",	  0o400	)
+define("O_TRUNC",	 0o1000	)
+define("O_APPEND",	 0o2000)
+define("O_NONBLOCK",	 0o4000)
+define("O_NDELAY",	_O_NONBLOCK)
+define("O_SYNC",	      0o4010000)
+define("O_ASYNC",	0o20000)
+define("O_LARGEFILE",	0o0100000)
+define("O_DIRECTORY", 0o200000)
+define("O_NOFOLLOW",	0o0400000)
+define("O_CLOEXEC",  0o2000000)
+define("O_DIRECT",	0o40000)
+define("O_NOATIME",  0o1000000)
+define("O_PATH",    0o10000000)
+define("O_DSYNC",	0o10000)
+define("O_TMPFILE",   (0o20000000 | _O_DIRECTORY))
+
+define("S_IRWXU", 0o0700) # user (file owner) has read, write, and execute permission
+define("S_IRUSR", 0o0400) # user has read permission
+define("S_IWUSR", 0o0200) # user has write permission
+define("S_IXUSR", 0o0100) # user has execute permission
+define("S_IRWXG", 0o0070) # group has read, write, and execute permission
+define("S_IRGRP", 0o0040) # group has read permission
+define("S_IWGRP", 0o0020) # group has write permission
+define("S_IXGRP", 0o0010) # group has execute permission
+define("S_IRWXO", 0o0007) # others have read, write, and execute permission
+define("S_IROTH", 0o0004) # others have read permission
+define("S_IWOTH", 0o0002) # others have write permission
+define("S_IXOTH", 0o0001) # others have execute permission
+define("S_ISUID", 0o004000) # set-user-ID bit
+define("S_ISGID", 0o002000) # set-group-ID bit (see inode(7)).
+define("S_ISVTX", 0o001000) # sticky bit (see inode(7)).
+define("SEEK_SET",	0) #	/* Seek from beginning of file.  */
+define("SEEK_CUR",	1) #	/* Seek from current position.  */
+define("SEEK_END",	2) #	/* Seek from end of file.  */
+@}
+
+declare function open(pathname as pointer, flags as int,  mode as int) as int
+{@
+if get_target_bits()==64:
+	set_stmt("declare function read(fd as int, buf as pointer, cnt as ulong) as long")
+else:
+	set_stmt("declare function read(fd as int, buf as pointer, cnt as uint) as int")
+@}
+{@
+if get_target_bits()==64:
+	set_stmt("declare function write(fd as int, buf as pointer, cnt as ulong) as long")
+else:
+	set_stmt("declare function write(fd as int, buf as pointer, cnt as uint) as int")
+@}
+
+declare function lseek64(fd as int, offset as long, whence as int) as long
+declare function close(fd as int) as int
+declare function __errno_location() as pointer
+
+function _errno() as int => ptr_load[int](__errno_location())
+
+function _is_good_handle(h as int) as boolean
+	return (0-1) != h
+end
+
+function _fopen(path as string, rw_access as uint, create_action as uint) as pointer
+	dim flags as uint =0
+	if rw_access == {@ACCESS_READ()@} then
+		flags = {@O_RDONLY()@}
+	else if rw_access == {@ACCESS_WRITE()@} then
+		flags = {@O_WRONLY()@}
+	else if rw_access == ({@ACCESS_WRITE()@} | {@ACCESS_READ()@}) then
+		flags = {@O_RDWR()@}
+	end
+
+	if create_action == {@CREATE_OPEN_ONLY()@} then
+		#nothing
+	else if create_action == {@CREATE_OPEN_OR_CREATE()@} then
+		flags = flags | {@O_CREAT()@}
+	else if create_action == {@CREATE_OVERWRITE()@} then
+		flags = flags | {@O_TRUNC()@} | {@O_CREAT()@}
+	else if create_action == {@CREATE_APPEND()@} then
+		flags = flags | {@O_APPEND()@} | {@O_CREAT()@}
+	else if create_action == {@CREATE_EXCLUSIVE_NEW()@} then
+		flags = flags | {@O_EXCL()@} | {@O_CREAT()@}
+	end
+
+	dim ret = open(path.get_raw(), flags, {@set_int(0o0666)@})
+
+	if !_is_good_handle(ret) then
+		throw new file_open_exception(path, _errno())
+	end
+	return ptr_cast[pointer](ret)
+end
+
+
+function _fclose(h as pointer)
+	close(ptr_cast[int](h))
+end
+
+function _fread(h as pointer, buf as pointer, len as uint) as uint
+	dim bytesRead = read(ptr_cast[int](h), buf, len)
+	if bytesRead < 0 then
+		throw new file_exception(_errno())
+	end
+	return bytesRead
+end
+
+function _fwrite(h as pointer, buf as pointer, len as uint) as uint
+	dim bytesWritten = write(ptr_cast[int](h), buf, len)
+	if bytesWritten < 0 then
+		throw new file_exception(_errno())
+	end
+	return bytesWritten
+end
+
+function _fseek(h as pointer, offset as long, from as uint) as long
+	dim ret = lseek64(ptr_cast[int](h), offset, from)
+	if ret<0 then
+			throw new file_exception(_errno())
+	end
+	return ret
+end
+
+function _getstd(h as int) as pointer
+	return ptr_cast[pointer](h)
+end

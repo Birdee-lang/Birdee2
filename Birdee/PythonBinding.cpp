@@ -20,7 +20,7 @@ namespace Birdee
 
 void RegisiterClassForBinding2(py::module& m) {
 	// `m` is a `py::module` which is used to bind functions and classes
-	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "StatementAST_UniquePtr")
+	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "StatementASTUniquePtr")
 		.def("get", &UniquePtr<unique_ptr<StatementAST>>::get);
 
 	RegisiterObjectVector<std::unique_ptr<StatementAST>>(m, "StatementASTList");
@@ -150,6 +150,20 @@ void RegisiterClassForBinding2(py::module& m) {
 	py::class_<ResolvedIdentifierExprAST, ExprAST>(m, "ResolvedIdentifierExprAST")
 		.def("is_mutable", &ResolvedIdentifierExprAST::isMutable);
 	//BasicTypeExprAST
+	py::class_<ArrayInitializerExprAST, ExprAST>(m, "ArrayInitializerExprAST")
+		.def_static("new", [](vector<UniquePtrStatementAST*>& _expr) {
+			vector<unique_ptr<ExprAST>> expr;
+			expr.reserve(_expr.size());
+			for (auto& e : _expr)
+			{
+				expr.push_back(e->move_expr());
+			}
+			return new UniquePtrStatementAST(
+				make_unique<ArrayInitializerExprAST>(std::move(expr), tokenizer.GetSourcePos())); })
+		.def_property_readonly("values", [](ArrayInitializerExprAST& ths) {return GetRef(ths.values); })
+		.def("run", [](ArrayInitializerExprAST& ths, py::object& func) {
+			for(auto& itr: ths.values)
+				func(GetRef(itr)); });
 	py::class_< ReturnAST, StatementAST>(m, "ReturnAST")
 		.def_static("new", [](UniquePtrStatementAST& expr) {return new UniquePtrStatementAST(make_unique<ReturnAST>(expr.move_expr(),tokenizer.GetSourcePos())); })
 		.def_property("expr", [](ReturnAST& ths) {return GetRef(ths.Val); },
@@ -233,6 +247,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.SET_VALUE(BIN_EQ)
 		.SET_VALUE(BIN_NE)
 		.SET_VALUE(BIN_CMP_EQ)
+		.SET_VALUE(BIN_CMP_NE)
 		.SET_VALUE(BIN_AND)
 		.SET_VALUE(BIN_XOR)
 		.SET_VALUE(BIN_OR)
@@ -252,8 +267,13 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("op", (BinaryOp BinaryExprAST::*)&BinaryExprAST::Op)
 		.def("run", [](BinaryExprAST& ths, py::object& func) {func(GetRef(ths.LHS)); func(GetRef(ths.RHS)); });
 
+	py::enum_<UnaryOp>(m, "UnaryOp")
+		.value("UNA_NOT", UNA_NOT)
+		.value("UNA_ADDRESSOF", UNA_ADDRESSOF)
+		.value("UNA_POINTEROF", UNA_POINTEROF)
+		.value("UNA_TYPEOF", UNA_TYPEOF);
 	py::class_< UnaryExprAST, ExprAST>(m, "UnaryExprAST")
-		.def_static("new", [](BinaryOp op, UniquePtrStatementAST& arg) {
+		.def_static("new", [](UnaryOp op, UniquePtrStatementAST& arg) {
 			return new UniquePtrStatementAST(std::make_unique<UnaryExprAST>((Token)op, arg.move_expr(), tokenizer.GetSourcePos()));
 		})
 		.def_readwrite("func", &UnaryExprAST::func)

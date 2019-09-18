@@ -63,6 +63,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define BirdeeDerefObj_NAME "?BirdeeDerefObj@@YAXPEAX@Z"
 #define BirdeeGetOrigScope_NAME "?BirdeeGetOrigScope@@YAPEAXXZ"
 #define Birdee_Register_Module_NAME "?Birdee_Register_Module@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX@Z"
+#define Birdee_RunScriptForString_NAME "?Birdee_RunScriptForString@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV12@AEBUSourcePos@Birdee@@@Z"
 #else
 
 #include <dlfcn.h>
@@ -92,6 +93,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define BirdeeDerefObj_NAME "_Z14BirdeeDerefObjPv"
 #define BirdeeGetOrigScope_NAME "_Z18BirdeeGetOrigScopev"
 #define Birdee_Register_Module_NAME "_Z22Birdee_Register_ModuleRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEPv"
+#define Birdee_RunScriptForString_NAME "_Z25Birdee_RunScriptForStringRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN6Birdee9SourcePosE"
 #endif
 
 static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
@@ -175,6 +177,18 @@ void Birdee_Register_Module(const string& name, void* globals)
 	}
 	impl(name, globals);
 }
+
+
+string Birdee_RunScriptForString(const string& str, const SourcePos& pos)
+{
+	typedef string(*PtrImpl)(const string& name, const SourcePos& pos);
+	static PtrImpl impl = nullptr;
+	if (impl == nullptr)
+	{
+		impl = (PtrImpl)LoadBindingFunction(Birdee_RunScriptForString_NAME);
+	}
+	return std::move(impl(str, pos));
+}
 #else
 extern void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);
 extern void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globalscope, void* localscope);
@@ -195,10 +209,10 @@ do\
 }while(0)\
 
 template<typename T>
-inline T* FindModuleGlobal(unordered_map<string, std::pair<unique_ptr<T>, bool>>& v,const string& name)
+inline T* FindModuleGlobal(unordered_map<string, std::pair<unique_ptr<T>, bool>>& v,const string& name, bool can_read_private)
 {
 	auto itr = v.find(name);
-	if (itr != v.end() && itr->second.second)
+	if (itr != v.end() && (can_read_private || itr->second.second) )
 		return itr->second.first.get();
 	return nullptr;
 }
@@ -396,6 +410,12 @@ public:
 		template_stack.pop_back();
 	}
 
+	void SetEmptyTemplateEnv(PyScope&& scope)
+	{
+		py_scope_dicts.push_back(std::move(scope));
+		template_stack.push_back(TemplateEnv());
+	}
+
 	void SetClassTemplateEnv(const vector<TemplateArgument>& template_args,
 		const vector<TemplateParameter>& parameters, ImportedModule* mod, SourcePos pos)
 	{
@@ -411,6 +431,11 @@ public:
 	void RestoreClassTemplateEnv()
 	{
 		template_class_stack.pop_back();
+	}
+
+	bool IsInTopLevel() 
+	{
+		return function_scopes.empty();
 	}
 
 	void PushBasicBlock()
@@ -466,7 +491,7 @@ public:
 			if (!vec.empty() && vec.back().imported_mod)
 			{
 				auto& dimmap = vec.back().imported_mod->dimmap;
-				if (auto v = FindModuleGlobal(dimmap, name))
+				if (auto v = FindModuleGlobal(dimmap, name, true))
 					return v;
 				auto& dimmap2 = vec.back().imported_mod->imported_dimmap;
 				auto var2 = dimmap2.find(name);
@@ -587,7 +612,7 @@ public:
 			if (!v.empty() && v.back().imported_mod)
 			{
 				auto& funcmap = v.back().imported_mod->funcmap;
-				if(auto var = FindModuleGlobal(funcmap, name))
+				if(auto var = FindModuleGlobal(funcmap, name, true))
 					return make_unique<ResolvedFuncExprAST>(var, pos);
 				auto& funcmap2 = v.back().imported_mod->imported_funcmap;
 				auto var2 = funcmap2.find(name);
@@ -1362,7 +1387,7 @@ namespace Birdee
 			{
 				//we are now acting as if we are compiling another module
 				auto& functypemap = env.imported_mod->functypemap;
-				if (auto fitr = FindModuleGlobal(functypemap, str))
+				if (auto fitr = FindModuleGlobal(functypemap, str, true))
 				{
 					ths.type = tok_func;
 					ths.proto_ast = fitr;
@@ -1378,7 +1403,7 @@ namespace Birdee
 				}
 
 				auto& classmap = env.imported_mod->classmap;
-				if (auto cls = FindModuleGlobal(classmap, str))
+				if (auto cls = FindModuleGlobal(classmap, str, true))
 				{
 					ths.type = tok_class;
 					ths.class_ast = cls;
@@ -1438,14 +1463,14 @@ namespace Birdee
 				throw CompileError(pos,"The module " + GetModuleNameByArray(ty->name) + " has not been imported");
 			}
 			auto& functypemap2 = node->mod->functypemap;
-			if (auto fitr = FindModuleGlobal(functypemap2, clsname))
+			if (auto fitr = FindModuleGlobal(functypemap2, clsname, false))
 			{
 				this->type = tok_func;
 				this->proto_ast = fitr;
 			}
 			else
 			{
-				auto itr = FindModuleGlobal(node->mod->classmap, clsname);
+				auto itr = FindModuleGlobal(node->mod->classmap, clsname, false);
 				CompileAssert(itr, pos, "Cannot find type name " + clsname + " in module " + GetModuleNameByArray(ty->name));
 				this->type = tok_class;
 				this->class_ast = itr;
@@ -1606,7 +1631,7 @@ namespace Birdee
 	{
 		const PrototypeAST* proto = this;
 		size_t v = proto->resolved_type.rawhash() << 3; //return type
-		v ^= (uintptr_t)proto->cls; //belonging class
+		//v ^= (uintptr_t)proto->cls; //belonging class
 		v ^= proto->is_closure;
 		int offset = 6;
 		for (auto& arg : proto->resolved_args) //argument types
@@ -1621,8 +1646,8 @@ namespace Birdee
 	{
 		if (ths.is_closure != other.is_closure) //if is_closure field is not the same
 			return false;
-		if (ths.cls != other.cls)
-			return false;
+		//if (ths.cls != other.cls)
+		//	return false;
 		return ths.IsSamePrototype(other);
 	}
 	bool ResolvedType::operator<(const ResolvedType & that) const
@@ -1709,6 +1734,7 @@ namespace Birdee
 		}
 		rty.index_level++;
 		resolved_type = rty;
+		is_static = scope_mgr.IsInTopLevel() && scope_mgr.top_level_scopes.empty();
 	}
 
 	void Birdee::AnnotationStatementAST::Phase1()
@@ -1744,7 +1770,7 @@ namespace Birdee
 			//if is not a template, fall through to the following code
 		}
 		impl->Phase1();
-		Birdee_RunAnnotationsOn(anno,this,impl->Pos, globals);
+		Birdee_RunAnnotationsOn(anno,impl.get(),impl->Pos, globals);
 		if (is_expr)
 		{
 			resolved_type = static_cast<ExprAST*>(impl.get())->resolved_type;
@@ -2178,6 +2204,7 @@ If usage vararg name is "", match the closest vararg
 		cls->template_source_class = src_cls;
 		cls->name += GetTemplateArgumentString(args);
 		scope_mgr.SetClassTemplateEnv(args, parameters, mod, pos);
+		scope_mgr.SetEmptyTemplateEnv(ScopeManager::PyScope(mod));
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
 		for (auto& funcdef : cls->funcs)
 		{
@@ -2186,6 +2213,7 @@ If usage vararg name is "", match the closest vararg
 		cls->Phase0();
 		cls->Phase1();
 		scope_mgr.template_trace_back_stack.pop_back();
+		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.RestoreClassTemplateEnv();
 	}
 
@@ -2214,7 +2242,7 @@ If usage vararg name is "", match the closest vararg
 		return ret;
 	}
 
-	static ResolvedType ResolveClassMember(ExprAST* obj, const string& member, const SourcePos& Pos,
+	ResolvedType ResolveClassMember(ExprAST* obj, const string& member, const SourcePos& Pos,
 		/*out parameters*/ int& casade_parents,
 		MemberExprAST::MemberType& kind, MemberFunctionDef*& thsfunc, FieldDef*& thsfield)
 	{
@@ -2223,8 +2251,8 @@ If usage vararg name is "", match the closest vararg
 			auto field = cur_cls->fieldmap.find(member);
 			if (field != cur_cls->fieldmap.end())
 			{
-				if (cur_cls->fields[field->second].access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
-					throw CompileError(Pos, "Accessing a private member outside of a class");
+				CompileAssert(cur_cls->fields[field->second].access == access_public || scope_mgr.IsCurrentClass(cur_cls), // if is private and we are not in the class
+					Pos, string("Accessing a private member") + member + " outside of a class");
 				kind = MemberExprAST::member_field;
 				thsfield = &(cur_cls->fields[field->second]);
 				return thsfield->decl->resolved_type;
@@ -2233,12 +2261,12 @@ If usage vararg name is "", match the closest vararg
 			if (func != cur_cls->funcmap.end())
 			{
 				thsfunc = &(cur_cls->funcs[func->second]);
-				if (dyncast_resolve_anno<SuperExprAST>(obj)) //if the object is "super", do not generate virtual call here
+				if (obj && dyncast_resolve_anno<SuperExprAST>(obj)) //if the object is "super", do not generate virtual call here
 					kind = MemberExprAST::member_function;
 				else
 					kind = thsfunc->virtual_idx == MemberFunctionDef::VIRT_NONE ? MemberExprAST::member_function : MemberExprAST::member_virtual_function;
-				if (thsfunc->access == access_private && !scope_mgr.IsCurrentClass(cur_cls)) // if is private and we are not in the class
-					throw CompileError(Pos, "Accessing a private member outside of a class");
+				CompileAssert(thsfunc->access == access_public || scope_mgr.IsCurrentClass(cur_cls), // if is private and we are not in the class
+					Pos, string("Accessing a private member") + member + " outside of a class");
 				return thsfunc->decl->resolved_type;
 			}
 			casade_parents++;
@@ -2258,6 +2286,25 @@ If usage vararg name is "", match the closest vararg
 			if (field != cur_cls->fieldmap.end())
 			{
 				auto thsfield = &(cur_cls->fields[field->second]);
+				return std::make_pair(casade_parents, thsfield);
+			}
+			casade_parents++;
+			cur_cls = cur_cls->parent_class;
+		}
+		return std::make_pair(-1, nullptr);
+	}
+
+	//returns the casade_parents & member definition of the member
+	//returns <-1,nullptr> if not found
+	BD_CORE_API std::pair<int, MemberFunctionDef*> FindClassMethod(ClassAST* class_ast, const string& member)
+	{
+		int casade_parents = 0;
+		ClassAST* cur_cls = class_ast;
+		while (cur_cls) {
+			auto field = cur_cls->funcmap.find(member);
+			if (field != cur_cls->funcmap.end())
+			{
+				auto thsfield = &(cur_cls->funcs[field->second]);
 				return std::make_pair(casade_parents, thsfield);
 			}
 			casade_parents++;
@@ -2321,8 +2368,9 @@ If usage vararg name is "", match the closest vararg
 			}
 			vector<unique_ptr<ExprAST>> arg;
 			arg.push_back(std::move(Index));
-			auto inst = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
+			instance = make_unique<FunctionTemplateInstanceExprAST>(std::move(Expr), std::move(arg),Pos);
 			Expr = nullptr;
+			auto inst = (FunctionTemplateInstanceExprAST*)instance.get();
 			inst->Phase1(is_in_call);
 			if (member) //if the expression is an identifier with implied "this", build a memberexpr
 			{
@@ -2332,8 +2380,8 @@ If usage vararg name is "", match the closest vararg
 				minst->resolved_type = inst->instance->resolved_type;
 				instance = std::move(minst);
 			}
-			else
-				instance = std::move(inst);
+			//else
+			//	instance = std::move(inst);
 			resolved_type = instance->resolved_type;
 			return;
 		}
@@ -2681,7 +2729,7 @@ If usage vararg name is "", match the closest vararg
 			ImportTree* node = Obj->resolved_type.import_node;
 			if (node->map.size() == 0)
 			{
-				auto ret1 = FindModuleGlobal(node->mod->dimmap, member);
+				auto ret1 = FindModuleGlobal(node->mod->dimmap, member, false);
 				if (ret1)
 				{
 					kind = member_imported_dim;
@@ -2690,7 +2738,7 @@ If usage vararg name is "", match the closest vararg
 					resolved_type = ret1->resolved_type;
 					return;
 				}
-				auto ret2 = FindModuleGlobal(node->mod->funcmap, member);
+				auto ret2 = FindModuleGlobal(node->mod->funcmap, member, false);
 				if (ret2)
 				{
 					kind = member_imported_function;
@@ -2861,6 +2909,7 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
+	
 	//Deduce the template arguments & vararg. If this function sucessfully deduced the function template,
 	//it will return the template instance FunctionAST. Else, if the callee is a well defined function template instance,
 	//e.g. somefunc[int,float], the instance will be returned. Otherwise, null is returned.
@@ -2876,12 +2925,16 @@ If usage vararg name is "", match the closest vararg
 		{
 			if (auto indexexpr = dyncast_resolve_anno<IndexExprAST>(Callee.get()))
 			{
+				if(auto member = dyncast_resolve_anno<MemberExprAST>(indexexpr->Expr.get()))
+					preserved_member_obj = &member->Obj;
 				indexexpr->Phase1(true);
-				if (isa<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
-					func = static_cast<FunctionTemplateInstanceExprAST*>(indexexpr->instance.get())->instance;
+				if (auto idxexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(indexexpr->instance.get()))
+					func = idxexpr->instance;
 			}
 			else if (auto templexpr = dyncast_resolve_anno<FunctionTemplateInstanceExprAST>(Callee.get()))
 			{
+				if(auto member = dyncast_resolve_anno<MemberExprAST>(templexpr->expr.get()))
+					preserved_member_obj = &member->Obj;
 				templexpr->Phase1(true);
 				func = templexpr->instance;
 			}
@@ -2895,6 +2948,8 @@ If usage vararg name is "", match the closest vararg
 		{
 			func = e.src_template;
 			assert(func->isTemplate());
+			CompileAssert(func->is_vararg || e.args->size() <= func->template_param->params.size(), Pos,
+				"Too many template arguments are given");
 			for (int i = 0; i < e.args->size(); i++)
 			{
 				ValidateOneTemplateArg(*e.args, func->template_param->params, Pos, i);

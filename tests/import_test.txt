@@ -1,0 +1,8 @@
+import test_package.b.mod2
+import test_package.a.mod1
+
+{@from bdassert import bdassert@}
+dim o = new test_package.a.mod1.some_class(2.3)
+{@bdassert("o.b==2.3")@}
+{@bdassert("o.get()==2.3")@}
+{@bdassert("test_package.a.mod1.funct()==\"HAHA\"")@}

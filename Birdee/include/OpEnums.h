@@ -23,6 +23,7 @@ namespace Birdee
 		BIN_GE = tok_ge,
 		BIN_EQ = tok_equal,
 		BIN_NE = tok_ne,
+		BIN_CMP_NE = tok_cmp_ne,
 		BIN_CMP_EQ = tok_cmp_equal,
 		BIN_AND = tok_and,
 		BIN_XOR = tok_xor,

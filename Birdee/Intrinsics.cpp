@@ -190,9 +190,9 @@ namespace Birdee
 		CompileAssert(targs[1].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
 			func->Pos, "The second template argument for unsafe.get_field_ptr should be a type");
 		auto& rtype = targs[1].type;
-		bool is_struct = rtype.type == tok_class && rtype.index_level == 0 && rtype.class_ast->is_struct;
-		CompileAssert(is_struct, func->Pos,
-			string("Cannot get field pointer from non struct type ") + rtype.GetString());
+		bool is_class_t = rtype.type == tok_class && rtype.index_level == 0;
+		CompileAssert(is_class_t, func->Pos,
+			string("Cannot get field pointer from non class type ") + rtype.GetString());
 		auto& args = func->Proto->resolved_args;
 		CompileAssert(args.size() == 1 && args[0]->resolved_type.index_level == 0
 			&& args[0]->resolved_type.type == tok_pointer, func->Pos,
@@ -213,7 +213,9 @@ namespace Birdee
 		CompileAssert(ret.first >= 0, func->Pos, string("Cannot find field ") + name + " in class " + cls->GetUniqueName());
 		auto v = args[0]->Generate();
 		auto ty = GetLLVMTypeFromResolvedType(ResolvedType(cls));
-		auto pcls = builder.CreatePointerCast(v, ty->getPointerTo());
+		if (cls->is_struct)
+			ty = ty->getPointerTo();
+		auto pcls = builder.CreatePointerCast(v, ty);
 		auto gep = GenerateMemberGEP(pcls, cls, ret.second, ret.first);
 		return builder.CreatePointerCast(gep, builder.getInt8PtrTy());
 	}

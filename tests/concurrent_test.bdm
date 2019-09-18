@@ -1,0 +1,34 @@
+import concurrent.threading:thread
+import concurrent.sync:*
+
+{@from bdassert import bdassert@}
+dim v = 0
+dim m = new mutex
+function add() 
+	for dim i =0 till 100000
+		m.acquire()
+		v= v+1
+		m.release()
+	end
+end
+
+dim t1 = new thread(add)
+dim t2 = new thread(add)
+dim t3 = new thread(add)
+
+t1.join()
+t2.join()
+t3.join()
+
+{@bdassert("v==300000")@}
+println("Lock testing ok")
+
+dim result = create_future[int]()
+
+new thread(function ()
+	concurrent.threading.sleep(1000)
+	result.success(32)
+end)
+
+{@bdassert("result.await().get() == 32")@}
+println("future testing ok")

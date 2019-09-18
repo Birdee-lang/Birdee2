@@ -1,7 +1,9 @@
 package test_package.b
 
 import test_package.a.mod1:funct
+import test_package.a.mod1:some_class
 import logic_obj_cmp:a
 
+dim v as some_class
 funct()
 println(a)

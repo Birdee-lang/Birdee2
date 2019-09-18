@@ -1,3 +1,5 @@
+{@from bdassert import bdassert@}
+
 func test()
 	dim a as string=null
 	println(a)
@@ -7,6 +9,7 @@ end
 func wrapper1()
 	try
 		test()
+		{@bdassert("false")@}
 	catch e as mem_access_exception
 		println("Caught SEGV")
 	end
@@ -23,18 +26,29 @@ func test2[T]() as T
 	return 2/a
 end
 
-
+dim triggered = false
 func wrapper2[T,STR as string]()
 	try
 		test2[T]()
 	catch e as div_zero_exception
 		println(STR)
+		triggered = true
 	end
 end
 
+func check_triggered()
+	if !triggered then
+		{@bdassert("false")@}
+	end
+	triggered = false
+end
+
 wrapper2[int,"int"]()
+check_triggered()
 wrapper2[int,"int"]()
+check_triggered()
 wrapper2[int,"int"]()
+check_triggered()
 
 println("Test done")
 

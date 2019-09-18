@@ -28,15 +28,35 @@ def get_code(name):
 	return template.format(a =name)
 
 
+obj_files=[]
 outf=open('BirdeeIncludes.h','w')
 outf.write("extern \"C\"{\nvoid AddFunctions(llvm::orc::KaleidoscopeJIT* jit){\n")
 
+
+def add_lib_pragma(name):
+	template = "#pragma comment(lib, \"{a}\")\n" 
+	obj_files.append(template.format(a = name).replace("\\","\\\\"))
+
+def write_lib_pargma():
+	for line in obj_files:
+		outf.write(line)
+
 def parse_bmm(*pkg):
+	add_lib_pragma(os.path.join(os.environ['BIRDEE_HOME'],'blib',*pkg) + '.obj')
 	with open(os.path.join(os.environ['BIRDEE_HOME'],'blib',*pkg) + '.bmm') as f:
 		data = json.load(f)
 		pkgname = '.'.join(pkg) + '.'
+		for var in data['Variables']:
+			fstr=""
+			fstr=mangle_func(pkgname+var['name'])
+			print(fstr)
+			outf.write(get_code(fstr))
 		for func in data['Functions']:
-			fstr=mangle_func(pkgname+func['name'])
+			fstr=""
+			if 'link_name' in func:
+				continue
+			else:
+				fstr=mangle_func(pkgname+func['name'])
 			print(fstr)
 			outf.write(get_code(fstr))
 		for clazz in data['Classes']:
@@ -51,9 +71,17 @@ def parse_bmm(*pkg):
 	main_name = mangle_func(pkgname)+"_1main"
 	outf.write(get_code(main_name))
 
-parse_bmm('hash_map')
+parse_bmm('hash')
 parse_bmm('concurrent','threading')
+parse_bmm('concurrent','sync')
+parse_bmm('concurrent','syncdef')
 parse_bmm('string_buffer')
+parse_bmm('system','io','file')
+parse_bmm('system','io','filedef')
+parse_bmm('system','io','stdio')
+parse_bmm('system','specific','win32','file')
+parse_bmm('system','specific','win32','concurrent')
 parse_bmm('birdee')
 outf.write("}}\n")
+#write_lib_pargma()
 print("done")

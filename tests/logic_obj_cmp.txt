@@ -1,18 +1,46 @@
-dim a as string, b as string
-a==b
-a===b
-a!=b
-a="hello"
+{@from bdassert import bdassert@}
+dim a as string="1", b as string = int2str(1)
+dim r = a==b
+{@bdassert("r")@}
+r = a===b
+{@bdassert("!r")@}
+r = a!=b
+{@bdassert("!r")@}
+r = a!==b
+{@bdassert("r")@}
 
+dim v = 1
+func side_effect() as boolean
+	v = v + 1
+	return false
+end
 dim c =true
-c= c | true
-c= c & true
-c= c && (a==b)
-c= c || (a==b)
+c= c | side_effect()
+{@bdassert("c")@}
+{@bdassert("v==2")@}
+
+c= c & side_effect()
+{@bdassert("!c")@}
+{@bdassert("v==3")@}
+c=true
+
+c= c && side_effect()
+{@bdassert("!c")@}
+{@bdassert("v==4")@}
+
+c= side_effect() && side_effect()
+{@bdassert("!c")@}
+{@bdassert("v==5")@}
+
+c=true
+c= c || side_effect()
+{@bdassert("c")@}
+{@bdassert("v==5")@}
 
 dim d=1
 d=d | 123
 d=d ^ 123
+{@bdassert("d==0")@}
 
 #d=d&&1
 #0.123 | 32

@@ -1,0 +1,40 @@
+package system.io
+
+@init_script
+{@
+from bdconst import *
+define("CREATE_OPEN_ONLY",1)   #only succeed if the file exists
+define("CREATE_OPEN_OR_CREATE",2) #create a file or open the existing one
+define("CREATE_OVERWRITE",3) #create a file or overite an existing one
+define("CREATE_APPEND",4) #append to an existing file
+define("CREATE_EXCLUSIVE_NEW",5) #create a file only if it does not exist
+
+define("ACCESS_READ",1)
+define("ACCESS_WRITE",2)
+
+define("FILE_POS_BEGIN",0)
+define("FILE_POS_CURRENT",1)
+define("FILE_POS_END",2)
+
+define("STDIN_H",0)
+define("STDOUT_H",1)
+define("STDERR_H",2)
+@}
+
+
+class file_open_exception  : runtime_exception
+	public error_code as int
+	public func __init__(path as string, _error_code as int)
+		msg=path
+		error_code = _error_code
+	end
+	@virtual public func get_message() as string => "Cannot open file " + msg + ", error code: " + int2str(error_code)
+end
+
+class file_exception  : runtime_exception
+	public error_code as int
+	public func __init__( _error_code as int)
+		error_code = _error_code
+	end
+	@virtual public func get_message() as string => "File operation error, error code: " + int2str(error_code)
+end
