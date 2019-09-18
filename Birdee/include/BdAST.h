@@ -4,7 +4,9 @@
 #include <vector>
 #include <iostream>
 #include <unordered_map>
+#include <unordered_set>
 #include <map>
+#include <set>
 #include <functional>
 #include "SourcePos.h"
 #include "Util.h"
@@ -1210,6 +1212,8 @@ namespace Birdee {
 		//only valid after Phase0
 		bool is_abstract = false;
 		int virtual_idx = -1;
+		// virtual_idx in itable
+		int if_virtual_idx = -1;
 		std::unique_ptr<FunctionAST> decl;
 		void print(int level)
 		{
@@ -1248,6 +1252,11 @@ namespace Birdee {
 	};
 
 	class BD_CORE_API ClassAST : public StatementAST {
+	private:
+		void checkVirtOverride(ClassAST * super);
+		void checkVirtLineage(map<ClassAST*, std::set<MemberFunctionDef*>> & lineage, ClassAST * impl);
+		void resolveVtable(map<ClassAST*, std::set<MemberFunctionDef*>> & lineage, 
+											ClassAST * super, vector<FunctionAST*> & vtabledef);
 	public:
 		std::unique_ptr<StatementAST> Copy();
 		std::unique_ptr<ClassAST> CopyNoTemplate();
@@ -1257,12 +1266,20 @@ namespace Birdee {
 		bool needs_rtti = false;
 		bool is_struct = false;
 		bool is_abstract = false;
+		bool is_interface = false;
 		int done_phase = 0;
 		//the table of virtual functions, including the inherited virt functions from parents
 		//valid after Phase0
 		vector<FunctionAST*> vtabledef;
+		// vtables for interfaces
+		vector<vector<FunctionAST*>> if_vtabledef;
 		std::vector<FieldDef> fields;
 		std::vector<MemberFunctionDef> funcs;
+
+		// unimplemented abstract funcs (including ancestors' and interfaces'), 
+		// for abstract check & conflict check
+		std::unordered_map<std::string, MemberFunctionDef*> raw_abstract_funcs;
+
 		unique_ptr< vector<TemplateArgument>> template_instance_args;
 		ClassAST* template_source_class = nullptr;
 		unique_ptr<TemplateParameters<ClassAST>> template_param;
@@ -1272,6 +1289,10 @@ namespace Birdee {
 		//resolved after Phase0
 		ClassAST* parent_class = nullptr;
 		std::unique_ptr<Type> parent_type;
+		std::vector<ClassAST*> self_implements;
+		std::vector<std::unique_ptr<Type>> self_implement_types;
+		// all implements including inheritted, for conflict check & itable generating
+		std::vector<ClassAST*> implements;
 		//if the class is imported from other package, this field will be the index in cu.imported_module_names
 		//if the class is defined in the current package, this field will be -1
 		//if the class is an orphan class, this field will be -2
@@ -1287,6 +1308,7 @@ namespace Birdee {
 		bool isTemplateInstance() { return template_instance_args != nullptr; }
 		bool isTemplate() { return template_param != nullptr && (template_param->params.size() != 0 || template_param->is_vararg); }
 		bool HasParent(ClassAST* checkparent);
+		bool HasImplement(ClassAST* impl);
 		string GetUniqueName();
 		void PreGenerate();
 		void PreGenerateFuncs();
@@ -1327,6 +1349,8 @@ namespace Birdee {
 			VariableSingleDefAST* import_dim;
 		};
 		llvm::Value* llvm_obj = nullptr;
+		// only for interface
+		llvm::Value* llvm_itable_obj = nullptr;
 		llvm::Value* Generate();
 		llvm::Value* GetLValue(bool checkHas) override;
 		enum MemberType

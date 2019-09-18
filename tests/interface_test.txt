@@ -1,0 +1,123 @@
+declare function getchar() as int
+
+class bird
+	@virtual
+	public func say(a as string) as int
+		println("bird"+a)
+		return 1
+	end
+
+	public abstract func speak(a as string) as int
+end
+
+interface itest
+	public abstract func a()
+	public abstract func b(i as int) as int
+end
+
+interface itest2 : itest
+	public abstract func c(i as int) as string
+end
+
+interface itest3
+	public abstract func d(i as int) as string
+end
+
+class quail : bird impl itest
+	@virtual
+	public func say(a as string) as int
+		println("quail"+a)
+		return 2
+	end
+
+	public func speak(a as string) as int
+		println("pure virtual quail " + a)
+		return 3
+	end
+
+	public func a()
+		println("quail itest a")
+	end
+
+	public func b(i as int) as int
+		println("quail itest b " + int2str(i))
+		return 5
+	end
+end
+
+class sparrow impl itest2, itest3
+	public func a()
+		println("sparrow itest a")
+	end
+
+	public func b(i as int) as int
+		println("sparrow itest b " + int2str(i))
+		return 5
+	end
+
+	public func c(i as int) as string
+		println("sparrow itest c " + int2str(i))
+		return "iterface c"
+	end
+
+	public func d(i as int) as string
+		println("sparrow itest3 d " + int2str(i))
+		return "iterface d"
+	end
+end
+
+dim q = new quail
+dim s = new sparrow
+dim b as bird = q
+dim it as itest = q
+dim it_s as itest = s
+dim it2_s as itest2 = s
+dim it3_s as itest3 = s
+
+println(int2str(b.say("1")))
+println(int2str(b.speak("1")))
+
+it.a()
+println(int2str(it.b(2)))
+
+it_s.a()
+println(int2str(it_s.b(3)))
+
+it2_s.a()
+println(int2str(it2_s.b(4)))
+println(it2_s.c(4))
+
+println(it3_s.d(5))
+
+getchar()
+
+class big_sparrow : sparrow
+	public func a()
+		println("big sparrow itest a")
+	end
+
+	public func c(i as int) as string
+		println("big sparrow itest c " + int2str(i))
+		return "iterface c"
+	end
+end
+
+dim bigs = new big_sparrow
+s = bigs
+it_s = bigs
+it2_s = bigs
+it3_s = bigs
+
+s.a()
+println(int2str(s.b(6)))
+
+it_s.a()
+println(int2str(it_s.b(7)))
+
+it2_s.a()
+println(int2str(it2_s.b(8)))
+println(it2_s.c(8))
+
+println(it3_s.d(9))
+
+getchar()

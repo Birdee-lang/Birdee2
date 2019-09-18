@@ -552,6 +552,7 @@ void RegisiterClassForBinding(py::module& m)
 		.def_property_readonly("is_struct", [](ClassAST& ths) {return ths.is_struct; })
 		.def_readwrite("parent_class", &ClassAST::parent_class)
 		.def("has_parent", &ClassAST::HasParent)
+		.def("has_implement", &ClassAST::HasImplement)
 		.def("find_field", [](ClassAST& cls, const string& member)->auto {
 			auto ret = FindClassField(&cls, member);
 			return py::make_tuple(ret.first, GetRef(ret.second));

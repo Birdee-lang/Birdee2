@@ -1289,6 +1289,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		tokenizer.GetNextToken(); //eat access modifier
 		if (tokenizer.CurTok == tok_identifier)
 		{
+			CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
 			auto var = ParseDim();
 			SourcePos pos = var->Pos;
 			var->move(std::move(var), [pos, &classname_checker, &fields, access, &fieldmap](unique_ptr<VariableSingleDefAST>&& def) {
@@ -1302,6 +1303,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 		else if (tokenizer.CurTok == tok_func)
 		{
+			CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
 			tokenizer.GetNextToken(); //eat function
 			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
 			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
@@ -1329,6 +1331,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 		break;
 	case tok_func:
+		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
 		tokenizer.GetNextToken(); //eat function
 		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
@@ -1338,6 +1341,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		apply_annotations(false, funcs.size() - 1);
 		break;
 	case tok_declare:
+		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
 		tokenizer.GetNextToken(); //eat declare
 		CompileExpect(tok_func, "Expected a function after declare");
 		funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret)));
@@ -1364,7 +1368,7 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 	return true;
 }
 
-void ParseClassInPlace(ClassAST* ret, bool is_struct)
+void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface)
 {
 	auto pos = tokenizer.GetSourcePos();
 	std::string name = tokenizer.IdentifierStr;
@@ -1373,14 +1377,17 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 	ret->name = name;
 	ret->Pos = pos;
 	ret->is_struct = is_struct;
+	ret->is_interface = is_interface;
+	ret->is_abstract = is_interface;
 	int view_pos = 0;
 	bool is_template = false;
 	if (tokenizer.CurTok == tok_left_index)
 	{
+		CompileAssert(!is_interface, "interfaces do not support template");
 		is_template = true;
 		if (!tokenizer.is_recording)
 		{
-			tokenizer.StartRecording(string(is_struct? "struct ":"class ") + name + " [");
+			tokenizer.StartRecording(string(is_struct? "struct " : "class ") + name + " [");
 		}
 		else
 		{
@@ -1391,13 +1398,27 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 		ret->template_param->params = std::move(ParseTemplateParameters(ret->template_param->is_vararg, ret->template_param->vararg_name));
 	}
 	// class inherit
-
-  if (tokenizer.CurTok == tok_colon) {
-    CompileAssert(!is_struct, "structs do not support inherience");
-    tokenizer.GetNextToken(); // eat colon
-    CompileAssert(tokenizer.CurTok == tok_identifier, "Expected a class name");
-    ret->parent_type = ParseBasicType();
-  }
+	if (tokenizer.CurTok == tok_colon) {
+		CompileAssert(!is_struct, "structs do not support inherience");
+		tokenizer.GetNextToken(); // eat colon
+		CompileAssert(tokenizer.CurTok == tok_identifier, is_interface ? "Expected an interface name" : "Expected a class name");
+		ret->parent_type = ParseBasicType();
+	}
+	// class implement
+	if (tokenizer.CurTok == tok_implement) {
+		CompileAssert(!is_interface, "Interfaces cannot implement");
+		tokenizer.GetNextToken(); // eat impl/implement
+		while (true) {
+			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an interface name");
+			ret->self_implement_types.emplace_back(std::move(ParseBasicType()));
+			if (tokenizer.CurTok != tok_comma) {
+				break;
+			}
+			else {
+				tokenizer.GetNextToken(); // eat comma
+			}
+		}
+	}
 	
 	CompileExpect(tok_newline, "Expected an newline after class name");
 
@@ -1410,13 +1431,26 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 			tokenizer.GetNextToken(); //eat end
 			if (is_struct)
 			{
+				if (tokenizer.CurTok == tok_interface)
+					throw CompileError("Expecting \"struct\" after \"end\", no \"interface\" allowed here");
 				if (tokenizer.CurTok == tok_class)
 					throw CompileError("Expecting \"struct\" after \"end\", no \"class\" allowed here");
 				if (tokenizer.CurTok == tok_struct)
 					tokenizer.GetNextToken();
 			}
+			else if (is_interface)
+			{
+				if (tokenizer.CurTok == tok_interface)
+					tokenizer.GetNextToken();
+				if (tokenizer.CurTok == tok_class)
+					throw CompileError("Expecting \"interafce\" after \"end\", no \"class\" allowed here");
+				if (tokenizer.CurTok == tok_struct)
+					throw CompileError("Expecting \"interface\" after \"end\", no \"struct\" allowed here");
+			}
 			else
 			{
+				if (tokenizer.CurTok == tok_interface)
+					throw CompileError("Expecting \"class\" after \"end\", no \"interface\" allowed here");
 				if (tokenizer.CurTok == tok_class)
 					tokenizer.GetNextToken();
 				if (tokenizer.CurTok == tok_struct)
@@ -1428,9 +1462,9 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct)
 			throw CompileError("Unexpected end of file, missing \"end\"");
 		else
 		{
-			// TODO, make it better
+			// TODO, make the prompt occur more precisely
 			if (!ret->funcs.empty() && ret->funcs.rbegin()->is_abstract) {
-				throw CompileError("Expected member declarations, are you trying to implement a pure virtual function?");
+				throw CompileError("Expected member declarations, are you trying to implement an abstract function?");
 			}
 			else {
 				throw CompileError("Expected member declarations");
@@ -1451,10 +1485,10 @@ done:
 	}
 	//return std::move(ret);
 }
-std::unique_ptr<ClassAST> ParseClass(bool is_struct)
+std::unique_ptr<ClassAST> ParseClass(bool is_struct, bool is_interface)
 {
 	std::unique_ptr<ClassAST> ret = make_unique<ClassAST>(string(), SourcePos(0,0,0));
-	ParseClassInPlace(ret.get(), is_struct);
+	ParseClassInPlace(ret.get(), is_struct, is_interface);
 	return std::move(ret);
 }
 
@@ -2058,12 +2092,14 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after throw");
 			break;
 		}
+		case tok_interface:
 		case tok_class:
 		case tok_struct:
 		{
 			bool is_struct = tokenizer.CurTok == tok_struct;
+			bool is_interface = tokenizer.CurTok == tok_interface;
 			tokenizer.GetNextToken(); //eat class
-			auto classdef = ParseClass(is_struct);
+			auto classdef = ParseClass(is_struct, is_interface);
 			std::reference_wrapper<const string> clscname = classdef->name;
 			CompileCheckGlobalConflict(classdef->Pos, clscname);
 			cu.classmap.insert(std::make_pair(clscname, std::make_pair(classdef.get(),is_public())));

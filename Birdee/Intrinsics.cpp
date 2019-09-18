@@ -14,7 +14,10 @@ do\
 	}\
 }while(0)\
 
+extern Birdee::ClassAST* GetTypeInfoType();
 extern llvm::Constant* GetOrCreateTypeInfoGlobal(Birdee::ClassAST* cls);
+extern llvm::Constant* GetOrCreateTypeInfoGlobal(
+	Birdee::ClassAST* cls, std::vector<Birdee::FunctionAST*> * p_vtable, int vtable_idx);
 namespace Birdee
 {
 	extern llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty);
@@ -142,7 +145,8 @@ namespace Birdee
 		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE && targs[1].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
 			func->Pos, "The 1st and 2nd template arguments for unsafe.static_cast should be a type");
 		CompileAssert(IsResolvedTypeClass(targs[0].type) && IsResolvedTypeClass(targs[1].type)
-			&& (targs[0].type.class_ast->HasParent(targs[1].type.class_ast) || targs[1].type.class_ast->HasParent(targs[0].type.class_ast)),
+			&& (targs[0].type.class_ast->HasParent(targs[1].type.class_ast) || targs[1].type.class_ast->HasParent(targs[0].type.class_ast) ||
+				targs[1].type.class_ast->HasImplement(targs[0].type.class_ast) || targs[0].type.class_ast->HasImplement(targs[1].type.class_ast)),
 			func->Pos,
 			string("Cannot static_cast from type ") + targs[1].type.GetString() + " to type " + targs[0].type.GetString());
 	}
@@ -155,7 +159,40 @@ namespace Birdee
 		auto& targs = *func->template_instance_args;
 		auto v = args[0]->Generate();
 		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
-		return builder.CreateBitOrPointerCast(v, ty);
+		ClassAST* from = targs[1].type.class_ast;
+		ClassAST* target = targs[0].type.class_ast;
+		if (target->HasParent(from) || from->HasParent(target)) {
+			return builder.CreateBitOrPointerCast(v, ty);
+		}
+		else if (from->HasImplement(target)) {
+			// upcast to interface
+			for (int i = 0; i < from->implements.size(); ++i)
+			{
+				ClassAST* curcls = from->implements[i];
+				while (curcls && curcls != target)
+				{
+					curcls = curcls->parent_class;
+				}
+				if (curcls)
+				{
+					auto tmp = builder.CreateAlloca(ty, nullptr);
+					auto itable_ptr = builder.CreatePointerCast(tmp, 
+							GetTypeInfoType()->llvm_type->getPointerTo()->getPointerTo());
+					builder.CreateStore(GetOrCreateTypeInfoGlobal(from, &from->if_vtabledef[i], i), itable_ptr);
+					auto obj_ptr = builder.CreateGEP(tmp, { builder.getInt32(0), builder.getInt32(1) });
+					builder.CreateStore(builder.CreatePointerCast(v, target->llvm_type->getPointerTo()), obj_ptr);
+					return builder.CreateLoad(tmp);
+				}
+			}
+		}
+		else if (target->HasImplement(from)) {
+			// downcast from interface
+			return builder.CreatePointerCast(
+				builder.CreateExtractValue(v, 1), target->llvm_type->getPointerTo());
+		}
+		// cannot reach here
+		assert(false);
+		return NULL;
 	}
 
 

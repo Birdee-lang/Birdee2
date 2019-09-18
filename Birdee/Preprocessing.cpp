@@ -889,6 +889,23 @@ bool Birdee::ClassAST::HasParent(Birdee::ClassAST* checkparent)
 	return true;
 }
 
+bool Birdee::ClassAST::HasImplement(Birdee::ClassAST* impl)
+{
+	ClassAST* cur;
+	for (auto & t_impl : implements)
+	{
+		cur = t_impl;
+		while (cur && cur != impl)
+		{
+			cur = cur->parent_class;
+		}
+		if (cur)
+			return true;
+	}
+
+	return false;
+}
+
 inline bool IsClosure(const ResolvedType& v)
 {
 	return v.index_level == 0 && v.type == tok_func && v.proto_ast->is_closure;
@@ -922,7 +939,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 		if (IsResolvedTypeClass(val->resolved_type)
 			&& IsResolvedTypeClass(target)) // check for upcast
 		{
-			if (val->resolved_type.class_ast->HasParent(target.class_ast))
+			if (val->resolved_type.class_ast->HasParent(target.class_ast) ||
+				val->resolved_type.class_ast->HasImplement(target.class_ast))
 				return make_unique<UpcastExprAST>(std::move(val), target.class_ast, pos);
 		}
 	}
@@ -1830,6 +1848,117 @@ namespace Birdee
 		return false;
 	}
 
+	void ClassAST::checkVirtOverride(ClassAST * super)
+	{
+		// find all member funcs that override super virtual funcs & automatically marks 'virtual'
+		for (auto& funcdef : funcs)
+		{
+			// check inherit or implement
+			int vidx = (!this->is_interface && super->is_interface) ? funcdef.if_virtual_idx : funcdef.virtual_idx;
+			if (vidx == MemberFunctionDef::VIRT_NONE)
+			{
+				//if the function is not manually marked virtual, check if it overrides a virtual function
+				//if so, copy the virtual idx
+				ClassAST* cls = super;
+				while (cls)
+				{
+					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
+					if (itr != cls->funcmap.end())
+					{
+						if (!this->is_interface && super->is_interface)
+						{
+							if (funcdef.virtual_idx == MemberFunctionDef::VIRT_NONE) {
+								funcdef.virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
+							}
+							funcdef.if_virtual_idx = cls->funcs[itr->second].virtual_idx;
+						}
+						else 
+						{
+							funcdef.virtual_idx = cls->funcs[itr->second].virtual_idx;
+						}
+						break;
+					}
+					cls = cls->parent_class;
+				}
+			}
+		}
+	}
+
+	void ClassAST::checkVirtLineage(map<ClassAST*, std::set<MemberFunctionDef*>> & lineage, ClassAST * impl)
+	{
+		// find lineage: member funcs come from which impl class
+		for (auto& funcdef : funcs)
+		{
+			ClassAST* cls = impl;
+			while (cls)
+			{
+				auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
+				if (itr != cls->funcmap.end())
+				{
+					// funcdef.if_virtual_idx should've been set in checkVirtOverride
+					lineage[impl].insert(&funcdef);
+					break;
+				}
+				cls = cls->parent_class;
+			}
+		}
+	}
+
+	void ClassAST::resolveVtable(map<ClassAST*, std::set<MemberFunctionDef*>> & lineage,
+														ClassAST * super, vector<FunctionAST*> & vtabledef)
+	{
+		auto checkproto = [](FunctionAST* curfunc, FunctionAST* overriden) {
+			//make sure the overriden function has the same prototype
+			CompileAssert(overriden->Proto->CanBeAssignedWith(*curfunc->Proto), curfunc->Pos,
+				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
+				+ " but they have different prototypes");
+		};
+		for (auto& pfuncdef : lineage[super])
+		{
+			// check inherit or implement
+			int& func_vidx = (super && !this->is_interface && super->is_interface) ? pfuncdef->if_virtual_idx : pfuncdef->virtual_idx;
+			if (func_vidx != MemberFunctionDef::VIRT_UNRESOLVED)
+			{//if the virtual function is resolved (either is imported or overides a parent), the virtual function has already an index
+				if (func_vidx >= 0 && func_vidx < vtabledef.size())
+				{ //if it is an override function
+					CompileAssert(pfuncdef->decl->Proto->Name == vtabledef[func_vidx]->Proto->Name,
+						Pos, string("The virtual function ") + pfuncdef->decl->Proto->Name
+						+ " overrides a function with different name " + vtabledef[func_vidx]->Proto->Name);
+					checkproto(pfuncdef->decl.get(), vtabledef[func_vidx]);
+					vtabledef[func_vidx] = pfuncdef->decl.get();
+				}
+				else if (func_vidx == vtabledef.size())
+				{//if it is not overriding a parent function, the virtual idx should be same as the size of vtable
+					vtabledef.push_back(pfuncdef->decl.get());
+				}
+				else
+				{
+					std::stringstream buf;
+					buf << "The imported virtual function " << pfuncdef->decl->Proto->Name << " has a bad virtual index " << func_vidx;
+					throw CompileError(Pos, buf.str());
+				}
+			}
+			else //if the virtual function index has not been resolved
+			{
+				for (int i = 0; i < vtabledef.size(); i++)
+				{
+					if (pfuncdef->decl->Proto->Name == vtabledef[i]->Proto->Name)
+					{
+						checkproto(pfuncdef->decl.get(), vtabledef[i]);
+						vtabledef[i] = pfuncdef->decl.get();
+						func_vidx = i;
+					}
+				}
+				//if no overriding parent functions
+				if (func_vidx == MemberFunctionDef::VIRT_UNRESOLVED)
+				{
+					vtabledef.push_back(pfuncdef->decl.get());
+					func_vidx = vtabledef.size() - 1;
+				}
+			}
+		}
+	}
+
 	void ClassAST::Phase0()
 	{
 		if (done_phase >= 1)
@@ -1864,11 +1993,15 @@ namespace Birdee
 		{
 			// resolve parent type 
 			auto parent_resolved_type = ResolvedType(*parent_type, Pos);
-			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class as parent");
+			CompileAssert(parent_resolved_type.type == tok_class, Pos, "Expecting a class/interface as parent");
 			parent_type = nullptr;
 			parent_class = parent_resolved_type.class_ast;
+			if (this->is_interface && !parent_class->is_interface)
+				throw CompileError("Interface cannot inherit from class");
+			else if (!this->is_interface && parent_class->is_interface)
+				throw CompileError("Class cannot inherit from interface");
 		}
-		if(parent_class) 
+		if (parent_class)
 		{
 			//call Phase0 on parent
 			loop_checker.push_back(this);
@@ -1878,30 +2011,81 @@ namespace Birdee
 			loop_checker.pop_back();
 			vtabledef = parent_class->vtabledef;
 		}
-		auto checkproto = [](FunctionAST* curfunc, FunctionAST* overriden) {
-			//make sure the overriden function has the same prototype
-			CompileAssert(overriden->Proto->CanBeAssignedWith(*curfunc->Proto), curfunc->Pos,
-				string("The function ") + curfunc->Proto->Name + " overrides the function at " + overriden->Pos.ToString()
-				+ " but they have different prototypes");
-		};
-
-		// automatically mark class as abstract if there's unimplemented pure virtual function
+		if (self_implement_types.size() > 0) {
+			// resolve implement
+			for (int i = 0; i < self_implement_types.size(); ++i) {
+				auto impl_resolved_type = ResolvedType(*self_implement_types[i], Pos);
+				CompileAssert(impl_resolved_type.type == tok_class, Pos, "Expecting an interface to implement");
+				CompileAssert(impl_resolved_type.class_ast->is_interface, Pos, "Expecting an interface to implement");
+				self_implements.emplace_back(impl_resolved_type.class_ast);
+				if (this->is_interface)
+					throw CompileError("Interface cannot implement interfaces");
+			}
+			self_implement_types.clear();
+		}
+		// add inheritted interfaces & itables
+		if (parent_class)
 		{
-			unordered_set<string> parent_funcdef;
-			ClassAST* cls = parent_class;
-			while (!this->is_abstract && cls)
-			{
+			for (auto & interf : parent_class->implements) {
+				implements.push_back(interf);
+			}
+			for (auto & itable : parent_class->if_vtabledef) {
+				if_vtabledef.push_back(itable);
+			}
+		}
+		if (self_implements.size() > 0) {
+			for (int i = 0; i < self_implements.size(); ++i) {
+				scope_mgr.class_stack.pop_back();
+				self_implements[i]->Phase0();
+				scope_mgr.class_stack.push_back(this);
+				implements.push_back(self_implements[i]);
+				if_vtabledef.emplace_back(self_implements[i]->vtabledef);
+			}
+		}
+
+		unordered_map<string, ClassAST*> self_implement_funcdef;
+		unordered_map<string, ClassAST*> implement_funcdef;
+		for (int i = 0; i < self_implements.size(); ++i) {
+			ClassAST* cls = self_implements[i];
+			while (cls) {
 				for (auto& funcdef : cls->funcs) {
 					string & name = funcdef.decl->Proto->Name;
-					if (parent_funcdef.find(name) != parent_funcdef.end())
-						continue;
-					parent_funcdef.insert(name);
-					if (funcdef.is_abstract && this->funcmap.find(name) == this->funcmap.end()) {
-						this->is_abstract = true;
-						break;
-					}
+					self_implement_funcdef[name] = cls;
 				}
 				cls = cls->parent_class;
+			}
+		}
+		// conflict check for interfaces
+		for (int i = 0; i < implements.size(); ++i) {
+			ClassAST* cls = implements[i];
+			while (cls) {
+				for (auto& funcdef : cls->funcs) {
+					string & name = funcdef.decl->Proto->Name;
+					auto fitr = implement_funcdef.find(name);
+					if (fitr != implement_funcdef.end()) {
+						throw CompileError(funcdef.decl->Pos, "method " + name + " in interface " + cls->name +
+							" conflicts with method in interface " + fitr->second->name);
+					}
+					implement_funcdef[name] = cls;
+				}
+				cls = cls->parent_class;
+			}
+		}
+		// check conflict functions between self interfaces & parent
+		unordered_map<string, ClassAST*> parent_funcdef;
+		ClassAST* cls = parent_class;
+		while (cls) {
+			for (auto& funcdef : cls->funcs) {
+				string & name = funcdef.decl->Proto->Name;
+				parent_funcdef[name] = cls;
+			}
+			cls = cls->parent_class;
+		}
+		for (auto & func : parent_funcdef) {
+			auto fitr = self_implement_funcdef.find(func.first);
+			if (fitr != self_implement_funcdef.end()) {
+				throw CompileError(Pos, "method " + func.first + " in parent class " + func.second->name +
+					" conflicts with method in interface " + fitr->second->name);
 			}
 		}
 
@@ -1913,7 +2097,7 @@ namespace Birdee
 					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
 					if (itr != cls->funcmap.end())
 					{
-						CompileAssert(cls->funcs[itr->second].is_abstract, funcdef.decl->Pos, 
+						CompileAssert(cls->funcs[itr->second].is_abstract, funcdef.decl->Pos,
 							"method " + funcdef.decl->Proto->Name + "is defind as abstract in class " +
 							this->GetUniqueName() + ", but it's non-abstract in parent class " + cls->GetUniqueName());
 						break;
@@ -1923,69 +2107,74 @@ namespace Birdee
 			}
 		}
 
+		if (parent_class) {
+			for (auto & raw_func : parent_class->raw_abstract_funcs) {
+				raw_abstract_funcs.insert(raw_func);
+			}
+		}
+		if (!this->is_interface) {
+			for (int i = 0; i < self_implements.size(); ++i) {
+				for (auto & raw_func : self_implements[i]->raw_abstract_funcs) {
+					raw_abstract_funcs.insert(raw_func);
+				}
+			}
+			// automatically mark class as abstract if there's unimplemented abstract function
+			for (auto& funcdef : this->funcs) 
+			{
+				string & name = funcdef.decl->Proto->Name;
+				if (raw_abstract_funcs.find(name) != raw_abstract_funcs.end()) {
+					raw_abstract_funcs.erase(name);
+				}
+			}
+			if (raw_abstract_funcs.size() > 0) 
+			{
+				this->is_abstract = true;
+			}
+		} else {
+			for (auto & funcdef : this->funcs) {
+				string & name = funcdef.decl->Proto->Name;
+				if (parent_class) {
+					// for interfaces, raw abstract funcs equals all member funcs
+					if (parent_class->raw_abstract_funcs.find(name)
+						!= parent_class->raw_abstract_funcs.end()) {
+						throw CompileError("interfaces do not support overriden functions");
+					}
+				}
+				raw_abstract_funcs.insert(std::make_pair(name, &funcdef));
+			}
+		}
+
 		for (auto& funcdef : funcs)
 		{
 			funcdef.decl->Phase0();
-			if (funcdef.virtual_idx == MemberFunctionDef::VIRT_NONE)
-			{
-				//if the function is not manually marked virtual, check if it overrides a virtual function
-				//if so, copy the virtual idx
-				ClassAST* cls = parent_class;
-				while (cls)
-				{
-					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
-					if (itr != cls->funcmap.end())
-					{
-						funcdef.virtual_idx = cls->funcs[itr->second].virtual_idx;
-						break;
-					}
-					cls = cls->parent_class;
-				}
-			}
-			//if it is marked a virtual function, set the virtual index and set the vtable
+		}
+		if (parent_class) {
+			checkVirtOverride(parent_class);
+		}
+		for (int i = 0; i < implements.size(); ++i) {
+			checkVirtOverride(implements[i]);
+		}
+		// find lineage for virtual funcs
+		map<ClassAST*, std::set<MemberFunctionDef*>> lineage;
+		// std::set<MemberFunctionDef*> orphan;
+		for (auto & funcdef : funcs)
+		{
 			if (funcdef.virtual_idx != MemberFunctionDef::VIRT_NONE)
 			{
-				if (funcdef.virtual_idx != MemberFunctionDef::VIRT_UNRESOLVED)
-				{//if the virtual function is resolved (either is imported or overides a parent), the virtual function has already an index
-					if (funcdef.virtual_idx >= 0 && funcdef.virtual_idx < vtabledef.size())
-					{ //if it is an override function
-						CompileAssert(funcdef.decl->Proto->Name == vtabledef[funcdef.virtual_idx]->Proto->Name,
-							Pos, string("The virtual function ") + funcdef.decl->Proto->Name
-							+ " overrides a function with different name " + vtabledef[funcdef.virtual_idx]->Proto->Name);
-						checkproto(funcdef.decl.get(), vtabledef[funcdef.virtual_idx]);
-						vtabledef[funcdef.virtual_idx] = funcdef.decl.get();
-					}
-					else if (funcdef.virtual_idx ==  vtabledef.size())
-					{//if it is not overriding a parent function, the virtual idx should be same as the size of vtable
-						vtabledef.push_back(funcdef.decl.get());
-					}
-					else
-					{
-						std::stringstream buf;
-						buf << "The imported virtual function " << funcdef.decl->Proto->Name << " has a bad virtual index " << funcdef.virtual_idx;
-						throw CompileError(Pos, buf.str());
-					}
-				}
-				else //if the virtual function index has not been resolved
-				{
-					for (int i = 0; i < vtabledef.size(); i++)
-					{
-						if (funcdef.decl->Proto->Name == vtabledef[i]->Proto->Name)
-						{
-							checkproto(funcdef.decl.get(), vtabledef[i]);
-							vtabledef[i] = funcdef.decl.get();
-							funcdef.virtual_idx = i;
-						}
-					}
-					//if no overriding parent functions
-					if (funcdef.virtual_idx == MemberFunctionDef::VIRT_UNRESOLVED)
-					{
-						vtabledef.push_back(funcdef.decl.get());
-						funcdef.virtual_idx = vtabledef.size() - 1;
-					}
-				}
+				lineage[parent_class].insert(&funcdef);
 			}
 		}
+		if (!this->is_interface) {
+			for (int i = 0; i < implements.size(); ++i) {
+				checkVirtLineage(lineage, implements[i]);
+			}
+		}
+
+		resolveVtable(lineage, parent_class, vtabledef);
+		for (int i = 0; i < if_vtabledef.size(); ++i) {
+			resolveVtable(lineage, implements[i], if_vtabledef[i]);
+		}
+
 		for (auto& fielddef : fields)
 		{
 			fielddef.decl->Phase0();
@@ -2624,10 +2813,10 @@ If usage vararg name is "", match the closest vararg
 		}
 		if (resolved_type.index_level == 0)
 		{
-			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
-			CompileAssert(!resolved_type.class_ast->is_struct, Pos, "cannot apply new on a struct type");
-			CompileAssert(!resolved_type.class_ast->is_abstract, Pos, "cannot instantiate abstract class");
 			ClassAST* cls = resolved_type.class_ast;
+			CompileAssert(resolved_type.type == tok_class, Pos, "new expression only supports class types");
+			CompileAssert(!cls->is_struct, Pos, "cannot apply new on a struct type");
+			CompileAssert(!cls->is_abstract, Pos, cls->is_interface ? "cannot instantiate interface" : "cannot instantiate abstract class");
 			int cascade_parents = 0;
 			MemberExprAST::MemberType kind= MemberExprAST::MemberType::member_error;
 			MemberFunctionDef* outfunc = nullptr;
@@ -2676,6 +2865,15 @@ If usage vararg name is "", match the closest vararg
 	//fix-me: we can have compiler better performance here
 	static bool ResolveRTTIBitInClass(ClassAST* cls)
 	{
+		if (cls->implements.size() > 0)
+		{
+			cls->needs_rtti = true;
+			ClassAST * parent_cls = cls->parent_class;
+			while (parent_cls) {
+				parent_cls->needs_rtti = true;
+				parent_cls = parent_cls->parent_class;
+			}
+		}
 		if (!cls->needs_rtti && cls->parent_class)
 		{
 			//if !needs_rtti then it is either not resolved or the class really does not need rtti
