@@ -1,0 +1,78 @@
+import system.io.net:*
+import concurrent.threading:*
+
+
+function threading_server()
+	dim server = new server_bind(10086)
+	while true
+		dim sok = server.accept()
+		new thread(func(s as socket)
+			dim buf = new byte * 10
+			while true
+				dim len = s.recv(buf, 0, 10)
+				if len == 0 then
+					s.close()
+					break
+				end
+				s.send(buf, 0, len)
+			end
+		end, sok)
+	end
+end
+
+threading_server()
+
+##
+dim server = new server_bind(10086)
+dim poll = new system.specific.win32.concurrent.poller
+
+dim accept_conn = poll.add(null)
+
+class connection_handler
+
+	private s as socket
+	private buf as byte[]
+	private conn as awaitable_wrapper
+
+	public function recv_callback(sz as option[int]) as option[int]
+		println("RECV")
+		dim len = sz.get()
+		if len != 0 then
+			s.send_async(buf, 0, len).await().get()
+			poll.replace(conn, this.recv())
+		else
+			s.close()
+			poll.remove(conn)
+			conn.fut.close()
+		end
+		return sz
+	end
+
+	public function set_conn(_conn as awaitable_wrapper)
+		conn = _conn
+	end
+
+	public function __init__(_s as socket)
+		s = _s
+		buf = new byte * 10
+	end
+
+	public function recv() as awaitable => s.recv_async(buf,0,10).and_then(this.recv_callback)
+end
+
+
+func accept_callback(sock as option[socket]) as option[int]
+	println("ACCEPT")
+	dim conn_handler = new connection_handler(sock.get())
+	dim conn = poll.add(conn_handler.recv())
+	conn_handler.set_conn(conn)
+	poll.replace(accept_conn, server.accept_async().and_then(accept_callback))
+	return some(0)
+end
+accept_conn.fut = server.accept_async().and_then(accept_callback)
+
+while true
+	poll.await(0-1)
+end
+server.close()
+##

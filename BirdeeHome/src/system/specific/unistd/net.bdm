@@ -1,0 +1,179 @@
+package system.specific.unistd
+
+import vector:vector
+import hash:hash_set
+import typedptr:ref
+import system.io.netdef:*
+import system.specific.unistd.file:_errno
+import concurrent.syncdef:*
+import concurrent.sync:*
+import functional.option:*
+import system.specific.unistd.concurrent:future_impl
+
+@init_script
+{@
+from bdutils import *
+from bdconst import *
+
+
+define("AF_UNSPEC",	0) # Unspecified.
+define("AF_LOCAL",	1) # Local to host (pipes and file-domain).
+define("AF_UNIX",		_AF_LOCAL) # POSIX name for PF_LOCAL.
+define("AF_FILE",		_AF_LOCAL) # Another non-standard name for PF_LOCAL.
+define("AF_INET",		2) # IP protocol family.
+define("AF_AX25",		3) # Amateur Radio AX.25.
+define("AF_IPX",		4) # Novell Internet Protocol.
+define("AF_APPLETALK",	5) # Appletalk DDP.
+define("AF_NETROM",	6) # Amateur radio NetROM.
+define("AF_BRIDGE",	7) # Multiprotocol bridge.
+define("AF_ATMPVC",	8) # ATM PVCs.
+define("AF_X25",		9) # Reserved for X.25 project.
+define("AF_INET6",	10) # IP version 6.
+define("AF_ROSE",		11) # Amateur Radio X.25 PLP.
+define("AF_DECnet",	12) # Reserved for DECnet project.
+define("AF_NETBEUI",	13) # Reserved for 802.2LLC project.
+define("AF_SECURITY",	14) # Security callback pseudo AF.
+define("AF_KEY",		15) # PF_KEY key management API.
+define("AF_NETLINK",	16)
+define("AF_ROUTE",	_AF_NETLINK) # Alias to emulate 4.4BSD.
+define("AF_PACKET",	17) # Packet family.
+define("AF_ASH",		18) # Ash.
+define("AF_ECONET",	19) # Acorn Econet.
+define("AF_ATMSVC",	20) # ATM SVCs.
+define("AF_RDS",		21) # RDS sockets.
+define("AF_SNA",		22) # Linux SNA Project 
+define("AF_IRDA",		23) # IRDA sockets.
+define("AF_PPPOX",	24) # PPPoX sockets.
+define("AF_WANPIPE",	25) # Wanpipe API sockets.
+define("AF_LLC",		26) # Linux LLC.
+define("AF_IB",		27) # Native InfiniBand address.
+define("AF_MPLS",		28) # MPLS.
+define("AF_CAN",		29) # Controller Area Network.
+define("AF_TIPC",		30) # TIPC sockets.
+define("AF_BLUETOOTH",	31) # Bluetooth sockets.
+define("AF_IUCV",		32) # IUCV sockets.
+define("AF_RXRPC",	33) # RxRPC sockets.
+define("AF_ISDN",		34) # mISDN sockets.
+define("AF_PHONET",	35) # Phonet sockets.
+define("AF_IEEE802154",	36) # IEEE 802.15.4 sockets.
+define("AF_CAIF",		37) # CAIF sockets.
+define("AF_ALG",		38) # Algorithm sockets.
+define("AF_NFC",		39) # NFC sockets.
+define("AF_VSOCK",	40) # vSockets.
+define("AF_MAX",		41) # For now.
+
+define("SOCK_STREAM"     ,1)
+define("SOCK_DGRAM"      ,2)
+define("SOCK_RAW"        ,3)
+define("SOCK_RDM"        ,4)
+define("SOCK_SEQPACKET"  ,5)
+define("SOCK_DCCP",6)
+define("SOCK_PACKET"  ,10)
+define("SOCK_CLOEXEC",0o02000000)
+define("SOCK_NONBLOCK"  ,0o00004000)
+
+define("IPPROTO_IP", 0)    # Dummy protocol for TCP.
+define("IPPROTO_ICMP", 1)    # Internet Control Message Protocol.
+define("IPPROTO_IGMP", 2)    # Internet Group Management Protocol. 
+define("IPPROTO_IPIP", 4)    # IPIP tunnels (older KA9Q tunnels use 94).
+define("IPPROTO_TCP", 6)    # Transmission Control Protocol.
+define("IPPROTO_EGP", 8)    # Exterior Gateway Protocol.
+define("IPPROTO_PUP", 12)    # PUP protocol.
+define("IPPROTO_UDP", 17)    # User Datagram Protocol.
+define("IPPROTO_IDP", 22)    # XNS IDP protocol.
+define("IPPROTO_TP", 29)    # SO Transport Protocol Class 4.
+define("IPPROTO_DCCP", 33)    # Datagram Congestion Control Protocol.
+define("IPPROTO_IPV6", 41)     # IPv6 header.
+define("IPPROTO_RSVP", 46)    # Reservation Protocol.
+define("IPPROTO_GRE", 47)    # General Routing Encapsulation.
+define("IPPROTO_ESP", 50)      # encapsulating security payload.
+define("IPPROTO_AH", 51)       # authentication header.
+define("IPPROTO_MTP", 92)    # Multicast Transport Protocol.
+define("IPPROTO_BEETPH", 94)   # IP option pseudo header for BEET.
+define("IPPROTO_ENCAP", 98)    # Encapsulation Header.
+define("IPPROTO_PIM", 103)    # Protocol Independent Multicast.
+define("IPPROTO_COMP", 108)    # Compression Header Protocol.
+define("IPPROTO_SCTP", 132)    # Stream Control Transmission Protocol.
+define("IPPROTO_UDPLITE", 136) # UDP-Lite protocol.
+define("IPPROTO_MPLS", 137)    # MPLS in IP.
+define("IPPROTO_RAW", 255)    # Raw IP packets.
+
+
+define("INADDR_ANY", 0x00000000)
+# Address to send to all hosts.  
+define("INADDR_BROADCAST", 0xffffffff)
+# Address indicating an error return.  
+define("INADDR_NONE", 0xffffffff)
+
+# Network number for local host loopback.  
+define("IN_LOOPBACKNET",		127)
+# Address to loopback in software to local host.  
+define("INADDR_LOOPBACK", 0x7f000001) # Inet 127.0.0.1.  
+
+# Defines for Multicast INADDR.  
+define("INADDR_UNSPEC_GROUP", 0xe0000000) # 224.0.0.0 
+define("INADDR_ALLHOSTS_GROUP", 0xe0000001) # 224.0.0.1 
+define("INADDR_ALLRTRS_GROUP", 0xe0000002) # 224.0.0.2 
+define("INADDR_MAX_LOCAL_GROUP", 0xe00000ff) # 224.0.0.255 
+
+define_signed("SOCKET_ERROR"    ,-1)
+@}
+
+struct sockaddr_in 
+    public sin_family as USHORT
+    public sin_port as USHORT
+    public sin_addr as uint
+    public sin_zero as ulong
+end
+
+function mk_sockaddr_in() as sockaddr_in
+	dim ret as sockaddr_in
+	ret.sin_family = mk_ushort(0)
+	ret.sin_port =  mk_ushort(0)
+	ret.sin_addr = 0
+	ret.sin_zero = 0
+	return ret
+end
+
+struct SOCKET 
+	public sock as int
+	public function close()
+		if sock != 0-1 then
+			_closesocket(this)
+			sock = 0-1
+		end
+	end
+
+	public function ok() as boolean => sock != 0-1
+end
+
+declare function _socket alias "socket" (af as int, type as int,protocol as int) as SOCKET
+declare function _bind alias "bind" (s as SOCKET,##sockaddr## name as pointer, namelen as int) as int
+declare function _listen alias "listen" (s as SOCKET, backlog as int) as int
+declare function _accept alias "accept" (s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
+declare function _closesocket alias "close" (s as SOCKET) as int
+declare function _htons alias "htons" (hostshort as ulong) as USHORT
+declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
+
+function mksocket_exception(msg as string) as socket_exception => new socket_exception(msg, _errno())
+function get_socket_error() as int => _errno()
+
+class socket_future: future_impl[int]
+	public function do_then()
+
+	end
+end
+
+function _recv_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
+	return null
+end
+
+function _send_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
+	return null
+end
+
+function _accept_async(sock as SOCKET, pasync_sock as ref[socket_future]) as future[SOCKET]
+	return null
+end

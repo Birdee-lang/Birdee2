@@ -1449,6 +1449,43 @@ void Birdee::FunctionAST::ClearLLVMFunction()
 	llvm_func = nullptr;
 
 }
+
+static DIType* PutFunctionType(PrototypeAST* Proto, ResolvedType resolved_type, FunctionAST* ths, FunctionType* ftype)
+{
+	DIType* ret = Proto->GenerateDebugType();
+	//if the function is a member function, put the LLVM functype in memberfunc_typemap
+	if (resolved_type.proto_ast->is_closure && resolved_type.proto_ast->cls)
+	{
+		LLVMHelper::TypePair tynode;
+		tynode.dty = ret;
+		tynode.llvm_ty = ftype->getPointerTo();
+		helper.memberfunc_typemap.insert(std::make_pair(ths, tynode));
+
+	}
+	else
+	{
+		auto itr = helper.typemap.find(resolved_type);
+		if (itr == helper.typemap.end())
+		{
+			LLVMHelper::TypePair tynode;
+			if (resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
+			{//if it is a closure (not a class member function)
+				GenerateClosureTypes(ftype->getPointerTo(), ret, tynode.llvm_ty, tynode.dty, ths->Pos.line);
+			}
+			else
+			{
+				tynode.dty = ret;
+				tynode.llvm_ty = ftype->getPointerTo();
+			}
+			//if the function is a member function, don't put LLVM type in the cache:
+			//because it is not exactly right.
+			assert(tynode.llvm_ty);
+			helper.typemap.insert(std::make_pair(resolved_type, tynode));
+		}
+	}
+	return ret;
+}
+
 DIType* Birdee::FunctionAST::PreGenerate()
 {
 	if (isTemplate())
@@ -1488,6 +1525,11 @@ DIType* Birdee::FunctionAST::PreGenerate()
 				prefix = Proto->GetName();
 			else
 				prefix = link_name;
+			auto old_func = module->getFunction(prefix);
+			if (old_func) {
+				llvm_func = old_func;
+				return PutFunctionType(Proto.get(), resolved_type, this, Proto->GenerateFunctionType());
+			}
 		}
 		else //if the function is an imported function from other module
 		{
@@ -1545,41 +1587,10 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		myfunc->setComdat(module->getOrInsertComdat(llvm_func->getName()));
 		myfunc->setDSOLocal(true);
 	}
-	DIType* ret = Proto->GenerateDebugType();
-	//if the function is a member function, put the LLVM functype in memberfunc_typemap
-	if (resolved_type.proto_ast->is_closure && resolved_type.proto_ast->cls)
-	{
-		LLVMHelper::TypePair tynode;
-		tynode.dty = ret;
-		tynode.llvm_ty = ftype->getPointerTo();
-		helper.memberfunc_typemap.insert(std::make_pair(this, tynode));
-
-	}
-	else
-	{
-		auto itr = helper.typemap.find(resolved_type);
-		if (itr == helper.typemap.end())
-		{
-			LLVMHelper::TypePair tynode;		
-			if (resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
-			{//if it is a closure (not a class member function)
-				GenerateClosureTypes(ftype->getPointerTo(), ret, tynode.llvm_ty, tynode.dty, Pos.line);
-			}
-			else
-			{
-				tynode.dty = ret;
-				tynode.llvm_ty = ftype->getPointerTo();
-			}
-			//if the function is a member function, don't put LLVM type in the cache:
-			//because it is not exactly right.
-			assert(tynode.llvm_ty);
-			helper.typemap.insert(std::make_pair(resolved_type, tynode));
-		}
-	}
-
-
-	return ret;
+	return PutFunctionType(Proto.get(), resolved_type, this, ftype);
 }
+
+
 
 llvm::Function* GetMallocObj()
 {

@@ -124,6 +124,8 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		end
 	end
 
+	public function close() => __del__()
+
 	public function do_await() => event.await()
 	public function __del__()
 		if !is_event_destroyed then
@@ -131,6 +133,11 @@ class future_impl[T] : concurrent.syncdef.future[T]
 			is_event_destroyed = true
 		end
 	end
+end
+
+
+class future_fd[T] : concurrent.syncdef.future[T]
+
 end
 
 function do_create_thread(routine as pointer, arg as pointer) as pointer

@@ -2,16 +2,19 @@ package system.io
 
 
 import concurrent.syncdef:*
-import system.specific.win32.net:*
+import {@"system.specific.win32.net" if get_os_name()=="windows" else "system.specific.unistd.net"@}:*
 import system.io.netdef:*
 import typedptr:sizeof
 import functional.option:*
 
-{@from system_0specific_0win32_0net import *@}
+{@
+if get_os_name()=="windows":
+	from system_0specific_0win32_0net import *
+else:
+	from system_0specific_0unistd_0net import *
+@}
 
-
-
-class socket_t
+class socket
 	public sock as SOCKET
 	public function __init__(sock as SOCKET)
 		this.sock = sock
@@ -80,20 +83,20 @@ class server_bind
 		end
 	end
 
-	public function accept() as socket_t
+	public function accept() as socket
 		dim ret = _accept(sock, pointerof(null), pointerof(null))
 		if !ret.ok() then
 			throw mksocket_exception("Accept error")
 		end
-		return new socket_t(ret)
+		return new socket(ret)
 	end
 
-	public function accept_async() as future[socket_t]
-		return _accept_async(sock, typedptr.mkref[socket_future](addressof(async_sock))).and_then(func (s as option[SOCKET]) as option[socket_t]
+	public function accept_async() as future[socket]
+		return _accept_async(sock, typedptr.mkref[socket_future](addressof(async_sock))).and_then(func (s as option[SOCKET]) as option[socket]
 			if s.is_defined() then
-				return some(new socket_t(s.get()))
+				return some(new socket(s.get()))
 			else
-				return none[socket_t]()
+				return none[socket]()
 			end
 		end)
 	end
@@ -105,57 +108,3 @@ class server_bind
 	public function __del__() => sock.close()
 end
 
-
-
-dim server = new server_bind(10086)
-dim poll = new system.specific.win32.concurrent.poller
-
-dim accept_conn = poll.add(null)
-
-class connection_handler
-
-	private s as socket_t
-	private buf as byte[]
-	private conn as awaitable_wrapper
-
-	public function recv_callback(sz as option[int]) as option[int]
-		println("RECV")
-		dim len = sz.get()
-		if len != 0 then
-			s.send_async(buf, 0, len).await().get()
-			poll.replace(conn, this.recv())
-		else
-			s.close()
-			poll.remove(conn)
-			conn.fut.close()
-		end
-		return sz
-	end
-
-	public function set_conn(_conn as awaitable_wrapper)
-		conn = _conn
-	end
-
-	public function __init__(_s as socket_t)
-		s = _s
-		buf = new byte * 10
-	end
-
-	public function recv() as awaitable => s.recv_async(buf,0,10).and_then(this.recv_callback)
-end
-
-
-func accept_callback(sock as option[socket_t]) as option[int]
-	println("ACCEPT")
-	dim conn_handler = new connection_handler(sock.get())
-	dim conn = poll.add(conn_handler.recv())
-	conn_handler.set_conn(conn)
-	poll.replace(accept_conn, server.accept_async().and_then(accept_callback))
-	return some(0)
-end
-accept_conn.fut = server.accept_async().and_then(accept_callback)
-
-while true
-	poll.await(0-1)
-end
-server.close()

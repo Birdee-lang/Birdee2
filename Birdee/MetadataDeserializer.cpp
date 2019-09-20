@@ -362,6 +362,16 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	const json& json_funcs = json_cls["funcs"];
 	BirdeeAssert(json_funcs.is_array(), "Expected an JSON array");
 	bool is_virtual = false;
+
+	if (ret->template_instance_args == nullptr) //if we have already put the argument, we can skip
+	{
+		auto templ_args = json_cls.find("template_arguments");
+		if (templ_args != json_cls.end())
+		{
+			ret->template_instance_args = unique_ptr<vector<TemplateArgument>>(BuildTemplateArgsFromJson(*templ_args));
+		}
+	}
+
 	for (auto& func : json_funcs)
 	{
 		json json_func;
@@ -377,8 +387,10 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
 			funcdef->template_param->mod = &mod;
 			funcdef->template_param->source.set(templ->get<string>());
-			//fix-me : do we really need this line?
-			//cu.imported_func_templates.push_back(funcdef.get());
+			//if the class is a template instance, the function will be generated via class_template->Generate()
+			//so we don't need to put it into imported_func_templates
+			if (!ret->isTemplateInstance()) 
+				cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
 			BuildAnnotationsOnTemplate(func, funcdef->template_param->annotation, mod);
@@ -398,14 +410,6 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 		to_run_phase0.push_back(ret);
 	else
 		ret->done_phase = 1;
-	if (ret->template_instance_args == nullptr) //if we have already put the argument, we can skip
-	{
-		auto templ_args = json_cls.find("template_arguments");
-		if (templ_args != json_cls.end())
-		{
-			ret->template_instance_args = unique_ptr<vector<TemplateArgument>>(BuildTemplateArgsFromJson(*templ_args));
-		}
-	}
 }
 
 void PreBuildClassFromJson(const json& cls, const string& module_name, ImportedModule& mod)

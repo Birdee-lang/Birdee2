@@ -10,11 +10,7 @@ import hash:hash_set
 import typedptr:ref
 import system.io.netdef:*
 
-# fix me, make sure it is a little endian arch 
-struct USHORT
-	public lo as byte
-	public hi as byte
-end
+# should include ws2_32.lib
 
 @init_script
 {@
@@ -220,13 +216,6 @@ if WSAStartup({@set_int(2 | 2<<8)@}, vWSAData.get_raw()) != 0 then
 end
 
 function get_socket_error() as int => WSAGetLastError()
-
-function mk_ushort(v as int) as USHORT
-	dim ret as USHORT
-	ret.lo = v & {@set_int(0xff)@}
-	ret.hi = (v & {@set_int(0xff00)@}) / 256
-	return ret
-end
 
 struct sockaddr_in 
     public sin_family as USHORT
