@@ -3116,7 +3116,9 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 	else if (Op == tok_pointer_of)
 	{
 		auto val = arg->Generate();
-		if (arg->resolved_type.class_ast->is_interface)
+		if (arg->resolved_type.type == tok_class 
+			&& arg->resolved_type.class_ast
+			&& arg->resolved_type.class_ast->is_interface)
 		{
 			val = builder.CreateExtractValue(val, 1);
 		}

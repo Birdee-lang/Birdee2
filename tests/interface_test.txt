@@ -1,18 +1,19 @@
 declare function getchar() as int
 
+{@from bdassert import bdassert@}
+
 class bird
 	@virtual
-	public func say(a as string) as int
-		println("bird"+a)
-		return 1
+	public func say(a as string) as string
+		return "bird says " + a
 	end
 
-	public abstract func speak(a as string) as int
+	public abstract func speak(a as string) as string
 end
 
 interface itest
-	public abstract func a()
-	public abstract func b(i as int) as int
+	public abstract func a() as string
+	public abstract func b(i as int) as string
 end
 
 interface itest2 : itest
@@ -25,44 +26,38 @@ end
 
 class quail : bird impl itest
 	@virtual
-	public func say(a as string) as int
-		println("quail"+a)
-		return 2
+	public func say(a as string) as string
+		return "quail says " + a
 	end
 
-	public func speak(a as string) as int
-		println("pure virtual quail " + a)
-		return 3
+	public func speak(a as string) as string
+		return "pure virtual quail speaks " + a
 	end
 
-	public func a()
-		println("quail itest a")
+	public func a() as string
+		return "quail itest a"
 	end
 
-	public func b(i as int) as int
-		println("quail itest b " + int2str(i))
-		return 5
+	public func b(i as int) as string
+		return "quail itest b " + int2str(i)
 	end
 end
 
 class sparrow impl itest2, itest3
-	public func a()
-		println("sparrow itest a")
+	public func a() as string
+		return "sparrow itest a"
 	end
 
-	public func b(i as int) as int
-		println("sparrow itest b " + int2str(i))
-		return 5
+	public func b(i as int) as string
+		return "sparrow itest b " + int2str(i)
 	end
 
 	public func c(i as int) as string
-		println("sparrow itest c " + int2str(i))
-		return "iterface c"
+		return "sparrow itest2 c " + int2str(i)
 	end
 
 	public func d(i as int) as string
-		println("sparrow itest3 d " + int2str(i))
-		return "iterface d"
+		return "sparrow itest3 d " + int2str(i)
 	end
 end
 
@@ -74,31 +69,28 @@ dim it_s as itest = s
 dim it2_s as itest2 = s
 dim it3_s as itest3 = s
 
-println(int2str(b.say("1")))
-println(int2str(b.speak("1")))
+{@bdassert('b.say("1") == "quail says 1"')@}
+{@bdassert('b.speak("1") == "pure virtual quail speaks 1"')@}
 
-it.a()
-println(int2str(it.b(2)))
+{@bdassert('it.a() == "quail itest a"')@}
+{@bdassert('it.b(2) == "quail itest b 2"')@}
 
-it_s.a()
-println(int2str(it_s.b(3)))
+{@bdassert('it_s.a() == "sparrow itest a"')@}
+{@bdassert('it_s.b(3) == "sparrow itest b 3"')@}
 
-it2_s.a()
-println(int2str(it2_s.b(4)))
-println(it2_s.c(4))
+{@bdassert('it2_s.a() == "sparrow itest a"')@}
+{@bdassert('it2_s.b(4) == "sparrow itest b 4"')@}
+{@bdassert('it2_s.c(4) == "sparrow itest2 c 4"')@}
 
-println(it3_s.d(5))
-
-getchar()
+{@bdassert('it3_s.d(5) == "sparrow itest3 d 5"')@}
 
 class big_sparrow : sparrow
-	public func a()
-		println("big sparrow itest a")
+	public func a() as string
+		return "big sparrow itest a"
 	end
 
 	public func c(i as int) as string
-		println("big sparrow itest c " + int2str(i))
-		return "iterface c"
+		return "big sparrow itest2 c " + int2str(i)
 	end
 end
 
@@ -108,16 +100,16 @@ it_s = bigs
 it2_s = bigs
 it3_s = bigs
 
-s.a()
-println(int2str(s.b(6)))
+{@bdassert('s.a() == "big sparrow itest a"')@}
+{@bdassert('s.b(6) == "sparrow itest b 6"')@}
 
-it_s.a()
-println(int2str(it_s.b(7)))
+{@bdassert('it_s.a() == "big sparrow itest a"')@}
+{@bdassert('it_s.b(7) == "sparrow itest b 7"')@}
 
-it2_s.a()
-println(int2str(it2_s.b(8)))
-println(it2_s.c(8))
+{@bdassert('it2_s.a() == "big sparrow itest a"')@}
+{@bdassert('it2_s.b(8) == "sparrow itest b 8"')@}
+{@bdassert('it2_s.c(8) == "big sparrow itest2 c 8"')@}
 
-println(it3_s.d(9))
+{@bdassert('it3_s.d(9) == "sparrow itest3 d 9"')@}
 
-getchar()
+println("interface test ok")

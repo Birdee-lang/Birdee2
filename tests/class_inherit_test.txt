@@ -3,9 +3,8 @@ import unsafe:static_cast
 @init_script
 {@
 import bdutils
+from bdassert import bdassert
 @}
-
-println("Hello world")
 
 declare function getchar() as int
 
@@ -93,44 +92,30 @@ end
 dim ts = new TestFather[int, double, boolean]:create()
 dim tb as TestBase[int] = ts
 
-println(int2str(tb.base1))
-println(int2str(ts.base1))
-println(int2str(ts.base2))
-println(ts.basestr)
+{@bdassert('tb.base1 == 555')@}
+{@bdassert('ts.base1 == 555')@}
+{@bdassert('ts.base2 == 987')@}
+{@bdassert('ts.basestr == "truly base str"')@}
 
 ts = static_cast[TestFather[int, double, boolean]](tb)
 
-println("=============")
+{@bdassert('ts.getbase1() == 555')@}
+{@bdassert('ts.getbase2() == 987')@}
+{@bdassert('ts.c')@}
 
-println(int2str(ts.getbase1()))
-println(int2str(ts.getbase2()))
+{@bdassert('ts.str == "test_string_base"')@}
+{@bdassert('!ts.cc')@}
+{@bdassert('ts.sstr == "test_string_son"')@}
 
-if ts.c then
-	println("test AA")
-else
-	println("test BB")
-end
-println(ts.str)
-if ts.cc then
-	println("test AAAAA")
-else
-	println("test BBBBB")
-end
-println(ts.sstr)
+{@bdassert('ts.add(10) == 60')@}
+{@bdassert('ts.add2(10) == 1057')@}
+{@bdassert('ts.add12(10) == 110')@}
+{@bdassert('ts.add22(10) == 117')@}
 
-println(int2str(ts.add(10)))
-println(int2str(ts.add2(10)))
-println(int2str(ts.add12(10)))
-println(int2str(ts.add22(10)))
+{@bdassert('ts.pubget() == 2689')@}
 
-println(int2str(ts.pubget()))
-
-println("=============")
-
-println(int2str(ts.pa))
-println(int2str(ts.paa))
-println(ts.str)
-println(ts.sstr)
+{@bdassert('ts.pa == 99')@}
+{@bdassert('ts.paa == 999')@}
 
 ts.pa = 88
 ts.paa = 888
@@ -140,43 +125,39 @@ ts.sstr = "base str after modified"
 ts.base1 = 1999
 ts.basestr = "truly base str after modified"
 
-println(int2str(ts.pa))
-println(int2str(ts.paa))
-println(ts.str)
-println(ts.sstr)
-println(int2str(ts.base1))
-println(ts.basestr)
+{@bdassert('ts.pa == 88')@}
+{@bdassert('ts.paa == 888')@}
+{@bdassert('ts.str == "son str after modified"')@}
+{@bdassert('ts.sstr == "base str after modified"')@}
+{@bdassert('ts.base1 == 1999')@}
+{@bdassert('ts.basestr == "truly base str after modified"')@}
 
-println(int2str(ts.pubget()))
-println(typeof(ts).get_name())
+{@bdassert('ts.pubget() == 4133')@}
+{@bdassert('typeof(ts).get_name() == "class_inherit_test.TestFather[int,double,boolean]"')@}
 
 class bird
 	@virtual
-	public func say(a as string) as int
-		println("bird"+a)
-		return 1
+	public func say(a as string) as string
+		return "bird says " + a
 	end
 
-	public abstract func speak(a as string) as int
+	public abstract func speak(a as string) as string
 end
 
 class quail : bird
 	@virtual
-	public func say(a as string) as int
-		println("quail"+a)
-		return 2
+	public func say(a as string) as string
+		return "quail says " + a
 	end
 
-	public func speak(a as string) as int
-		println("pure virtual quail " + a)
-		return 3
+	public func speak(a as string) as string
+		return "pure virtual quail speaks " + a
 	end
 end
 
 class swallow : bird
-	public func speak(a as string) as int
-		println("pure virtual swallow " + a)
-		return 4
+	public func speak(a as string) as string
+		return "pure virtual swallow speaks " + a
 	end
 end
 
@@ -184,8 +165,13 @@ dim a = new quail
 dim s = new swallow
 dim b as bird = a
 dim d as bird = s
-b.say("asd")
-b.say("test")
-d.say("test2")
-d.speak("speak test")
-println("End")
+
+dim str as string
+str = b.say("test1")
+{@bdassert('str == "quail says test1"')@}
+str = d.say("test2")
+{@bdassert('str == "bird says test2"')@}
+str = d.speak("test3")
+{@bdassert('str == "pure virtual swallow speaks test3"')@}
+
+println("inherit test ok")

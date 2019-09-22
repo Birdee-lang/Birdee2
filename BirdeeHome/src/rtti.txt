@@ -17,11 +17,9 @@ t1=bdutils.get_func_type_templ_at(0)
 t2=bdutils.get_func_type_templ_at(1)
 require_(  (t1.is_class(), lambda: "T1 must be a class"),
 	(t2.is_class(), lambda: "T2 must be a class") )
-bdutils.set_stmt('''
-	get_type_info[T1]()
-	get_type_info[T2]()
-	return static_cast[T1](ptr)
-''')
+bdutils.set_stmt('''get_type_info[T1]()''')
+bdutils.set_stmt('''get_type_info[T2]()''')
+bdutils.set_stmt('''return static_cast[T1](ptr)''')
 @}
 end
 
