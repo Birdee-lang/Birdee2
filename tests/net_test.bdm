@@ -20,7 +20,28 @@ function threading_server()
 	end
 end
 
-threading_server()
+#threading_server()
+
+function threading_server_with_poll()
+	dim server = new server_bind(10086)
+	while true
+		dim sok = server.accept_async().await().get()
+		#println("ACCEPT")
+		new thread(func(s as socket)
+			dim buf = new byte * 10
+			while true
+				dim len = s.recv_async(buf, 0, 10).await().get()
+				#println("RECV")
+				if len == 0 then
+					s.close()
+					break
+				end
+				s.send_async(buf, 0, len).await()
+			end
+		end, sok)
+	end
+end
+threading_server_with_poll()
 
 ##
 dim server = new server_bind(10086)

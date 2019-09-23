@@ -66,10 +66,9 @@ class server_bind
 		end
 		
 	    dim sin = mk_sockaddr_in()
-		sin.sin_family = mk_ushort({@AF_INET()@})
-		dim short_port = mk_ushort(port)
-		sin.sin_port.lo = short_port.hi
-		sin.sin_port.hi = short_port.lo
+		sin.sin_family = {@AF_INET()@}
+		dim short_port = _htons(port)
+		sin.sin_port = short_port
 		sin.sin_addr = {@INADDR_ANY()@} 
 		if _bind(sock, addressof(sin), sizeof[sockaddr_in]()) == {@SOCKET_ERROR()@} then
 			dim err = get_socket_error()

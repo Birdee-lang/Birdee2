@@ -35,6 +35,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.value("FUNC", tok_func)
 		.value("VOID", tok_void)
 		.value("BYTE", tok_byte)
+		.value("SHORT", tok_short)
 		.value("INT", tok_int)
 		.value("LONG", tok_long)
 		.value("ULONG", tok_ulong)

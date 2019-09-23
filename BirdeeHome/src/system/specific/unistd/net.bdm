@@ -8,7 +8,8 @@ import system.specific.unistd.file:_errno
 import concurrent.syncdef:*
 import concurrent.sync:*
 import functional.option:*
-import system.specific.unistd.concurrent:future_impl
+import system.specific.unistd.concurrent:future_fd
+import system.specific.unistd.file:fcntl
 
 @init_script
 {@
@@ -119,17 +120,19 @@ define("INADDR_MAX_LOCAL_GROUP", 0xe00000ff) # 224.0.0.255
 define_signed("SOCKET_ERROR"    ,-1)
 @}
 
+{@from system_0specific_0unistd_0file import *@}
+
 struct sockaddr_in 
-    public sin_family as USHORT
-    public sin_port as USHORT
+    public sin_family as short
+    public sin_port as short
     public sin_addr as uint
     public sin_zero as ulong
 end
 
 function mk_sockaddr_in() as sockaddr_in
 	dim ret as sockaddr_in
-	ret.sin_family = mk_ushort(0)
-	ret.sin_port =  mk_ushort(0)
+	ret.sin_family = 0
+	ret.sin_port = 0
 	ret.sin_addr = 0
 	ret.sin_zero = 0
 	return ret
@@ -152,7 +155,7 @@ declare function _bind alias "bind" (s as SOCKET,##sockaddr## name as pointer, n
 declare function _listen alias "listen" (s as SOCKET, backlog as int) as int
 declare function _accept alias "accept" (s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
 declare function _closesocket alias "close" (s as SOCKET) as int
-declare function _htons alias "htons" (hostshort as ulong) as USHORT
+declare function _htons alias "htons" (hostshort as short) as short
 declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
@@ -160,20 +163,67 @@ declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as poi
 function mksocket_exception(msg as string) as socket_exception => new socket_exception(msg, _errno())
 function get_socket_error() as int => _errno()
 
-class socket_future: future_impl[int]
-	public function do_then()
-
-	end
-end
-
+{@from system_0specific_0unistd_0concurrent import*@}
 function _recv_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
-	return null
+	return new future_fd(sock.sock, {@POLLIN()@}).and_then(func (revent as option[int]) as option[int]
+		if (revent.get() & {@POLLIN()@}) != 0 then
+			dim retlen = _recv(sock, addressof(buf[offset]), len, 0)
+			if retlen != len then
+				dim err = get_socket_error()
+				if err != 0 then
+					throw mksocket_exception("Send error")
+				end
+			end
+			return some(retlen)
+		else
+			return none[int]()
+		end
+	end)
 end
 
 function _send_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
-	return null
+	return new future_fd(sock.sock, {@POLLOUT()@}).and_then(func (revent as option[int]) as option[int]
+		if (revent.get() & {@POLLOUT()@}) != 0 then
+			dim retlen = _send(sock, addressof(buf[offset]), len, 0)
+			if retlen != len then
+				dim err = get_socket_error()
+				if err != 0 then
+					throw mksocket_exception("Send error")
+				end
+			end
+			return some(retlen)
+		else
+			return none[int]()
+		end
+	end)
+end
+
+
+class socket_future:future_fd
+
 end
 
 function _accept_async(sock as SOCKET, pasync_sock as ref[socket_future]) as future[SOCKET]
-	return null
+	dim async_sock = pasync_sock.get()
+	if async_sock === null then
+		dim status = fcntl(sock.sock, {@F_SETFL()@}, fcntl(sock.sock, {@F_GETFL()@}, 0) | {@O_NONBLOCK()@})
+		if status == 0-1 then
+			throw new runtime_exception("fcntl error, code = " +  int2str(_errno()))
+		end
+		async_sock = new socket_future(sock.sock, {@POLLIN()@})
+		pasync_sock.set(async_sock)
+	end
+
+	return async_sock.and_then(func (revent as option[int]) as option[SOCKET]
+		if (revent.get() & {@POLLIN()@}) != 0 then
+			dim ret = _accept(sock, pointerof(null), pointerof(null))
+			if !ret.ok() then
+				throw mksocket_exception("Accept error")
+			end
+			return some(ret)	
+		else
+			return none[SOCKET]()
+		end
+	end)
+
 end

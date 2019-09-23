@@ -245,6 +245,7 @@ namespace Birdee {
 				|| type == tok_long
 				|| type == tok_ulong
 				|| type == tok_uint
+				|| type == tok_short
 				|| type == tok_byte;
 		}
 		bool isSigned()
@@ -258,6 +259,7 @@ namespace Birdee {
 				|| type == tok_long
 				|| type == tok_ulong
 				|| type == tok_uint
+				|| type == tok_short
 				|| type == tok_float
 				|| type == tok_double
 				|| type == tok_byte;
@@ -418,6 +420,9 @@ namespace Birdee {
 			{
 			case tok_byte:
 				os << "const byte " << Val.v_int ;
+				break;
+			case tok_short:
+				os << "const short " << Val.v_int;
 				break;
 			case tok_int:
 				os << "const int " << Val.v_int ;

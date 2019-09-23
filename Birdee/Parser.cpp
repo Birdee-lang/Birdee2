@@ -62,6 +62,7 @@ namespace Birdee
 		{ tok_float, "float" },
 		{ tok_double, "double" },
 		{ tok_boolean, "boolean" },
+		{ tok_short, "short" },
 		{ tok_pointer,"pointer" },
 		};
 		return tok_names[tok];
@@ -233,7 +234,7 @@ static void BasicBlockCheckUnknownToken(std::initializer_list<Token> expect)
 	throw CompileError(msg);
 }
 
-static std::unordered_set<Token> basic_types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
+static std::unordered_set<Token> basic_types = { tok_short,tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
 //parse basic type, may get the array type if there is a [ after GeneralIdentifierType (QualifiedIdentifierType/IdentifierType)
 std::unique_ptr<Type> ParseBasicType()
 {

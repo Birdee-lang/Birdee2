@@ -4,19 +4,6 @@ package system.io
 from bdconst import *
 @}
 
-# fix me, make sure it is a little endian arch 
-struct USHORT
-	public lo as byte
-	public hi as byte
-end
-
-function mk_ushort(v as int) as USHORT
-	dim ret as USHORT
-	ret.lo = v & {@set_int(0xff)@}
-	ret.hi = (v & {@set_int(0xff00)@}) / 256
-	return ret
-end
-
 class socket_exception  : runtime_exception
 	public error_code as int
 

@@ -865,6 +865,8 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 		return make_unique<CastNumberExpr<tok_double, typeto>>(std::move(val),pos);
 	case tok_byte:
 		return make_unique<CastNumberExpr<tok_byte, typeto>>(std::move(val), pos);
+	case tok_short:
+		return make_unique<CastNumberExpr<tok_short, typeto>>(std::move(val), pos);
 	}
 	ThrowCastError(target, val->resolved_type, pos);
 	return nullptr;
@@ -945,6 +947,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 			return fix_type(tok_double);
 		case tok_byte:
 			return fix_type(tok_byte);
+		case tok_short:
+			return fix_type(tok_short);
 		}
 	}
 #undef fix_type
@@ -953,7 +957,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 }
 
 static unordered_map<Token, int> promotion_map = {
-{ tok_byte,-1 },
+{ tok_byte,-2 },
+{ tok_short,-1 },
 { tok_int,0 },
 {tok_uint,1},
 {tok_long,2},
@@ -3189,6 +3194,7 @@ If usage vararg name is "", match the closest vararg
 				else
 					throw CompileError(Pos, "The left vaule of the assignment is not an variable");
 			}
+			CompileAssert(LHS->GetLValue(true), Pos, "The left side of = must be an LValue");
 			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;

@@ -3,6 +3,12 @@ package concurrent
 import functional.option:*
 import unsafe
 
+struct awaitable_handle
+	public fd as int
+	public events as int
+	public revents as int
+end
+
 class awaitable
 	public abstract function do_then()
 	public abstract function do_await()
@@ -42,7 +48,10 @@ class future_then[T, T2] : future[T2]
 	end
 	public function fail() => impl.fail()
 	public function do_await() => impl.do_await()
-	public function get_native_handle() as pointer => impl.get_native_handle()
+	public function get_native_handle() as pointer
+		return impl.get_native_handle()
+	end
+
 	public function do_then()
 		impl.do_then()
 		data = thenfunc(impl.get_result())

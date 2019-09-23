@@ -224,6 +224,9 @@ json ConvertTypeToIndex(ResolvedType& type)
 	case tok_byte:
 		ret["base"] = -10;
 		break;
+	case tok_short:
+		ret["base"] = -11;
+		break;
 	case tok_class:
 		ret["base"] = ConvertClassToIndex(type.class_ast);
 		break;

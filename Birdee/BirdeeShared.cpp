@@ -64,6 +64,7 @@ namespace Birdee
 	{ "byte",tok_byte },
 	{ "ulong",tok_ulong},
 	{ "uint",tok_uint},
+	{ "short", tok_short},
 	{ "float",tok_float},
 	{ "double",tok_double},
 	{"package",tok_package},

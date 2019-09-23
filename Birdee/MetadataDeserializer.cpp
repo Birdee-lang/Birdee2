@@ -108,6 +108,9 @@ ResolvedType ConvertIdToType(const json& type)
 	case -10:
 		ret.type = tok_byte;
 		break;
+	case -11:
+		ret.type = tok_short;
+		break;
 	default:
 		if (idtype < 0)
 		{

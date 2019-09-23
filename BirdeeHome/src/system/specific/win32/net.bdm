@@ -197,7 +197,7 @@ declare function _listen alias "listen" (s as SOCKET, backlog as int) as int
 declare function WSAGetLastError() as int
 declare function _accept alias "accept" (s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
 declare function _closesocket alias "closesocket" (s as SOCKET) as int
-declare function _htons alias "htons" (hostshort as ulong) as USHORT
+declare function _htons alias "htons" (hostshort as short) as short
 declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function WSAStartup(wVersionRequested as int, lpWSAData as pointer) as int
@@ -218,16 +218,16 @@ end
 function get_socket_error() as int => WSAGetLastError()
 
 struct sockaddr_in 
-    public sin_family as USHORT
-    public sin_port as USHORT
+    public sin_family as short
+    public sin_port as short
     public sin_addr as uint
     public sin_zero as ulong
 end
 
 function mk_sockaddr_in() as sockaddr_in
 	dim ret as sockaddr_in
-	ret.sin_family = mk_ushort(0)
-	ret.sin_port =  mk_ushort(0)
+	ret.sin_family = 0
+	ret.sin_port = 0
 	ret.sin_addr = 0
 	ret.sin_zero = 0
 	return ret

@@ -461,8 +461,16 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		string name;
 		if (type.index_level > 1 || type.type == tok_class)
 		{ //bypass a "bug" in llvm: cannot getName from debugtype for some long struct name
-			assert(mybase->getPointerElementType()->isStructTy());
-			name = static_cast<StructType*>(mybase->getPointerElementType())->getStructName();
+			if (type.type == tok_class && type.class_ast->is_struct)
+			{
+				assert(mybase->isStructTy());
+				name = static_cast<StructType*>(mybase)->getStructName();
+			}
+			else
+			{
+				assert(mybase->getPointerElementType()->isStructTy());
+				name = static_cast<StructType*>(mybase->getPointerElementType())->getStructName();
+			}
 		}
 		else
 			name= mydtype->getName();
@@ -474,6 +482,10 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	case tok_boolean:
 		base = llvm::Type::getInt1Ty(context);
 		dtype = DBuilder->createBasicType("boolean", 1, dwarf::DW_ATE_boolean);
+		break;
+	case tok_short:
+		base = llvm::Type::getInt16Ty(context);
+		dtype = DBuilder->createBasicType("short", 16, dwarf::DW_ATE_signed);
 		break;
 	case tok_uint:
 		base = llvm::Type::getInt32Ty(context);
@@ -2170,6 +2182,9 @@ Value * Birdee::NumberExprAST::Generate()
 	case tok_byte:
 		return ConstantInt::get(context, APInt(8, (uint64_t)Val.v_int, true));
 		break;
+	case tok_short:
+		return ConstantInt::get(context, APInt(16, (uint64_t)Val.v_int, true));
+		break;
 	case tok_int:
 		return ConstantInt::get(context, APInt(32, (uint64_t)Val.v_int, true));
 		break;
@@ -2219,7 +2234,8 @@ llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 	unique_ptr<ExprAST>*dummy;
 	if (checkHas)//if expr is moved, it is either a template instance or a overloaded call to __getitem__
 		return (Expr==nullptr || isTemplateInstance(dummy)) ? nullptr: (llvm::Value *)1 ;
-	assert(Expr);
+	if(!Expr)
+		return nullptr;
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();
