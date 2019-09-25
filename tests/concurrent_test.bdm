@@ -27,7 +27,8 @@ t3.join()
 println("Lock testing ok")
 
 dim v1 = 1
-dim result = create_future[int]().and_then(func (r as option[int]) as option[int]
+dim result = create_future[int]()
+dim parsed_result = result.and_then(func (r as option[int]) as option[int]
 	v1 = v1 + 1
 	println("1st then")
 	return r
@@ -43,7 +44,7 @@ new thread(function ()
 	result.success(32)
 end)
 
-result.await()
+parsed_result.await()
 {@bdassert("v1==3")@}
 println("future testing ok")
 

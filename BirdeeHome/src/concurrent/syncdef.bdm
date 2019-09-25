@@ -44,7 +44,7 @@ class future_then[T, T2] : future[T2]
 
 	public function preset(data as T2) => this.data = some(data)
 	public function success(data as T2)
-		# fix-me: throw an exception here
+		throw new runtime_exception("do not call future_then.success")
 	end
 	public function fail() => impl.fail()
 	public function do_await() => impl.do_await()

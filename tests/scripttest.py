@@ -42,6 +42,28 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+assert_fail('''
+struct A
+	public b as int
+end
+func fff() as A 
+	dim v as A
+	return v
+end
+fff().b=1
+''')
+
+assert_ok('''
+struct A
+	public b as int
+end
+func fff() as A 
+	dim v as A
+	return v
+end
+dim v = fff().b
+''')
+
 assert_generate_ok('''
 class meme
 	private func say()=>println("hi")

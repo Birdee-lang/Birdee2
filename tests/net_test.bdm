@@ -1,6 +1,7 @@
 import system.io.net:*
 import concurrent.threading:*
-
+import functional.option:*
+import concurrent.syncdef:*
 
 function threading_server()
 	dim server = new server_bind(10086)
@@ -41,11 +42,11 @@ function threading_server_with_poll()
 		end, sok)
 	end
 end
-threading_server_with_poll()
+#threading_server_with_poll()
 
-##
+
 dim server = new server_bind(10086)
-dim poll = new system.specific.win32.concurrent.poller
+dim poll = new system.specific.unistd.concurrent.poller
 
 dim accept_conn = poll.add(null)
 
@@ -96,4 +97,3 @@ while true
 	poll.await(0-1)
 end
 server.close()
-##
