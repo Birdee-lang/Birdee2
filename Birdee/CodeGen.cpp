@@ -2384,7 +2384,8 @@ int Birdee::MemberExprAST::GenerateObj()
 	int field_offset = 0;
 	if (Obj)
 	{
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
+		if (Obj->resolved_type.index_level == 0 
+			&& Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
 		{
 			llvm_obj = Obj->GetLValue(false);
 			if (!llvm_obj)
@@ -2393,7 +2394,8 @@ int Birdee::MemberExprAST::GenerateObj()
 					llvm_obj = thisexpr->GeneratePtr();
 			}
 		}
-		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
+		else if (Obj->resolved_type.index_level == 0 &&
+			Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
 		{
 			auto casade_llvm_obj = Obj->Generate();
 			ClassAST* curcls = Obj->resolved_type.class_ast;

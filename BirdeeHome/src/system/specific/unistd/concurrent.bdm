@@ -23,7 +23,7 @@ declare function pthread_mutex_trylock(mutex as pointer) as int
 declare function pthread_mutex_unlock(mutex as pointer) as int
 declare function pthread_join(thread as pointer, retval as pointer) as int
 {@
-#assert(get_os_name()=='linux' and get_target_bits()==64)
+assert(get_os_name()=='linux' and get_target_bits()==64)
 @}
 
 struct mutex_t
@@ -290,13 +290,12 @@ class poller
 			handles.push_back(pfd)
 			itr.forward()
 		end
-		dim pollret = poll(pointerof(handles.buffer()),handles.size(),timeout)
+		dim pollret = poll(addressof(handles.buffer()[0]),handles.size(),timeout)
 		if pollret==0 then
 			return null
 		else if pollret<0 then
 			throw new wait_exception(_errno())
 		end
-
 		dim ret_tuple = get_from_cache()
 		dim ret = ret_tuple.v0
 		if ret === null then

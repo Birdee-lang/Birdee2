@@ -2,6 +2,7 @@ import system.io.net:*
 import concurrent.threading:*
 import functional.option:*
 import concurrent.syncdef:*
+import concurrent.sync:get_poller
 
 function threading_server()
 	dim server = new server_bind(10086)
@@ -46,7 +47,7 @@ end
 
 
 dim server = new server_bind(10086)
-dim poll = new system.specific.unistd.concurrent.poller
+dim poll = get_poller()
 
 dim accept_conn = poll.add(null)
 
