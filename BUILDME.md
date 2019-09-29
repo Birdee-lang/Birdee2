@@ -46,7 +46,7 @@ export BIRDEE_HOME=/home/menooker/Birdee2/BirdeeHome/
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$BIRDEE_HOME/lib
 ```
 
-to your /etc/profile or ~/.bashrc.
+to your `/etc/profile` or `~/.bashrc`.
 
 Finally, make Birdee!
 
@@ -89,7 +89,7 @@ If you have downloaded pre-compiled LLVM,
 
 First download LLVM dynamic library and headers for Windows built by me.
 
- * LLVM-shared-build [BaiduYun, share code: 8dwy](https://pan.baidu.com/s/1Z-K-jpcmWw6m5in8SNQjJw) [GoogleDrive](https://drive.google.com/open?id=1RufaOQCWK1hiiWXOlQJhk7tSZUSfLWO0)
+ * LLVM-shared-build [BaiduYun, share code: jq4r](https://pan.baidu.com/s/1XVp3FPUQ_kCXpeFLRicN6g) [GoogleDrive](https://drive.google.com/open?id=1dnWGEZI1VUnZrLRCpcXCD7Uvo6QTob2A)
  * Headers for Windows x64 (The same as in the above section) [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
 
 Then,
