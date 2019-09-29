@@ -213,7 +213,7 @@ class future_fd : concurrent.syncdef.future[int]
 end
 
 
-class poller
+class _poller
 	private fut_set as hash_set[awaitable_wrapper]
 	private futures as vector[awaitable]
 	private handles as vector[pollfd]

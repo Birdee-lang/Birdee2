@@ -102,8 +102,29 @@ class server_bind
 
 	public function close()
 		sock.close()
-		async_sock.__del__()
+		if async_sock!== null then
+			async_sock.__del__()
+		end
 	end
 	public function __del__() => sock.close()
 end
 
+function connect_to(ip as string, port as short) as socket
+    dim s = _socket({@AF_INET()@}, {@SOCK_STREAM()@}, {@IPPROTO_TCP()@})
+    if !s.ok() then
+        throw mksocket_exception("Create socket error")
+    end
+
+    dim sin = mk_sockaddr_in()
+	sin.sin_family = {@AF_INET()@}
+	sin.sin_port = _htons(port)
+	sin.sin_addr = _inet_addr("127.0.0.1".get_raw())
+
+    dim result = _connect(s, addressof(sin), sizeof[sockaddr_in]())
+    if result == {@SOCKET_ERROR()@} then
+		dim err = get_socket_error()
+		s.close()
+		throw new socket_exception("Connect error", err)
+	end
+	return new socket(s)
+end

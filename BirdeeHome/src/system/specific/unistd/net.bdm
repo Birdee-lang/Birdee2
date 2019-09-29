@@ -159,6 +159,7 @@ declare function _htons alias "htons" (hostshort as short) as short
 declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
+declare function _inet_addr alias "inet_addr" (name as pointer) as ulong
 
 function mksocket_exception(msg as string) as socket_exception => new socket_exception(msg, _errno())
 function get_socket_error() as int => _errno()

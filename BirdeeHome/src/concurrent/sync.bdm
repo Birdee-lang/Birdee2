@@ -25,7 +25,11 @@ end
 
 function create_future[T]() as future[T] => new future_impl[T]()
 
-function get_poller() as poller => new poller
+class poller : _poller
+
+end
+
+function create_poller() as poller => new poller
 
 function await_multi[T](futures as future[T][], timeout as int) as future[T]
 	dim ret = _await_multiple_awaitables(ptr_cast[awaitable[]](futures), 0, futures.length(), timeout)

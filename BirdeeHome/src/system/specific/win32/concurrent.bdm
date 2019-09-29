@@ -142,7 +142,7 @@ function _await_multiple_awaitables(aw as awaitable[],offset as uint, len as uin
 	return _await_multiple_awaitables_with_buffer(aw, offset, len, new pointer * len, timeout)
 end
 
-class poller
+class _poller
 	private fut_set as hash_set[awaitable_wrapper]
 	private futures as vector[awaitable]
 	private handles as pointer[]

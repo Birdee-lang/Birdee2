@@ -202,6 +202,7 @@ declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, fl
 declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
 declare function WSAStartup(wVersionRequested as int, lpWSAData as pointer) as int
 declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
+declare function _inet_addr alias "inet_addr" (name as pointer) as ulong
 declare function WSAEventSelect(s as SOCKET,hEventObject as pointer, lNetworkEvents as long) as int
 declare function WSARecv(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, lpFlags as pointer##LPDWORD##, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
 declare function WSASend(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, Flags as int, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
