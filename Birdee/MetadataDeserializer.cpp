@@ -559,7 +559,7 @@ void PreBuildOrphanClassFromJson(const json& cls,
 	}
 }
 
-void BuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
+void PreBuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
 {
 	BirdeeAssert(funcs.is_array(), "Expeccted a JSON array");
 	//we use a two-pass approach: first pass, add placeholder
@@ -585,7 +585,15 @@ void BuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
 		idx_to_proto.push_back(protoptr);
 		idx++;
 	}
-	idx = 0;
+}
+
+void BuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
+{
+	BirdeeAssert(funcs.is_array(), "Expeccted a JSON array");
+	//we use a two-pass approach: first pass, add placeholder
+	//second pass, put real data into placeholder
+	//Why bother the two-pass approach? func_ty0 may reference func_ty1. This may cause some problems.
+	int idx = 0;
 	for (auto& func : funcs)
 	{
 		auto proto = idx_to_proto[idx];
@@ -792,15 +800,16 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 		if (itr != json.end())
 			is_header_only=itr->get<bool>();
 	}
+
+	auto ftyitr = json.find("FunctionTypes");
+	if (ftyitr != json.end())
+		PreBuildPrototypeFromJson(*ftyitr, *this);
 	//we first make place holder for each class. Because classes may reference each other
 	PreBuildClassFromJson(json["Classes"], module_name, *this);
 	PreBuildOrphanClassFromJson(json["ImportedClasses"], clsname2mod, *this);
 	//we then create the classes and prototypes
-	{
-		auto itr = json.find("FunctionTypes");
-		if (itr != json.end())
-			BuildPrototypeFromJson(*itr,*this);
-	}
+	if (ftyitr != json.end())
+		BuildPrototypeFromJson(*ftyitr,*this);
 	BuildClassFromJson(json["Classes"], *this);
 	BuildOrphanClassFromJson(json["ImportedClasses"], *this);
 

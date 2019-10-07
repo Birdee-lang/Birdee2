@@ -141,6 +141,7 @@ class connection_handler
 	public function recv() as awaitable => s.recv_async(buf,0,100).and_then(this.recv_callback)
 end
 
+# async_server()
 println("async server")
 dim t3 = new thread(async_server)
 sleep(1000)

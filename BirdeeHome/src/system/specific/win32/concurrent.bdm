@@ -6,6 +6,7 @@ import functional.option:*
 import concurrent.syncdef:*
 import hash:*
 import vector:vector
+import functional.lazy:lazy
 
 declare function WaitForSingleObject(hHandle as pointer, dwMilliseconds as int) as int
 declare function CreateEventA(lpEventAttributes as pointer, bManualReset as boolean, bInitialState as boolean, lpName as pointer) as pointer
@@ -18,6 +19,11 @@ declare function ExitThread(status as int)
 declare function Sleep(ms as int)
 declare function WaitForMultipleObjects(nCount as int,lpHandles as pointer, bWaitAll as boolean, dwMilliseconds as int) as int
 
+declare function InitializeCriticalSection(pCS as pointer)
+declare function EnterCriticalSection(pCS as pointer)
+declare function LeaveCriticalSection(pCS as pointer)
+declare function DeleteCriticalSection(pCS as pointer)
+
 @init_script
 {@
 from bdconst import *
@@ -27,7 +33,7 @@ define("WAIT_TIMEOUT", 0x00000102)
 define("WAIT_FAILED", 0xFFFFFFFF)
 @}
 
-struct mutex_t
+struct mutex_t_kernel
 	private v as pointer
 	public function init()
 		v = CreateMutexA(pointerof(null), false, pointerof(null))
@@ -48,6 +54,72 @@ struct mutex_t
 	end
 end
 
+struct mutex_t
+    public DebugInfo as pointer
+
+    ##
+    //  The following three fields control entering and exiting the critical
+    //  section for the resource
+    ##
+    public LockCount as long
+    public RecursionCount as long
+    public OwningThread as pointer        # from the thread's ClientId->UniqueThread
+    public LockSemaphore as pointer
+    public SpinCount as pointer        # force size on 64-bit systems when packed
+
+	public function init()
+		InitializeCriticalSection(addressof(this))
+	end
+
+	public function enter()
+		EnterCriticalSection(addressof(this))
+	end
+
+	public function leave()
+		LeaveCriticalSection(addressof(this))
+	end
+
+	public function del()
+		DeleteCriticalSection(addressof(this))
+	end
+end
+
+dim event_cache_size = 10
+dim event_cache_lock as mutex_t
+event_cache_lock.init()
+
+@private dim event_cache = lazy[vector[pointer]](func() as vector[pointer]
+	dim ret = new vector[pointer](event_cache_size)
+	ret.clear()
+	return ret
+end)
+
+function recycle_event(ev as pointer)
+	event_cache_lock.enter()
+	dim cache = event_cache.get()
+	if cache.size() >= event_cache_size then
+		event_cache_lock.leave()
+		CloseHandle(ev)
+	else
+		ResetEvent(ev)
+		cache.push_back(ev)
+		event_cache_lock.leave()
+	end
+end
+
+function get_event() as pointer
+	event_cache_lock.enter()
+	dim cache = event_cache.get()
+	if cache.size() > 0 then
+		dim ret = cache[cache.size()-1]
+		cache.pop_back()
+		event_cache_lock.leave()
+		return ret
+	else
+		event_cache_lock.leave()
+		return CreateEventA(pointerof(null), true, false, pointerof(null))
+	end
+end
 
 @private
 function do_wait(handle as pointer)
@@ -62,7 +134,7 @@ class future_impl[T] : concurrent.syncdef.future[T]
 	private native as pointer
 	public function __init__()
 		is_success = false
-		native = CreateEventA(pointerof(null), true, false, pointerof(null))
+		native = get_event()
 	end
 
 	public function preset(data as T)
@@ -95,7 +167,7 @@ class future_impl[T] : concurrent.syncdef.future[T]
 	public function close() => __del__()
 	public function __del__()
 		if native != pointerof(null) then
-			CloseHandle(native)
+			recycle_event(native)
 			native = pointerof(null)
 		end
 	end
