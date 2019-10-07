@@ -89,7 +89,7 @@ If you have downloaded pre-compiled LLVM,
 
 First download LLVM dynamic library and headers for Windows built by me.
 
- * LLVM-shared-build [BaiduYun, share code: jq4r](https://pan.baidu.com/s/1XVp3FPUQ_kCXpeFLRicN6g) [GoogleDrive](https://drive.google.com/open?id=1dnWGEZI1VUnZrLRCpcXCD7Uvo6QTob2A)
+ * LLVM-shared-build [Github](https://github.com/Menooker/Birdee2/releases/tag/llvm6-v2) [GoogleDrive](https://drive.google.com/open?id=1RZkrTojyoNqL_9IUNxLn_-aLQsV9ySjc)
  * Headers for Windows x64 (The same as in the above section) [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
 
 Then,
@@ -99,10 +99,10 @@ Then,
  * extract "LLVM-shared-build.zip/\*" to "Birdee\\dependency\\bin\\llvm-debug-dyn"
  * Link/copy Birdee\\dependency\\bin\\llvm-debug-dyn\\LLVM-6.0.dll to Birdee\\x64\\DynLLVM\\LLVM-6.0.dll (You may need to create the directories)
 
-The DLL file "LLVM-6.0.dll" is built from "Debug" version of LLVM, and has been tailored for the use of Birdee Compiler. It only include needed ".lib" files from LLVM and only exports needed symbols of Birdee. For reference, I built it in the following steps:
+The DLL file "LLVM-6.0.dll" is built from "Debug" version of LLVM, and has been tailored for the use of Birdee Compiler. It only include needed ".lib" files from LLVM and only exports needed symbols for the needs of Birdee. For reference, I built it in the following steps:
 
  * Build LLVM static libraries
- * Run compilation of Birdee compiler, MSVC will complain on missing symbols.
+ * Run compilation of Birdee compiler's C++ code, MSVC will complain on missing symbols
  * Parse the MSVC linker error message, a list of needed symbols from LLVM is generated
  * Convert the list of symbols to a ".DEF" file to generate DLL
  * Re-link the LLVM static libraries to generate a single DLL using `link /DLL /DEF LLVM-6.0.def ...`
