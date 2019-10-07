@@ -592,10 +592,13 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	}
 	case tok_not:
+	case tok_minus:
+	case tok_mul:
 	{
+		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		firstexpr = ParsePrimaryExpression();
-		push_expr(make_unique<UnaryExprAST>(tok_not, std::move(firstexpr), tokenizer.GetSourcePos()));
+		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:

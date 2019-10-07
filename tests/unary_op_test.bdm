@@ -1,0 +1,27 @@
+dim a =-1
+dim b=-2U
+dim c=-3L
+dim d=-a
+dim e=-23d
+dim f as float = -e
+dim g = -f
+
+struct P
+	public func __deref__() as int
+		return 123
+	end
+end
+
+{@from bdassert import bdassert@}
+
+
+{@bdassert("a+1==0")@}
+{@bdassert("b+2==0")@}
+{@bdassert("c+3==0")@}
+{@bdassert("d+a==0")@}
+{@bdassert("e+23d==0")@}
+{@bdassert("f+g==0")@}
+
+dim p as P
+{@bdassert("-*p==-123")@}
+println("unary op ok")

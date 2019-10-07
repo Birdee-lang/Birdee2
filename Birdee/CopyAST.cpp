@@ -97,7 +97,9 @@ namespace Birdee
 
 	std::unique_ptr<StatementAST> Birdee::UnaryExprAST::Copy()
 	{
-		return make_unique<UnaryExprAST>(Op, unique_ptr_cast<ExprAST>(arg->Copy()), Pos);
+		auto ret = make_unique<UnaryExprAST>(Op, unique_ptr_cast<ExprAST>(arg->Copy()), Pos);
+		ret->is_overloaded = is_overloaded;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::IndexExprAST::Copy()

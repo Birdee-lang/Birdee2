@@ -2900,27 +2900,31 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 llvm::Value * Birdee::UnaryExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-
-	if (Op == tok_not)
+	if (is_overloaded)
 	{
-		if (func)
-		{
-			//if it is an overloaded operator, the call expr is in LHS
-			return arg->Generate();
-		}
-		return builder.CreateNot(arg->Generate());
+		//if it is an overloaded operator
+		return arg->Generate();
 	}
-	else if (Op == tok_address_of)
+	switch (Op)
+	{
+	case tok_not:
+		return builder.CreateNot(arg->Generate());
+	case tok_minus:
+		if (arg->resolved_type.isInteger())
+			return builder.CreateNeg(arg->Generate());
+		else
+			return builder.CreateFNeg(arg->Generate());
+	case tok_address_of:
 	{
 		auto ret = arg->GetLValue(false);
 		assert(ret);
 		return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
 	}
-	else if (Op == tok_pointer_of)
+	case tok_pointer_of:
 	{
 		return builder.CreateBitOrPointerCast(arg->Generate(), llvm::Type::getInt8PtrTy(context));
 	}
-	else if (Op == tok_typeof)
+	case tok_typeof:
 	{
 		auto val = arg->Generate();
 		assert(arg->resolved_type.type == tok_class);
@@ -2933,6 +2937,9 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 			curcls = curcls->parent_class;
 		}
 		return builder.CreateLoad(builder.CreateGEP(val, gep));
+	}
+	default:
+		assert(0 && "Bad type for unary expression");
 	}
 
 	return nullptr;

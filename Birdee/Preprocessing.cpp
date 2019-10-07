@@ -3304,43 +3304,75 @@ If usage vararg name is "", match the closest vararg
 	void UnaryExprAST::Phase1()
 	{
 		auto& arg = this->arg;
-		if (Op == tok_not)
-		{
+		auto& Pos = this->Pos;
+		auto& resolved_type = this->resolved_type;
+		auto& is_overloaded = this->is_overloaded;
+		auto TryCreateOverloadedCall = [&](const char* funcname) -> bool {
 			arg->Phase1();
 			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
 			{
-				auto memberexpr = ResolveAndCreateMemberExpr(std::move(arg), "__not__", Pos);
+				auto memberexpr = ResolveAndCreateMemberExpr(std::move(arg), funcname, Pos);
 				vector<unique_ptr<ExprAST>> args;
 				arg = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 				arg->Pos = Pos;
 				arg->Phase1();
 				resolved_type = arg->resolved_type;
+				is_overloaded = true;
+				return true;
 			}
-			else
+			return false;
+		};
+		switch (Op)
+		{
+		case tok_not:
+		{
+			if (!TryCreateOverloadedCall("__not__"))
 			{
 				resolved_type.type = tok_boolean;
 				arg = FixTypeForAssignment(resolved_type, std::move(arg), Pos);
 			}
+			break;
 		}
-		else if (Op == tok_pointer_of)
+		case tok_mul:
+		{
+			if (!TryCreateOverloadedCall("__deref__"))
+				throw CompileError(Pos, "The unary operator \"*\" can only be applied on objects");
+			break;
+		}
+		case tok_minus:
+		{
+			if (!TryCreateOverloadedCall("__neg__"))
+			{
+				CompileAssert(arg->resolved_type.isNumber(), Pos, "The unary operator \"-\" can only be applied on objects or numbers");
+				resolved_type = arg->resolved_type;
+			}
+			break;
+		}
+		case tok_pointer_of:
 		{
 			arg->Phase1();
 			CompileAssert(arg->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
 			resolved_type.type = tok_pointer;
+			break;
 		}
-		else if (Op == tok_address_of)
+		case tok_address_of:
 		{
 			arg->Phase1();
 			CompileAssert(arg->GetLValue(true), Pos, "The expression in addressof should be a LValue");
 			resolved_type.type = tok_pointer;
+			break;
 		}
-		else if (Op == tok_typeof)
+		case tok_typeof:
 		{
 			arg->Phase1();
 			CompileAssert(arg->resolved_type.type == tok_class
 				&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
 				Pos, "typeof must be appiled on class references with runtime type info");
 			resolved_type = ResolvedType(GetTypeInfoClass());
+			break;
+		}
+		default:
+			assert(0);
 		}
 	}
 

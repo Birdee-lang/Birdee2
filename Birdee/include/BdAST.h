@@ -250,7 +250,7 @@ namespace Birdee {
 		}
 		bool isSigned()
 		{
-			return 	index_level == 0 && (type == tok_int
+			return 	index_level == 0 && (type == tok_int || type == tok_short
 				|| type == tok_long || type == tok_byte);
 		}
 		bool isNumber() const
@@ -690,7 +690,7 @@ namespace Birdee {
 	class BD_CORE_API UnaryExprAST : public ExprAST {
 	public:
 		Token Op;
-		FunctionAST* func = nullptr;
+		bool is_overloaded = false;
 		unique_ptr<ExprAST> arg;
 		unique_ptr<StatementAST> Copy();
 		//first resolve variables then resolve class names

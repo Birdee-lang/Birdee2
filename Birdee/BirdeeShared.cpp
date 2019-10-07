@@ -307,8 +307,27 @@ Token Birdee::Tokenizer::gettok() {
 	if (single_token != single_operator_map.end())
 	{
 		IdentifierStr = LastChar;
-		while (single_operator_map.find(LastChar = GetChar()) != single_operator_map.end())
+		// search in token map for multi-character token
+		for (;;)
+		{
+			LastChar = GetChar();
+			// a small performance enhancement: if the character is not in single_operator_map
+			// we can just jump out of the loop
+			if (single_operator_map.find(LastChar) == single_operator_map.end())
+				break;
 			IdentifierStr += LastChar;
+			// search in token map,find a key in the map that starts with IdentifierStr
+			// https://stackoverflow.com/a/9350066
+			auto itr = token_map.lower_bound(IdentifierStr);
+			if (itr != token_map.end()) {
+				const string& key = itr->first;
+				if (key.compare(0, IdentifierStr.size(), IdentifierStr) == 0) // Really a prefix?
+					continue;
+			}
+			// a failed match will increase IdentifierStr.size() by 1, pop up the last character
+			IdentifierStr.pop_back();
+			break;
+		}
 		if (IdentifierStr.size() > 1)
 		{
 			auto moperator = token_map.find(IdentifierStr);
