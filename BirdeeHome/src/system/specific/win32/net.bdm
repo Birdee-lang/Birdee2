@@ -1,0 +1,319 @@
+package system.specific.win32
+
+import unsafe
+import system.specific.win32.concurrent:future_impl
+import concurrent.syncdef:*
+import concurrent.sync:*
+import functional.option:*
+import vector:vector
+import hash:hash_set
+import typedptr:ref
+import system.io.netdef:*
+
+# should include ws2_32.lib
+
+@init_script
+{@
+from bdutils import *
+from bdconst import *
+define("AF_UNSPEC",       0)               # unspecified
+define("AF_UNIX",         1)               # local to host (pipes, portals)
+define("AF_INET",         2)               # internetwork: UDP, TCP, etc.
+define("AF_IMPLINK",      3)               # arpanet imp addresses
+define("AF_PUP",          4)               # pup protocols: e.g. BSP
+define("AF_CHAOS",        5)               # mit CHAOS protocols
+define("AF_NS",           6)               # XEROX NS protocols
+define("AF_IPX",          _AF_NS)           # IPX protocols: IPX, SPX, etc.
+define("AF_ISO",          7)               # ISO protocols
+define("AF_OSI",          _AF_ISO)          # OSI is ISO
+define("AF_ECMA",         8)               # european computer manufacturers
+define("AF_DATAKIT",      9)               # datakit protocols
+define("AF_CCITT",        10)              # CCITT protocols, X.25 etc
+define("AF_SNA",          11)              # IBM SNA
+define("AF_DECnet",       12)              # DECnet
+define("AF_DLI",          13)              # Direct data link interface
+define("AF_LAT",          14)              # LAT
+define("AF_HYLINK",       15)              # NSC Hyperchannel
+define("AF_APPLETALK",    16)              # AppleTalk
+define("AF_NETBIOS",      17)              # NetBios-style addresses
+define("AF_VOICEVIEW",    18)              # VoiceView
+define("AF_FIREFOX",      19)              # Protocols from Firefox
+define("AF_UNKNOWN1",     20)              # Somebody is using this!
+define("AF_BAN",          21)              # Banyan
+define("AF_ATM",          22)              # Native ATM Services
+define("AF_INET6",        23)              # Internetwork Version 6
+define("AF_CLUSTER",      24)              # Microsoft Wolfpack
+define("AF_12844",        25)              # IEEE 1284.4 WG AF
+define("AF_IRDA",         26)              # IrDA
+define("AF_NETDES",       28)              # Network Designers OSI & gateway
+
+
+define("SOCK_STREAM"     ,1)
+define("SOCK_DGRAM"      ,2)
+define("SOCK_RAW"        ,3)
+define("SOCK_RDM"        ,4)
+define("SOCK_SEQPACKET"  ,5)
+
+
+define("IPPROTO_HOPOPTS"       ,0)  # IPv6 Hop-by-Hop options
+define("IPPROTO_ICMP"          ,1)
+define("IPPROTO_IGMP"          ,2)
+define("IPPROTO_GGP"           ,3)
+define("IPPROTO_IPV4"          ,4)
+define("IPPROTO_ST"            ,5)
+define("IPPROTO_TCP"           ,6)
+define("IPPROTO_CBT"           ,7)
+define("IPPROTO_EGP"           ,8)
+define("IPPROTO_IGP"           ,9)
+define("IPPROTO_PUP"           ,12)
+define("IPPROTO_UDP"           ,17)
+define("IPPROTO_IDP"           ,22)
+define("IPPROTO_RDP"           ,27)
+define("IPPROTO_IPV6"          ,41) # IPv6 header
+define("IPPROTO_ROUTING"       ,43) # IPv6 Routing header
+define("IPPROTO_FRAGMENT"      ,44) # IPv6 fragmentation header
+define("IPPROTO_ESP"           ,50) # encapsulating security payload
+define("IPPROTO_AH"            ,51) # authentication header
+define("IPPROTO_ICMPV6"        ,58) # ICMPv6
+define("IPPROTO_NONE"          ,59) # IPv6 no next header
+define("IPPROTO_DSTOPTS"       ,60) # IPv6 Destination options
+define("IPPROTO_ND"            ,77)
+define("IPPROTO_ICLFXBM"       ,78)
+define("IPPROTO_PIM"           ,103)
+define("IPPROTO_PGM"           ,113)
+define("IPPROTO_L2TP"          ,115)
+define("IPPROTO_SCTP"          ,132)
+define("IPPROTO_RAW"           ,255)
+define("IPPROTO_MAX"           ,256)
+#
+#  These are reserved for internal use by Windows.
+#
+define("IPPROTO_RESERVED_RAW"  ,257)
+define("IPPROTO_RESERVED_IPSEC"  ,258)
+define("IPPROTO_RESERVED_IPSECOFFLOAD"  ,259)
+define("IPPROTO_RESERVED_WNV" ,260)
+define("IPPROTO_RESERVED_MAX"  ,261)
+
+define("INADDR_ANY"              ,0x00000000)
+define("INADDR_LOOPBACK"         ,0x7f000001)
+define("INADDR_BROADCAST"        ,0xffffffff)
+define("INADDR_NONE"             ,0xffffffff)
+
+
+define("FD_READ_BIT",      0)
+define("FD_READ",          (1 << _FD_READ_BIT))
+
+define("FD_WRITE_BIT",     1)
+define("FD_WRITE",         (1 << _FD_WRITE_BIT))
+
+define("FD_OOB_BIT",       2)
+define("FD_OOB",           (1 << _FD_OOB_BIT))
+
+define("FD_ACCEPT_BIT",    3)
+define("FD_ACCEPT",        (1 << _FD_ACCEPT_BIT))
+
+define("FD_CONNECT_BIT",   4)
+define("FD_CONNECT",       (1 << _FD_CONNECT_BIT))
+
+define("FD_CLOSE_BIT",     5)
+define("FD_CLOSE",         (1 << _FD_CLOSE_BIT))
+
+define("FD_QOS_BIT",       6)
+define("FD_QOS",           (1 << _FD_QOS_BIT))
+
+define("FD_GROUP_QOS_BIT", 7)
+define("FD_GROUP_QOS",     (1 << _FD_GROUP_QOS_BIT))
+
+define("FD_ROUTING_INTERFACE_CHANGE_BIT", 8)
+define("FD_ROUTING_INTERFACE_CHANGE",     (1 << _FD_ROUTING_INTERFACE_CHANGE_BIT))
+
+define("FD_ADDRESS_LIST_CHANGE_BIT", 9)
+define("FD_ADDRESS_LIST_CHANGE",     (1 << _FD_ADDRESS_LIST_CHANGE_BIT))
+
+define("FD_MAX_EVENTS",    10)
+define("FD_ALL_EVENTS",    ((1 << _FD_MAX_EVENTS) - 1))
+
+define("WSA_IO_PENDING",    997)
+
+define_signed("SOCKET_ERROR"    ,-1)
+@}
+
+struct SOCKET 
+	public sock as pointer
+	public function close()
+		if sock != pointerof(null) then
+			_closesocket(this)
+			sock = pointerof(null)
+		end
+	end
+
+	public function ok() as boolean => unsafe.ptr_cast[long](sock) != 0-1
+end
+
+
+struct WSABUF
+	public len as ulong
+	public buf as pointer
+end
+
+class WSAOVERLAPPED
+	public Internal as pointer
+	public InternalHigh as pointer
+	public Offset as int
+	public OffsetHigh as int
+	public hEvent as pointer
+
+	public function __init__(hevent as pointer)
+		Internal = pointerof(null)
+		InternalHigh = pointerof(null)
+		Offset =0 
+		OffsetHigh=0
+		hEvent=hevent
+	end
+end
+
+class WSAOVERLAPPEDWithBuffer
+	public Internal as pointer
+	public InternalHigh as pointer
+	public Offset as int
+	public OffsetHigh as int
+	public hEvent as pointer
+	public wsabuf as WSABUF
+	public function __init__(hevent as pointer, buf as pointer, len as uint)
+		Internal = pointerof(null)
+		InternalHigh = pointerof(null)
+		Offset =0 
+		OffsetHigh=0
+		hEvent=hevent
+		wsabuf.buf=buf
+		wsabuf.len=len
+	end
+end
+
+
+declare function _socket alias "socket" (af as int, type as int,protocol as int) as SOCKET
+declare function _bind alias "bind" (s as SOCKET,##sockaddr## name as pointer, namelen as int) as int
+declare function _listen alias "listen" (s as SOCKET, backlog as int) as int
+declare function WSAGetLastError() as int
+declare function _accept alias "accept" (s as SOCKET,##sockaddr## addr as pointer, ##int## addrlen as pointer) as SOCKET
+declare function _closesocket alias "closesocket" (s as SOCKET) as int
+declare function _htons alias "htons" (hostshort as short) as short
+declare function _send alias "send" (s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function _recv alias "recv" (s as SOCKET, buf as pointer, len as int, flags as int) as int
+declare function WSAStartup(wVersionRequested as int, lpWSAData as pointer) as int
+declare function _connect alias "connect" (s as SOCKET, ##sockaddr## name as pointer, namelen as int) as int
+declare function _inet_addr alias "inet_addr" (name as pointer) as ulong
+declare function WSAEventSelect(s as SOCKET,hEventObject as pointer, lNetworkEvents as long) as int
+declare function WSARecv(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, lpFlags as pointer##LPDWORD##, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
+declare function WSASend(s as SOCKET, lpBuffers as pointer ##LPWSABUF##, dwBufferCount as int, lpNumberOfBytesRecvd as pointer ##LPDWORD##, Flags as int, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpCompletionRoutine as pointer ##LPWSAOVERLAPPED_COMPLETION_ROUTINE##) as int
+declare function WSAGetOverlappedResult(s as SOCKET, lpOverlapped as pointer ##LPWSAOVERLAPPED##,lpcbTransfer as pointer ##LPDWORD##, fWait as boolean, lpdwFlags as pointer ##LPDWORD##) as boolean
+declare function WSAWaitForMultipleEvents(cEvents as int, lphEvents as pointer,fWaitAll as boolean,dwTimeout as int,fAlertable as boolean) as int
+declare function WSACreateEvent() as pointer
+
+dim vWSAData = new byte * 408
+
+if WSAStartup({@set_int(2 | 2<<8)@}, vWSAData.get_raw()) != 0 then
+	throw new runtime_exception("WSAStartup failed")
+end
+
+function get_socket_error() as int => WSAGetLastError()
+
+struct sockaddr_in 
+    public sin_family as short
+    public sin_port as short
+    public sin_addr as uint
+    public sin_zero as ulong
+end
+
+function mk_sockaddr_in() as sockaddr_in
+	dim ret as sockaddr_in
+	ret.sin_family = 0
+	ret.sin_port = 0
+	ret.sin_addr = 0
+	ret.sin_zero = 0
+	return ret
+end
+
+class socket_future: future_impl[int]
+	public function do_then()
+
+	end
+end
+
+function mksocket_exception(msg as string) as socket_exception => new socket_exception(msg, WSAGetLastError())
+
+function _recv_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
+	dim fut = new socket_future
+	dim overlapped = new WSAOVERLAPPEDWithBuffer(fut.get_native_handle(), addressof(buf[offset]), len)
+	dim recv_bytes as int =0, flags as int =0
+	if WSARecv(sock, addressof(overlapped.wsabuf), 1, addressof(recv_bytes), addressof(flags), pointerof(overlapped), pointerof(null)) == {@SOCKET_ERROR()@} then
+        dim err =  WSAGetLastError()
+		if err != {@WSA_IO_PENDING()@} then
+			throw new socket_exception("WSARecv error", err)
+		end			
+		return fut.and_then(func (v as option[int]) as option[int]
+			dim transfered as int = 0, flags as int = 0
+			if !WSAGetOverlappedResult(sock, pointerof(overlapped), addressof(transfered), false,  addressof(flags)) then
+				throw mksocket_exception("WSAGetOverlappedResult error")
+			end
+			system.specific.win32.concurrent.ResetEvent(overlapped.hEvent)
+			return some(transfered)
+		end) 
+	else
+		fut.__del__()
+		dim ret = new future_impl[int]
+		ret.success(recv_bytes)
+		return ret
+	end
+end
+
+function _send_async(sock as SOCKET, buf as byte[], offset as uint, len as uint) as future[int]
+	dim fut = new socket_future
+	dim overlapped = new WSAOVERLAPPEDWithBuffer(fut.get_native_handle(), addressof(buf[offset]), len)
+	dim recv_bytes as int =0
+	if WSASend(sock, addressof(overlapped.wsabuf), 1, addressof(recv_bytes), 0, pointerof(overlapped), pointerof(null)) == {@SOCKET_ERROR()@} then
+        dim err =  WSAGetLastError()
+		if err != {@WSA_IO_PENDING()@} then
+			throw new socket_exception("WSASend error", err)
+		end			
+		return fut.and_then(func (v as option[int]) as option[int]
+			dim transfered as int = 0, flags as int = 0
+			if !WSAGetOverlappedResult(sock, pointerof(overlapped), addressof(transfered), false,  addressof(flags)) then
+				throw mksocket_exception("WSAGetOverlappedResult error")
+			end
+			system.specific.win32.concurrent.ResetEvent(overlapped.hEvent)
+			return some(transfered)
+		end) 
+	else
+		fut.__del__()
+		dim ret = new future_impl[int]
+		ret.success(recv_bytes)
+		return ret
+	end
+end
+
+
+
+function _accept_async(sock as SOCKET, pasync_sock as ref[socket_future]) as future[SOCKET]
+	dim async_sock = pasync_sock.get()
+	if async_sock === null then
+		async_sock = new socket_future
+		pasync_sock.set(async_sock)
+		async_sock.preset(1)
+		if WSAEventSelect(sock, async_sock.get_native_handle(), {@FD_ACCEPT()@}) == {@SOCKET_ERROR()@} then
+			throw mksocket_exception("Select Accept error")
+		end
+	end
+	return async_sock.and_then(func (v as option[int]) as option[SOCKET]
+			system.specific.win32.concurrent.ResetEvent(async_sock.get_native_handle())
+			if v.is_defined() then
+				dim ret = _accept(sock, pointerof(null), pointerof(null))
+				if !ret.ok() then
+					throw mksocket_exception("Accept error")
+				end
+				return some(ret)
+			else
+				return none[SOCKET]()
+			end
+		end)
+end

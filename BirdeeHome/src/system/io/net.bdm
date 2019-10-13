@@ -1,0 +1,130 @@
+package system.io
+
+
+import concurrent.syncdef:*
+import {@"system.specific.win32.net" if get_os_name()=="windows" else "system.specific.unistd.net"@}:*
+import system.io.netdef:*
+import typedptr:sizeof
+import functional.option:*
+
+{@
+if get_os_name()=="windows":
+	from system_0specific_0win32_0net import *
+else:
+	from system_0specific_0unistd_0net import *
+@}
+
+class socket
+	public sock as SOCKET
+	public function __init__(sock as SOCKET)
+		this.sock = sock
+	end
+	
+	public function send(buf as byte[], offset as uint, len as uint) as uint
+		dim retlen = _send(sock, addressof(buf[offset]), len, 0)
+		if retlen != len then
+			dim err = get_socket_error()
+			if err != 0 then
+				throw mksocket_exception("Send error")
+			end
+		end
+		return retlen
+	end
+
+	public function recv(buf as byte[], offset as uint, len as uint) as uint
+		dim retlen = _recv(sock, addressof(buf[offset]), len, 0)
+		if retlen != len then
+			dim err = get_socket_error()
+			if err != 0 then
+				throw mksocket_exception("Send error")
+			end
+		end
+		return retlen
+	end
+
+	public function recv_async(buf as byte[], offset as uint, len as uint) as future[int]
+		return _recv_async(sock, buf, offset, len)
+	end
+
+	public function send_async(buf as byte[], offset as uint, len as uint) as future[int]
+		return _send_async(sock, buf, offset, len)
+	end
+
+	public function close() => sock.close()
+	public function __del__() => sock.close()
+end
+
+
+class server_bind
+	public sock as SOCKET
+	private async_sock as socket_future
+	public function __init__(port as int)
+		async_sock = null
+		sock = _socket({@AF_INET()@}, {@SOCK_STREAM()@}, {@IPPROTO_TCP()@})
+		if !sock.ok() then
+			throw mksocket_exception("Socket error")
+		end
+		
+	    dim sin = mk_sockaddr_in()
+		sin.sin_family = {@AF_INET()@}
+		dim short_port = _htons(port)
+		sin.sin_port = short_port
+		sin.sin_addr = {@INADDR_ANY()@} 
+		if _bind(sock, addressof(sin), sizeof[sockaddr_in]()) == {@SOCKET_ERROR()@} then
+			dim err = get_socket_error()
+			sock.close()
+			throw new socket_exception("Bind error", err)
+		end
+		if _listen(sock, 5) == {@SOCKET_ERROR()@} then
+			dim err = get_socket_error()
+			sock.close()
+			throw new socket_exception("Listen error", err)
+		end
+	end
+
+	public function accept() as socket
+		dim ret = _accept(sock, pointerof(null), pointerof(null))
+		if !ret.ok() then
+			throw mksocket_exception("Accept error")
+		end
+		return new socket(ret)
+	end
+
+	public function accept_async() as future[socket]
+		return _accept_async(sock, typedptr.mkref[socket_future](addressof(async_sock))).and_then(func (s as option[SOCKET]) as option[socket]
+			if s.is_defined() then
+				return some(new socket(s.get()))
+			else
+				return none[socket]()
+			end
+		end)
+	end
+
+	public function close()
+		sock.close()
+		if async_sock!== null then
+			async_sock.__del__()
+		end
+	end
+	public function __del__() => sock.close()
+end
+
+function connect_to(ip as string, port as short) as socket
+    dim s = _socket({@AF_INET()@}, {@SOCK_STREAM()@}, {@IPPROTO_TCP()@})
+    if !s.ok() then
+        throw mksocket_exception("Create socket error")
+    end
+
+    dim sin = mk_sockaddr_in()
+	sin.sin_family = {@AF_INET()@}
+	sin.sin_port = _htons(port)
+	sin.sin_addr = _inet_addr("127.0.0.1".get_raw())
+
+    dim result = _connect(s, addressof(sin), sizeof[sockaddr_in]())
+    if result == {@SOCKET_ERROR()@} then
+		dim err = get_socket_error()
+		s.close()
+		throw new socket_exception("Connect error", err)
+	end
+	return new socket(s)
+end

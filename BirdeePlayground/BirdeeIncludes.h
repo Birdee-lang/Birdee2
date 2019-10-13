@@ -18,6 +18,9 @@ jit->addNative("concurrent_0threading_0thread_0____del____",concurrent_0threadin
 extern void concurrent_0threading_0_1main();
 jit->addNative("concurrent_0threading_0_1main",concurrent_0threading_0_1main);
 
+extern void concurrent_0sync_0create__poller();
+jit->addNative("concurrent_0sync_0create__poller",concurrent_0sync_0create__poller);
+
 extern void concurrent_0sync_0mutex_0____init____();
 jit->addNative("concurrent_0sync_0mutex_0____init____",concurrent_0sync_0mutex_0____init____);
 
@@ -33,11 +36,32 @@ jit->addNative("concurrent_0sync_0mutex_0____del____",concurrent_0sync_0mutex_0_
 extern void concurrent_0sync_0_1main();
 jit->addNative("concurrent_0sync_0_1main",concurrent_0sync_0_1main);
 
+extern void concurrent_0syncdef_0awaitable_0do__then();
+jit->addNative("concurrent_0syncdef_0awaitable_0do__then",concurrent_0syncdef_0awaitable_0do__then);
+
+extern void concurrent_0syncdef_0awaitable_0do__await();
+jit->addNative("concurrent_0syncdef_0awaitable_0do__await",concurrent_0syncdef_0awaitable_0do__await);
+
+extern void concurrent_0syncdef_0awaitable_0get__native__handle();
+jit->addNative("concurrent_0syncdef_0awaitable_0get__native__handle",concurrent_0syncdef_0awaitable_0get__native__handle);
+
+extern void concurrent_0syncdef_0awaitable_0close();
+jit->addNative("concurrent_0syncdef_0awaitable_0close",concurrent_0syncdef_0awaitable_0close);
+
 extern void concurrent_0syncdef_0wait__exception_0____init____();
 jit->addNative("concurrent_0syncdef_0wait__exception_0____init____",concurrent_0syncdef_0wait__exception_0____init____);
 
 extern void concurrent_0syncdef_0wait__exception_0get__message();
 jit->addNative("concurrent_0syncdef_0wait__exception_0get__message",concurrent_0syncdef_0wait__exception_0get__message);
+
+extern void concurrent_0syncdef_0awaitable__wrapper_0____init____();
+jit->addNative("concurrent_0syncdef_0awaitable__wrapper_0____init____",concurrent_0syncdef_0awaitable__wrapper_0____init____);
+
+extern void concurrent_0syncdef_0awaitable__wrapper_0____hash____();
+jit->addNative("concurrent_0syncdef_0awaitable__wrapper_0____hash____",concurrent_0syncdef_0awaitable__wrapper_0____hash____);
+
+extern void concurrent_0syncdef_0awaitable__wrapper_0____eq____();
+jit->addNative("concurrent_0syncdef_0awaitable__wrapper_0____eq____",concurrent_0syncdef_0awaitable__wrapper_0____eq____);
 
 extern void concurrent_0syncdef_0_1main();
 jit->addNative("concurrent_0syncdef_0_1main",concurrent_0syncdef_0_1main);
@@ -177,11 +201,26 @@ jit->addNative("system_0specific_0win32_0file_0__getstd",system_0specific_0win32
 extern void system_0specific_0win32_0file_0_1main();
 jit->addNative("system_0specific_0win32_0file_0_1main",system_0specific_0win32_0file_0_1main);
 
-extern void system_0specific_0win32_0concurrent_0do__wait();
-jit->addNative("system_0specific_0win32_0concurrent_0do__wait",system_0specific_0win32_0concurrent_0do__wait);
+extern void system_0specific_0win32_0concurrent_0event__cache__size();
+jit->addNative("system_0specific_0win32_0concurrent_0event__cache__size",system_0specific_0win32_0concurrent_0event__cache__size);
+
+extern void system_0specific_0win32_0concurrent_0event__cache__lock();
+jit->addNative("system_0specific_0win32_0concurrent_0event__cache__lock",system_0specific_0win32_0concurrent_0event__cache__lock);
+
+extern void system_0specific_0win32_0concurrent_0event__cache();
+jit->addNative("system_0specific_0win32_0concurrent_0event__cache",system_0specific_0win32_0concurrent_0event__cache);
 
 extern void system_0specific_0win32_0concurrent_0__sleep();
 jit->addNative("system_0specific_0win32_0concurrent_0__sleep",system_0specific_0win32_0concurrent_0__sleep);
+
+extern void system_0specific_0win32_0concurrent_0recycle__event();
+jit->addNative("system_0specific_0win32_0concurrent_0recycle__event",system_0specific_0win32_0concurrent_0recycle__event);
+
+extern void system_0specific_0win32_0concurrent_0get__event();
+jit->addNative("system_0specific_0win32_0concurrent_0get__event",system_0specific_0win32_0concurrent_0get__event);
+
+extern void system_0specific_0win32_0concurrent_0do__wait();
+jit->addNative("system_0specific_0win32_0concurrent_0do__wait",system_0specific_0win32_0concurrent_0do__wait);
 
 extern void system_0specific_0win32_0concurrent_0do__create__thread();
 jit->addNative("system_0specific_0win32_0concurrent_0do__create__thread",system_0specific_0win32_0concurrent_0do__create__thread);
@@ -195,6 +234,24 @@ jit->addNative("system_0specific_0win32_0concurrent_0__close__thread",system_0sp
 extern void system_0specific_0win32_0concurrent_0__join__thread();
 jit->addNative("system_0specific_0win32_0concurrent_0__join__thread",system_0specific_0win32_0concurrent_0__join__thread);
 
+extern void system_0specific_0win32_0concurrent_0__await__multiple__awaitables__with__buffer();
+jit->addNative("system_0specific_0win32_0concurrent_0__await__multiple__awaitables__with__buffer",system_0specific_0win32_0concurrent_0__await__multiple__awaitables__with__buffer);
+
+extern void system_0specific_0win32_0concurrent_0__await__multiple__awaitables();
+jit->addNative("system_0specific_0win32_0concurrent_0__await__multiple__awaitables",system_0specific_0win32_0concurrent_0__await__multiple__awaitables);
+
+extern void system_0specific_0win32_0concurrent_0mutex__t__kernel_0init();
+jit->addNative("system_0specific_0win32_0concurrent_0mutex__t__kernel_0init",system_0specific_0win32_0concurrent_0mutex__t__kernel_0init);
+
+extern void system_0specific_0win32_0concurrent_0mutex__t__kernel_0enter();
+jit->addNative("system_0specific_0win32_0concurrent_0mutex__t__kernel_0enter",system_0specific_0win32_0concurrent_0mutex__t__kernel_0enter);
+
+extern void system_0specific_0win32_0concurrent_0mutex__t__kernel_0leave();
+jit->addNative("system_0specific_0win32_0concurrent_0mutex__t__kernel_0leave",system_0specific_0win32_0concurrent_0mutex__t__kernel_0leave);
+
+extern void system_0specific_0win32_0concurrent_0mutex__t__kernel_0del();
+jit->addNative("system_0specific_0win32_0concurrent_0mutex__t__kernel_0del",system_0specific_0win32_0concurrent_0mutex__t__kernel_0del);
+
 extern void system_0specific_0win32_0concurrent_0mutex__t_0init();
 jit->addNative("system_0specific_0win32_0concurrent_0mutex__t_0init",system_0specific_0win32_0concurrent_0mutex__t_0init);
 
@@ -206,6 +263,24 @@ jit->addNative("system_0specific_0win32_0concurrent_0mutex__t_0leave",system_0sp
 
 extern void system_0specific_0win32_0concurrent_0mutex__t_0del();
 jit->addNative("system_0specific_0win32_0concurrent_0mutex__t_0del",system_0specific_0win32_0concurrent_0mutex__t_0del);
+
+extern void system_0specific_0win32_0concurrent_0__poller_0____init____();
+jit->addNative("system_0specific_0win32_0concurrent_0__poller_0____init____",system_0specific_0win32_0concurrent_0__poller_0____init____);
+
+extern void system_0specific_0win32_0concurrent_0__poller_0perpare__handle__buffer();
+jit->addNative("system_0specific_0win32_0concurrent_0__poller_0perpare__handle__buffer",system_0specific_0win32_0concurrent_0__poller_0perpare__handle__buffer);
+
+extern void system_0specific_0win32_0concurrent_0__poller_0add();
+jit->addNative("system_0specific_0win32_0concurrent_0__poller_0add",system_0specific_0win32_0concurrent_0__poller_0add);
+
+extern void system_0specific_0win32_0concurrent_0__poller_0replace();
+jit->addNative("system_0specific_0win32_0concurrent_0__poller_0replace",system_0specific_0win32_0concurrent_0__poller_0replace);
+
+extern void system_0specific_0win32_0concurrent_0__poller_0remove();
+jit->addNative("system_0specific_0win32_0concurrent_0__poller_0remove",system_0specific_0win32_0concurrent_0__poller_0remove);
+
+extern void system_0specific_0win32_0concurrent_0__poller_0await();
+jit->addNative("system_0specific_0win32_0concurrent_0__poller_0await",system_0specific_0win32_0concurrent_0__poller_0await);
 
 extern void system_0specific_0win32_0concurrent_0_1main();
 jit->addNative("system_0specific_0win32_0concurrent_0_1main",system_0specific_0win32_0concurrent_0_1main);

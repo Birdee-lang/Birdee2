@@ -54,6 +54,14 @@ define("S_ISVTX", 0o001000) # sticky bit (see inode(7)).
 define("SEEK_SET",	0) #	/* Seek from beginning of file.  */
 define("SEEK_CUR",	1) #	/* Seek from current position.  */
 define("SEEK_END",	2) #	/* Seek from end of file.  */
+define("F_DUPFD",		0)	#/* dup */
+define("F_GETFD",		1)	#/* get close_on_exec */
+define("F_SETFD",		2)	#/* set/clear close_on_exec */
+define("F_GETFL",		3)	#/* get file->f_flags */
+define("F_SETFL",		4)	#/* set file->f_flags */
+define("F_GETLK",		5)
+define("F_SETLK",		6)
+define("F_SETLKW",	7)
 @}
 
 declare function open(pathname as pointer, flags as int,  mode as int) as int
@@ -73,6 +81,8 @@ else:
 declare function lseek64(fd as int, offset as long, whence as int) as long
 declare function close(fd as int) as int
 declare function __errno_location() as pointer
+declare function fcntl(fd as int, cmd as int, arg as int) as int
+
 
 function _errno() as int => ptr_load[int](__errno_location())
 

@@ -97,7 +97,9 @@ namespace Birdee
 
 	std::unique_ptr<StatementAST> Birdee::UnaryExprAST::Copy()
 	{
-		return make_unique<UnaryExprAST>(Op, unique_ptr_cast<ExprAST>(arg->Copy()), Pos);
+		auto ret = make_unique<UnaryExprAST>(Op, unique_ptr_cast<ExprAST>(arg->Copy()), Pos);
+		ret->is_overloaded = is_overloaded;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::IndexExprAST::Copy()
@@ -189,6 +191,18 @@ namespace Birdee
 		auto ret = make_unique<CallExprAST>(ToExpr(Callee->Copy()), std::move(args));
 		ret->func_callee = func_callee;
 		return SetPos(std::move(ret),Pos);
+	}
+
+	unique_ptr<VariableSingleDefAST> Birdee::VariableSingleDefAST::CopyNoInitializer()
+	{
+		auto ret = make_unique<VariableSingleDefAST>(name, type == nullptr ? nullptr : type->Copy(),
+			nullptr, Pos);
+		ret->resolved_type = resolved_type;
+		ret->capture_import_type = capture_import_type;
+		ret->capture_import_idx = capture_import_idx;
+		ret->capture_export_type = capture_export_type;
+		ret->capture_export_idx = capture_export_idx;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::VariableSingleDefAST::Copy()

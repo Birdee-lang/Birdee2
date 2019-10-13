@@ -1,12 +1,63 @@
 package concurrent
 
 import functional.option:*
+import unsafe
 
-class future[T]
+struct awaitable_handle
+	public fd as int
+	public events as int
+	public revents as int
+end
+
+class awaitable
+	public abstract function do_then()
+	public abstract function do_await()
+	public abstract function get_native_handle() as pointer
+	public abstract function close()
+end
+
+class future[T] : awaitable
 	public abstract function preset(data as T)
 	public abstract function success(data as T)
 	public abstract function fail()
-	public abstract function await() as option[T]
+	public abstract function do_then()
+	public abstract function get_result() as option[T]
+	@virtual
+	public function await() as option[T]
+		do_await()
+		do_then()
+		return get_result()
+	end
+
+	public function and_then[T2](thenfunc as closure (result as option[T]) as option[T2]) as future[T2] => new future_then[T,T2](this, thenfunc)
+end
+
+class future_then[T, T2] : future[T2]
+	private impl as future[T]
+	private data as option[T2]
+	private thenfunc as closure (result as option[T]) as option[T2]
+	public function __init__(impl as future[T], thenfunc as closure (result as option[T]) as option[T2])
+		this.impl = impl
+		this.thenfunc = thenfunc
+		data = none[T2]()
+	end
+
+	public function preset(data as T2) => this.data = some(data)
+	public function success(data as T2)
+		throw new runtime_exception("do not call future_then.success")
+	end
+	public function fail() => impl.fail()
+	public function do_await() => impl.do_await()
+	public function get_native_handle() as pointer
+		return impl.get_native_handle()
+	end
+
+	public function do_then()
+		impl.do_then()
+		data = thenfunc(impl.get_result())
+	end
+	public function get_result() as option[T2] => data
+	public function close() => impl.close()
 end
 
 class wait_exception  : runtime_exception
@@ -15,4 +66,11 @@ class wait_exception  : runtime_exception
 		error_code = _error_code
 	end
 	@virtual public func get_message() as string => "Waiting for object failed, error code: " + int2str(error_code)
+end
+
+class awaitable_wrapper
+	public fut as awaitable
+	public func __init__(the_fut as awaitable) => fut = the_fut
+	public func __hash__() as uint => unsafe.ptr_cast[uint](pointerof(this))
+	public func __eq__(other as awaitable_wrapper) as boolean => this === other
 end

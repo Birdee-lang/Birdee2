@@ -62,6 +62,7 @@ namespace Birdee
 		{ tok_float, "float" },
 		{ tok_double, "double" },
 		{ tok_boolean, "boolean" },
+		{ tok_short, "short" },
 		{ tok_pointer,"pointer" },
 		};
 		return tok_names[tok];
@@ -233,7 +234,7 @@ static void BasicBlockCheckUnknownToken(std::initializer_list<Token> expect)
 	throw CompileError(msg);
 }
 
-static std::unordered_set<Token> basic_types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
+static std::unordered_set<Token> basic_types = { tok_short,tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
 //parse basic type, may get the array type if there is a [ after GeneralIdentifierType (QualifiedIdentifierType/IdentifierType)
 std::unique_ptr<Type> ParseBasicType()
 {
@@ -591,10 +592,13 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	}
 	case tok_not:
+	case tok_minus:
+	case tok_mul:
 	{
+		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		firstexpr = ParsePrimaryExpression();
-		push_expr(make_unique<UnaryExprAST>(tok_not, std::move(firstexpr), tokenizer.GetSourcePos()));
+		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:
@@ -1215,7 +1219,7 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
 		CompileAssert(!cls->is_struct, "The \'virtual\' annotation can only be applied on class functions");
-		CompileAssert(!cls->isTemplate(), "The \'virtual\' annotation cannot be applied on class templates");
+		CompileAssert(!cls->funcs[index].decl->isTemplate(), "The \'virtual\' annotation cannot be applied on function templates");
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;

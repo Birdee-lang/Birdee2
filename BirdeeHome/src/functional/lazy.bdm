@@ -1,0 +1,40 @@
+package functional
+
+import variant:*
+
+struct lazy_t[T, TFunc]
+	private data as variant[T, TFunc]
+	public func set(v as T) => data.set(v)
+	public func get() as T
+		if data.is_type[T]() then
+			return data.get[T]()
+		else
+			dim v = data.get[TFunc]()()
+			data.set(v)
+			return v
+		end
+	end
+	public func init(f as TFunc) => data.set(f)
+end
+
+func lazy[T, TFunc](f as TFunc) as lazy_t[T, TFunc]
+	dim ret as lazy_t[T,TFunc]
+	ret.init(f)
+	return ret
+end
+
+##
+function get() as string
+	println("Get() called")
+	return "HHH"
+end
+println("Before lazy")
+dim p = lazy[string](func() as string=> get())
+dim p2 = lazy[uint]("123".__hash__)
+println("After lazy")
+println(p.get())
+println(p.get())
+println(p.get())
+println(int2str(p2.get()))
+println(int2str(p2.get()))
+##

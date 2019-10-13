@@ -43,6 +43,9 @@
     <Filter Include="资源文件\blib\concurrent">
       <UniqueIdentifier>{75037a91-ffd2-4f5d-a414-bf3bbe42a83b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\blib\functional">
+      <UniqueIdentifier>{ddb0a5c9-026a-4654-9f5e-92c432c12ab0}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -157,14 +160,14 @@
     <Text Include="..\BirdeeHome2\src\rtti.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
-    <Text Include="..\BirdeeHome\src\functional\option.txt">
-      <Filter>资源文件\blib</Filter>
-    </Text>
     <Text Include="..\BirdeeHome\src\string_buffer.txt">
       <Filter>资源文件\blib</Filter>
     </Text>
     <Text Include="..\BirdeeHome\src\system\io\stdio.bdm">
       <Filter>资源文件\blib\system\io</Filter>
+    </Text>
+    <Text Include="..\BirdeeHome\src\functional\option.txt">
+      <Filter>资源文件\blib\functional</Filter>
     </Text>
   </ItemGroup>
   <ItemGroup>
@@ -230,6 +233,24 @@
     </None>
     <None Include="..\BirdeeHome\src\system\specific\unistd\concurrent.bdm">
       <Filter>资源文件\blib\system\specific\unistd</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\win32\net.bdm">
+      <Filter>资源文件\blib\system\specific\win32</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\io\net.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\io\netdef.bdm">
+      <Filter>资源文件\blib\system\io</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\unistd\net.bdm">
+      <Filter>资源文件\blib\system\specific\unistd</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\functional\lazy.bdm">
+      <Filter>资源文件\blib\functional</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\functional\closures.bdm">
+      <Filter>资源文件\blib\functional</Filter>
     </None>
   </ItemGroup>
 </Project>

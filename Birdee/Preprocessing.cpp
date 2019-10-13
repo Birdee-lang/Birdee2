@@ -532,7 +532,7 @@ public:
 					//"v" is defined in function "*itr2"
 					//first export v from *itr2
 					auto capture_idx = itr2->func->CaptureVariable(v);
-					unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(v->Copy());
+					unique_ptr<VariableSingleDefAST> var = v->CopyNoInitializer();
 					
 					//then create a variable to import the variable
 					var->capture_import_type = v->capture_export_type;
@@ -865,6 +865,8 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 		return make_unique<CastNumberExpr<tok_double, typeto>>(std::move(val),pos);
 	case tok_byte:
 		return make_unique<CastNumberExpr<tok_byte, typeto>>(std::move(val), pos);
+	case tok_short:
+		return make_unique<CastNumberExpr<tok_short, typeto>>(std::move(val), pos);
 	}
 	ThrowCastError(target, val->resolved_type, pos);
 	return nullptr;
@@ -945,6 +947,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 			return fix_type(tok_double);
 		case tok_byte:
 			return fix_type(tok_byte);
+		case tok_short:
+			return fix_type(tok_short);
 		}
 	}
 #undef fix_type
@@ -953,7 +957,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 }
 
 static unordered_map<Token, int> promotion_map = {
-{ tok_byte,-1 },
+{ tok_byte,-2 },
+{ tok_short,-1 },
 { tok_int,0 },
 {tok_uint,1},
 {tok_long,2},
@@ -1840,6 +1845,7 @@ namespace Birdee
     
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
+			assert(template_source_class);
 			if (template_source_class->template_param->mod)
 			{
 				for (auto& funcdef : funcs)
@@ -2312,10 +2318,22 @@ If usage vararg name is "", match the closest vararg
 		}
 		return std::make_pair(-1, nullptr);
 	}
-
+	static void RunPhase0OnClass(ClassAST* classast)
+	{
+		if (classast->done_phase < 1)
+		{
+			assert(!classast->isTemplateInstance());
+			scope_mgr.SetEmptyClassTemplateEnv();
+			scope_mgr.SetEmptyTemplateEnv(ScopeManager::PyScope(nullptr));
+			classast->Phase0();
+			scope_mgr.RestoreTemplateEnv();
+			scope_mgr.RestoreClassTemplateEnv();
+		}
+	}
 	static unique_ptr<MemberExprAST> ResolveAndCreateMemberExpr(unique_ptr<ExprAST>&& obj, const string& name, SourcePos& Pos)
 	{
 		auto classast = obj->resolved_type.class_ast;
+		RunPhase0OnClass(classast);
 		int cascade_parents = 0;
 		MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
 		MemberFunctionDef* outfunc = nullptr;
@@ -2946,6 +2964,8 @@ If usage vararg name is "", match the closest vararg
 		}
 		catch (TemplateArgumentNumberError& e)
 		{
+			if (!e.src_template)
+				throw e;
 			func = e.src_template;
 			assert(func->isTemplate());
 			CompileAssert(func->is_vararg || e.args->size() <= func->template_param->params.size(), Pos,
@@ -3174,6 +3194,7 @@ If usage vararg name is "", match the closest vararg
 				else
 					throw CompileError(Pos, "The left vaule of the assignment is not an variable");
 			}
+			CompileAssert(LHS->GetLValue(true), Pos, "The left side of = must be an LValue");
 			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;
@@ -3283,43 +3304,75 @@ If usage vararg name is "", match the closest vararg
 	void UnaryExprAST::Phase1()
 	{
 		auto& arg = this->arg;
-		if (Op == tok_not)
-		{
+		auto& Pos = this->Pos;
+		auto& resolved_type = this->resolved_type;
+		auto& is_overloaded = this->is_overloaded;
+		auto TryCreateOverloadedCall = [&](const char* funcname) -> bool {
 			arg->Phase1();
 			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
 			{
-				auto memberexpr = ResolveAndCreateMemberExpr(std::move(arg), "__not__", Pos);
+				auto memberexpr = ResolveAndCreateMemberExpr(std::move(arg), funcname, Pos);
 				vector<unique_ptr<ExprAST>> args;
 				arg = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 				arg->Pos = Pos;
 				arg->Phase1();
 				resolved_type = arg->resolved_type;
+				is_overloaded = true;
+				return true;
 			}
-			else
+			return false;
+		};
+		switch (Op)
+		{
+		case tok_not:
+		{
+			if (!TryCreateOverloadedCall("__not__"))
 			{
 				resolved_type.type = tok_boolean;
 				arg = FixTypeForAssignment(resolved_type, std::move(arg), Pos);
 			}
+			break;
 		}
-		else if (Op == tok_pointer_of)
+		case tok_mul:
+		{
+			if (!TryCreateOverloadedCall("__deref__"))
+				throw CompileError(Pos, "The unary operator \"*\" can only be applied on objects");
+			break;
+		}
+		case tok_minus:
+		{
+			if (!TryCreateOverloadedCall("__neg__"))
+			{
+				CompileAssert(arg->resolved_type.isNumber(), Pos, "The unary operator \"-\" can only be applied on objects or numbers");
+				resolved_type = arg->resolved_type;
+			}
+			break;
+		}
+		case tok_pointer_of:
 		{
 			arg->Phase1();
 			CompileAssert(arg->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
 			resolved_type.type = tok_pointer;
+			break;
 		}
-		else if (Op == tok_address_of)
+		case tok_address_of:
 		{
 			arg->Phase1();
 			CompileAssert(arg->GetLValue(true), Pos, "The expression in addressof should be a LValue");
 			resolved_type.type = tok_pointer;
+			break;
 		}
-		else if (Op == tok_typeof)
+		case tok_typeof:
 		{
 			arg->Phase1();
 			CompileAssert(arg->resolved_type.type == tok_class
 				&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
 				Pos, "typeof must be appiled on class references with runtime type info");
 			resolved_type = ResolvedType(GetTypeInfoClass());
+			break;
+		}
+		default:
+			assert(0);
 		}
 	}
 

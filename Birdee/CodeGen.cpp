@@ -461,8 +461,16 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		string name;
 		if (type.index_level > 1 || type.type == tok_class)
 		{ //bypass a "bug" in llvm: cannot getName from debugtype for some long struct name
-			assert(mybase->getPointerElementType()->isStructTy());
-			name = static_cast<StructType*>(mybase->getPointerElementType())->getStructName();
+			if (type.type == tok_class && type.class_ast->is_struct)
+			{
+				assert(mybase->isStructTy());
+				name = static_cast<StructType*>(mybase)->getStructName();
+			}
+			else
+			{
+				assert(mybase->getPointerElementType()->isStructTy());
+				name = static_cast<StructType*>(mybase->getPointerElementType())->getStructName();
+			}
 		}
 		else
 			name= mydtype->getName();
@@ -474,6 +482,10 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 	case tok_boolean:
 		base = llvm::Type::getInt1Ty(context);
 		dtype = DBuilder->createBasicType("boolean", 1, dwarf::DW_ATE_boolean);
+		break;
+	case tok_short:
+		base = llvm::Type::getInt16Ty(context);
+		dtype = DBuilder->createBasicType("short", 16, dwarf::DW_ATE_signed);
 		break;
 	case tok_uint:
 		base = llvm::Type::getInt32Ty(context);
@@ -1449,6 +1461,43 @@ void Birdee::FunctionAST::ClearLLVMFunction()
 	llvm_func = nullptr;
 
 }
+
+static DIType* PutFunctionType(PrototypeAST* Proto, ResolvedType resolved_type, FunctionAST* ths, FunctionType* ftype)
+{
+	DIType* ret = Proto->GenerateDebugType();
+	//if the function is a member function, put the LLVM functype in memberfunc_typemap
+	if (resolved_type.proto_ast->is_closure && resolved_type.proto_ast->cls)
+	{
+		LLVMHelper::TypePair tynode;
+		tynode.dty = ret;
+		tynode.llvm_ty = ftype->getPointerTo();
+		helper.memberfunc_typemap.insert(std::make_pair(ths, tynode));
+
+	}
+	else
+	{
+		auto itr = helper.typemap.find(resolved_type);
+		if (itr == helper.typemap.end())
+		{
+			LLVMHelper::TypePair tynode;
+			if (resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
+			{//if it is a closure (not a class member function)
+				GenerateClosureTypes(ftype->getPointerTo(), ret, tynode.llvm_ty, tynode.dty, ths->Pos.line);
+			}
+			else
+			{
+				tynode.dty = ret;
+				tynode.llvm_ty = ftype->getPointerTo();
+			}
+			//if the function is a member function, don't put LLVM type in the cache:
+			//because it is not exactly right.
+			assert(tynode.llvm_ty);
+			helper.typemap.insert(std::make_pair(resolved_type, tynode));
+		}
+	}
+	return ret;
+}
+
 DIType* Birdee::FunctionAST::PreGenerate()
 {
 	if (isTemplate())
@@ -1488,6 +1537,11 @@ DIType* Birdee::FunctionAST::PreGenerate()
 				prefix = Proto->GetName();
 			else
 				prefix = link_name;
+			auto old_func = module->getFunction(prefix);
+			if (old_func) {
+				llvm_func = old_func;
+				return PutFunctionType(Proto.get(), resolved_type, this, Proto->GenerateFunctionType());
+			}
 		}
 		else //if the function is an imported function from other module
 		{
@@ -1545,41 +1599,10 @@ DIType* Birdee::FunctionAST::PreGenerate()
 		myfunc->setComdat(module->getOrInsertComdat(llvm_func->getName()));
 		myfunc->setDSOLocal(true);
 	}
-	DIType* ret = Proto->GenerateDebugType();
-	//if the function is a member function, put the LLVM functype in memberfunc_typemap
-	if (resolved_type.proto_ast->is_closure && resolved_type.proto_ast->cls)
-	{
-		LLVMHelper::TypePair tynode;
-		tynode.dty = ret;
-		tynode.llvm_ty = ftype->getPointerTo();
-		helper.memberfunc_typemap.insert(std::make_pair(this, tynode));
-
-	}
-	else
-	{
-		auto itr = helper.typemap.find(resolved_type);
-		if (itr == helper.typemap.end())
-		{
-			LLVMHelper::TypePair tynode;		
-			if (resolved_type.proto_ast->is_closure && !resolved_type.proto_ast->cls)
-			{//if it is a closure (not a class member function)
-				GenerateClosureTypes(ftype->getPointerTo(), ret, tynode.llvm_ty, tynode.dty, Pos.line);
-			}
-			else
-			{
-				tynode.dty = ret;
-				tynode.llvm_ty = ftype->getPointerTo();
-			}
-			//if the function is a member function, don't put LLVM type in the cache:
-			//because it is not exactly right.
-			assert(tynode.llvm_ty);
-			helper.typemap.insert(std::make_pair(resolved_type, tynode));
-		}
-	}
-
-
-	return ret;
+	return PutFunctionType(Proto.get(), resolved_type, this, ftype);
 }
+
+
 
 llvm::Function* GetMallocObj()
 {
@@ -2159,6 +2182,9 @@ Value * Birdee::NumberExprAST::Generate()
 	case tok_byte:
 		return ConstantInt::get(context, APInt(8, (uint64_t)Val.v_int, true));
 		break;
+	case tok_short:
+		return ConstantInt::get(context, APInt(16, (uint64_t)Val.v_int, true));
+		break;
 	case tok_int:
 		return ConstantInt::get(context, APInt(32, (uint64_t)Val.v_int, true));
 		break;
@@ -2208,7 +2234,8 @@ llvm::Value * Birdee::IndexExprAST::GetLValue(bool checkHas)
 	unique_ptr<ExprAST>*dummy;
 	if (checkHas)//if expr is moved, it is either a template instance or a overloaded call to __getitem__
 		return (Expr==nullptr || isTemplateInstance(dummy)) ? nullptr: (llvm::Value *)1 ;
-	assert(Expr);
+	if(!Expr)
+		return nullptr;
 	dinfo.emitLocation(this);
 	Value* arr = Expr->Generate();
 	Value* index = Index->Generate();
@@ -2357,7 +2384,8 @@ int Birdee::MemberExprAST::GenerateObj()
 	int field_offset = 0;
 	if (Obj)
 	{
-		if (Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
+		if (Obj->resolved_type.index_level == 0 
+			&& Obj->resolved_type.type == tok_class && Obj->resolved_type.class_ast->is_struct)
 		{
 			llvm_obj = Obj->GetLValue(false);
 			if (!llvm_obj)
@@ -2366,7 +2394,8 @@ int Birdee::MemberExprAST::GenerateObj()
 					llvm_obj = thisexpr->GeneratePtr();
 			}
 		}
-		else if (Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
+		else if (Obj->resolved_type.index_level == 0 &&
+			Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
 		{
 			auto casade_llvm_obj = Obj->Generate();
 			ClassAST* curcls = Obj->resolved_type.class_ast;
@@ -2871,27 +2900,31 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 llvm::Value * Birdee::UnaryExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-
-	if (Op == tok_not)
+	if (is_overloaded)
 	{
-		if (func)
-		{
-			//if it is an overloaded operator, the call expr is in LHS
-			return arg->Generate();
-		}
-		return builder.CreateNot(arg->Generate());
+		//if it is an overloaded operator
+		return arg->Generate();
 	}
-	else if (Op == tok_address_of)
+	switch (Op)
+	{
+	case tok_not:
+		return builder.CreateNot(arg->Generate());
+	case tok_minus:
+		if (arg->resolved_type.isInteger())
+			return builder.CreateNeg(arg->Generate());
+		else
+			return builder.CreateFNeg(arg->Generate());
+	case tok_address_of:
 	{
 		auto ret = arg->GetLValue(false);
 		assert(ret);
 		return builder.CreateBitOrPointerCast(ret, llvm::Type::getInt8PtrTy(context));
 	}
-	else if (Op == tok_pointer_of)
+	case tok_pointer_of:
 	{
 		return builder.CreateBitOrPointerCast(arg->Generate(), llvm::Type::getInt8PtrTy(context));
 	}
-	else if (Op == tok_typeof)
+	case tok_typeof:
 	{
 		auto val = arg->Generate();
 		assert(arg->resolved_type.type == tok_class);
@@ -2904,6 +2937,9 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 			curcls = curcls->parent_class;
 		}
 		return builder.CreateLoad(builder.CreateGEP(val, gep));
+	}
+	default:
+		assert(0 && "Bad type for unary expression");
 	}
 
 	return nullptr;

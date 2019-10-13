@@ -251,6 +251,9 @@ static py::object GetNumberLiteral(NumberExprAST& ths)
 	case tok_byte:
 		return py::int_(ths.Val.v_int);
 		break;
+	case tok_short:
+		return py::int_(ths.Val.v_int);
+		break;
 	case tok_int:
 		return py::int_(ths.Val.v_int);
 		break;
@@ -286,8 +289,10 @@ static auto NewNumberExpr(Token tok, py::object& obj) {
 	{
 		if(tok == tok_float || tok == tok_double)
 			val.v_double = (double)obj.cast<uint64_t>();
-		else
+		else if (tok == tok_uint || tok == tok_ulong)
 			val.v_long = obj.cast<uint64_t>();
+		else
+			val.v_long = obj.cast<int64_t>();
 	}
 	else if (py::isinstance<py::float_>(obj))
 	{
@@ -621,9 +626,11 @@ void RegisiterClassForBinding(py::module& m)
 	RegisterNumCastClass<tok_int, tok_float>(m);
 	RegisterNumCastClass<tok_long, tok_float>(m);
 	RegisterNumCastClass<tok_byte, tok_float>(m);
+	RegisterNumCastClass<tok_short, tok_float>(m);
 	RegisterNumCastClass<tok_int, tok_double>(m);
 	RegisterNumCastClass<tok_long, tok_double>(m);
 	RegisterNumCastClass<tok_byte, tok_double>(m);
+	RegisterNumCastClass<tok_short, tok_double>(m);
 
 	RegisterNumCastClass<tok_uint, tok_float>(m);
 	RegisterNumCastClass<tok_ulong, tok_float>(m);
@@ -633,9 +640,11 @@ void RegisiterClassForBinding(py::module& m)
 	RegisterNumCastClass<tok_double, tok_int>(m);
 	RegisterNumCastClass<tok_double, tok_long>(m);
 	RegisterNumCastClass<tok_double, tok_byte>(m);
+	RegisterNumCastClass<tok_double, tok_short>(m);
 	RegisterNumCastClass<tok_float, tok_int>(m);
 	RegisterNumCastClass<tok_float, tok_long>(m);
 	RegisterNumCastClass<tok_float, tok_byte>(m);
+	RegisterNumCastClass<tok_float, tok_short>(m);
 
 	RegisterNumCastClass<tok_double, tok_uint>(m);
 	RegisterNumCastClass<tok_double, tok_ulong>(m);
@@ -661,21 +670,31 @@ void RegisiterClassForBinding(py::module& m)
 
 	RegisterNumCastClass<tok_int, tok_long>(m);
 	RegisterNumCastClass<tok_int, tok_byte>(m);
+	RegisterNumCastClass<tok_int, tok_short>(m);
 	RegisterNumCastClass<tok_int, tok_ulong>(m);
 	RegisterNumCastClass<tok_uint, tok_long>(m);
 	RegisterNumCastClass<tok_uint, tok_byte>(m);
+	RegisterNumCastClass<tok_uint, tok_short>(m);
 	RegisterNumCastClass<tok_uint, tok_ulong>(m);
 	RegisterNumCastClass<tok_byte, tok_long>(m);
 	RegisterNumCastClass<tok_byte, tok_ulong>(m);
 	RegisterNumCastClass<tok_long, tok_byte>(m);
 	RegisterNumCastClass<tok_ulong, tok_byte>(m);
+	RegisterNumCastClass<tok_short, tok_long>(m);
+	RegisterNumCastClass<tok_short, tok_ulong>(m);
+	RegisterNumCastClass<tok_long, tok_short>(m);
+	RegisterNumCastClass<tok_ulong, tok_short>(m);
 
 	RegisterNumCastClass<tok_byte, tok_int>(m);
 	RegisterNumCastClass<tok_byte, tok_uint>(m);
+	RegisterNumCastClass<tok_short, tok_int>(m);
+	RegisterNumCastClass<tok_short, tok_uint>(m);
 	RegisterNumCastClass<tok_long, tok_int>(m);
 	RegisterNumCastClass<tok_long, tok_uint>(m);
 	RegisterNumCastClass<tok_ulong, tok_int>(m);
 	RegisterNumCastClass<tok_ulong, tok_uint>(m);
+	RegisterNumCastClass<tok_byte, tok_short>(m);
+	RegisterNumCastClass<tok_short, tok_byte>(m);
 	
 }
 

@@ -1,6 +1,13 @@
 package system.specific.unistd
 
 import functional.option:*
+import concurrent.syncdef:*
+import unsafe:ptr_cast
+import system.specific.unistd.file:_errno
+import tuple:*
+import typedptr:*
+import hash:*
+import vector:*
 
 declare function pthread_create(ptr_thread_id as pointer, attr as pointer, routine as pointer, arg as pointer) as int
 declare function pthread_exit(p as pointer)
@@ -97,7 +104,11 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		is_event_destroyed = false
 	end
 
-	public function preset(data as T) => this.data = data
+	public function preset(data as T)
+		this.data = data
+		is_success = true
+	end
+
 	public function success(data as T)
 		is_success = true
 		this.data = data
@@ -109,9 +120,10 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		event.set()
 	end
 
-	public function await() as option[T]
-		event.await()
-		__del__()
+	public function get_native_handle() as pointer => ptr_cast[pointer](null)
+
+	public function do_then() => __del__()
+	public function get_result() as option[T]
 		if is_success then
 			return some(data)
 		else
@@ -119,12 +131,185 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		end
 	end
 
+	public function close() => __del__()
 
+	public function do_await() => event.await()
 	public function __del__()
 		if !is_event_destroyed then
 			event.del()
 			is_event_destroyed = true
 		end
+	end
+end
+
+
+struct pollfd 
+    public fd as int         # /* file descriptor */
+    public events as short    # /* requested events */
+    public revents as short   # /* returned events */
+end
+
+declare function poll(fds as pointer ##pollfd##, nfds as uint, timeout as int) as int
+
+class poll_exception:wait_exception
+	public func __init__(msg as string) => this.msg = msg
+	public func get_message() as string => "Poll error: " + msg
+end
+
+@init_script
+{@
+from bdconst import *
+define("POLLIN",		0x0001)
+define("POLLPRI",		0x0002)
+define("POLLOUT",		0x0004)
+define("POLLERR",		0x0008)
+define("POLLHUP",		0x0010)
+define("POLLNVAL",	0x0020)
+@}
+class future_fd : concurrent.syncdef.future[int]
+	private handle as awaitable_handle
+	public function __init__(_native as int, _in_event as int)
+		handle.fd = _native
+		handle.events = _in_event
+	end
+
+	public function preset(data as int)
+	end
+
+	public function success(data as int)
+		throw new runtime_exception("Not implemented")
+	end
+
+	public function fail()
+		throw new runtime_exception("Not implemented")
+	end
+
+	public function get_native_handle() as pointer => addressof(handle)
+	public function do_then()
+	
+	end
+	public function get_result() as option[int] => some(handle.revents)
+
+	public function do_await()
+		dim pfd as pollfd
+		pfd.events = handle.events
+		pfd.fd = handle.fd
+		if poll(addressof(pfd),1,0-1)<=0 then
+			throw new wait_exception(_errno())
+		end
+		if (pfd.revents & {@POLLERR()@})!=0 then
+			throw new poll_exception("POLLERR")
+		end
+		if (pfd.revents & {@POLLNVAL()@})!=0 then
+			throw new poll_exception("POLLNVAL")
+		end
+		handle.revents = pfd.revents
+	end
+
+	public function close() => __del__()
+	public function __del__()
+
+	end
+end
+
+
+class _poller
+	private fut_set as hash_set[awaitable_wrapper]
+	private futures as vector[awaitable]
+	private handles as vector[pollfd]
+
+	public function __init__()
+		fut_set = new hash_set[awaitable_wrapper]
+		futures = new vector[awaitable](0)
+		handles = new vector[pollfd](0)
+	end
+
+	public function add(ev as awaitable) as awaitable_wrapper
+		dim ret = new awaitable_wrapper(ev)
+		fut_set.insert(ret)
+		return ret
+	end
+
+	public function replace(itr as awaitable_wrapper, newev as awaitable)
+		itr.fut = newev
+	end
+
+	public function remove(itr as awaitable_wrapper)
+		fut_set.remove(itr)
+	end
+
+	private function get_from_cache() as tuple[awaitable,int]
+		if futures.size() > 0 then
+			dim idx = handles.size()-1
+			dim revents as int= handles[idx].revents
+			while revents == 0
+				futures.pop_back()
+				handles.pop_back()
+				if idx ==0 then
+					return mktuple(ptr_cast[awaitable](null), 0)
+				end
+				idx = idx - 1
+				revents = handles[idx].revents
+			end
+			dim ret = futures[idx]
+			handles.buffer()[idx].revents = 0
+			futures.pop_back()
+			handles.pop_back()
+			return mktuple(ret,revents)
+		else
+			return mktuple(ptr_cast[awaitable](null), 0)
+		end
+	end
+
+	private function set_event(fut as awaitable, revents as int)
+		dim phandle = mkref[awaitable_handle](fut.get_native_handle())
+		phandle.fptr["revents"]().set(revents)
+		fut.do_then()
+	end
+
+	public function await(timeout as int) as awaitable
+		dim cached = get_from_cache()
+		if cached.v0 !== null then
+			dim f = cached.v0
+			set_event(f, cached.v1)
+			return f
+		end
+		dim itr = fut_set.front()
+		while itr!=fut_set.ends()
+			dim fut = itr.getk().fut
+			futures.push_back(fut)
+			dim pfd as pollfd
+			dim phandle = mkref[awaitable_handle](fut.get_native_handle())
+			dim fd = phandle.f["fd"]()
+			if fd == 0-1 then
+				throw new runtime_exception("Require the awaitable having native fd")
+			end
+			pfd.fd = fd
+			pfd.events = phandle.f["events"]()
+			pfd.revents = 0
+			handles.push_back(pfd)
+			itr.forward()
+		end
+		dim pollret = poll(addressof(handles.buffer()[0]),handles.size(),timeout)
+		if pollret==0 then
+			return null
+		else if pollret<0 then
+			throw new wait_exception(_errno())
+		end
+		dim ret_tuple = get_from_cache()
+		dim ret = ret_tuple.v0
+		if ret === null then
+			throw new runtime_exception("POLL returns without event set")
+		end
+		dim revents = ret_tuple.v1
+		if (revents & {@POLLERR()@})!=0 then
+			throw new poll_exception("POLLERR")
+		end
+		if (revents & {@POLLNVAL()@})!=0 then
+			throw new poll_exception("POLLNVAL")
+		end
+		set_event(ret, revents)
+		return ret
 	end
 end
 
@@ -148,4 +333,8 @@ end
 
 function _close_thread(handle as pointer)
 	#nothing
+end
+
+function _await_multiple_awaitables(aw as awaitable[], offset as uint, len as uint,timeout as int) as awaitable
+	throw new runtime_exception("Not implemented")
 end

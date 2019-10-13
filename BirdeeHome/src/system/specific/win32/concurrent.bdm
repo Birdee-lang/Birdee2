@@ -3,18 +3,26 @@ package system.specific.win32
 import system.specific.win32.file:CloseHandle
 import system.specific.win32.file:GetLastError
 import functional.option:*
-import unsafe:*
-import concurrent.syncdef
-import concurrent.syncdef:wait_exception
+import concurrent.syncdef:*
+import hash:*
+import vector:vector
+import functional.lazy:lazy
 
 declare function WaitForSingleObject(hHandle as pointer, dwMilliseconds as int) as int
 declare function CreateEventA(lpEventAttributes as pointer, bManualReset as boolean, bInitialState as boolean, lpName as pointer) as pointer
 declare function SetEvent(hEvent as pointer) as boolean
+declare function ResetEvent(hEvent as pointer) as boolean
 declare function CreateMutexA(lpMutexAttributes as pointer, bInitialOwner as boolean, lpName as pointer) as pointer
 declare function ReleaseMutex(hMutex as pointer) as int
 declare function CreateThread(lpThreadAttributes as pointer, dwStackSize as ulong, lpStartAddress as pointer, arg as pointer, dwCreationFlags as int, lpThreadId as pointer) as pointer
 declare function ExitThread(status as int)
 declare function Sleep(ms as int)
+declare function WaitForMultipleObjects(nCount as int,lpHandles as pointer, bWaitAll as boolean, dwMilliseconds as int) as int
+
+declare function InitializeCriticalSection(pCS as pointer)
+declare function EnterCriticalSection(pCS as pointer)
+declare function LeaveCriticalSection(pCS as pointer)
+declare function DeleteCriticalSection(pCS as pointer)
 
 @init_script
 {@
@@ -25,7 +33,7 @@ define("WAIT_TIMEOUT", 0x00000102)
 define("WAIT_FAILED", 0xFFFFFFFF)
 @}
 
-struct mutex_t
+struct mutex_t_kernel
 	private v as pointer
 	public function init()
 		v = CreateMutexA(pointerof(null), false, pointerof(null))
@@ -46,6 +54,72 @@ struct mutex_t
 	end
 end
 
+struct mutex_t
+    public DebugInfo as pointer
+
+    ##
+    //  The following three fields control entering and exiting the critical
+    //  section for the resource
+    ##
+    public LockCount as long
+    public RecursionCount as long
+    public OwningThread as pointer        # from the thread's ClientId->UniqueThread
+    public LockSemaphore as pointer
+    public SpinCount as pointer        # force size on 64-bit systems when packed
+
+	public function init()
+		InitializeCriticalSection(addressof(this))
+	end
+
+	public function enter()
+		EnterCriticalSection(addressof(this))
+	end
+
+	public function leave()
+		LeaveCriticalSection(addressof(this))
+	end
+
+	public function del()
+		DeleteCriticalSection(addressof(this))
+	end
+end
+
+dim event_cache_size = 10
+dim event_cache_lock as mutex_t
+event_cache_lock.init()
+
+@private dim event_cache = lazy[vector[pointer]](func() as vector[pointer]
+	dim ret = new vector[pointer](event_cache_size)
+	ret.clear()
+	return ret
+end)
+
+function recycle_event(ev as pointer)
+	event_cache_lock.enter()
+	dim cache = event_cache.get()
+	if cache.size() >= event_cache_size then
+		event_cache_lock.leave()
+		CloseHandle(ev)
+	else
+		ResetEvent(ev)
+		cache.push_back(ev)
+		event_cache_lock.leave()
+	end
+end
+
+function get_event() as pointer
+	event_cache_lock.enter()
+	dim cache = event_cache.get()
+	if cache.size() > 0 then
+		dim ret = cache[cache.size()-1]
+		cache.pop_back()
+		event_cache_lock.leave()
+		return ret
+	else
+		event_cache_lock.leave()
+		return CreateEventA(pointerof(null), true, false, pointerof(null))
+	end
+end
 
 @private
 function do_wait(handle as pointer)
@@ -60,10 +134,14 @@ class future_impl[T] : concurrent.syncdef.future[T]
 	private native as pointer
 	public function __init__()
 		is_success = false
-		native = CreateEventA(pointerof(null), true, false, pointerof(null))
+		native = get_event()
 	end
 
-	public function preset(data as T) => this.data = data
+	public function preset(data as T)
+		this.data = data
+		is_success = true
+	end
+
 	public function success(data as T)
 		is_success = true
 		this.data = data
@@ -75,9 +153,9 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		SetEvent(native)
 	end
 
-	public function await() as option[T]
-		do_wait(native)
-		__del__()
+	public function get_native_handle() as pointer => native
+	public function do_then() => __del__()
+	public function get_result() as option[T]
 		if is_success then
 			return some(data)
 		else
@@ -85,10 +163,11 @@ class future_impl[T] : concurrent.syncdef.future[T]
 		end
 	end
 
-
+	public function do_await() => do_wait(native)
+	public function close() => __del__()
 	public function __del__()
 		if native != pointerof(null) then
-			CloseHandle(native)
+			recycle_event(native)
 			native = pointerof(null)
 		end
 	end
@@ -113,3 +192,91 @@ end
 function _close_thread(handle as pointer)
 	CloseHandle(handle)
 end
+
+#waits for events in aw, uses natives as a buffer. size of natives should > len
+function _await_multiple_awaitables_with_buffer(aw as awaitable[],offset as uint, len as uint, natives as pointer[], timeout as int) as awaitable
+	for dim i =0 till len
+		natives[i] = aw[i + offset].get_native_handle()
+		if natives[i] == pointerof(null) then
+			throw new runtime_exception("_await_multiple_awaitables expects all awaitables having native handlers")
+		end
+	end
+	dim ret = WaitForMultipleObjects(len, natives.get_raw(), false, timeout)
+	if ret >= {@WAIT_OBJECT_0()@} && ret < len + {@WAIT_OBJECT_0()@} then
+		return aw[ret - {@WAIT_OBJECT_0()@} + offset]
+	else if ret == {@WAIT_TIMEOUT()@} then
+		return null
+	end
+	throw new wait_exception(GetLastError())
+end
+
+function _await_multiple_awaitables(aw as awaitable[],offset as uint, len as uint, timeout as int) as awaitable
+	return _await_multiple_awaitables_with_buffer(aw, offset, len, new pointer * len, timeout)
+end
+
+class _poller
+	private fut_set as hash_set[awaitable_wrapper]
+	private futures as vector[awaitable]
+	private handles as pointer[]
+
+	public function __init__()
+		fut_set = new hash_set[awaitable_wrapper]
+		futures = new vector[awaitable](0)
+		handles = null
+	end
+
+	private function perpare_handle_buffer()
+		if handles === null || handles.length() < futures.size() then
+			handles = new pointer * futures.size()
+		end
+	end
+
+	public function add(ev as awaitable) as awaitable_wrapper
+		dim ret = new awaitable_wrapper(ev)
+		fut_set.insert(ret)
+		return ret
+	end
+
+	public function replace(itr as awaitable_wrapper, newev as awaitable)
+		itr.fut = newev
+	end
+
+	public function remove(itr as awaitable_wrapper)
+		fut_set.remove(itr)
+	end
+
+	public function await(timeout as uint) as awaitable
+		dim itr = fut_set.front()
+		while itr!=fut_set.ends()
+			futures.push_back(itr.getk().fut)
+			itr.forward()
+		end
+		perpare_handle_buffer()
+		dim ret = _await_multiple_awaitables_with_buffer(futures.buffer() ,0,fut_set.size(), handles, 0-1)
+		ret.do_then()
+		futures.clear()
+		return ret
+	end
+end
+
+##
+function await_multiple_awaitables(gen_native as closure (idx as uint) as awaitable, len as uint,timeout as int) as int
+	dim natives = new pointer * len
+	for dim i=0 till len
+		natives[i] = gen_native(i).get_native_handle()
+		if natives[i] == pointerof(null) then
+			throw new runtime_exception("await_multiple_awaitables expects all awaitables having native handlers")
+		end
+	end
+	return _await_multiple_awaitable_handles(natives, timeout)
+end
+
+function _await_multiple_awaitable_handles(natives as pointer[],timeout as int) as int
+	dim ret = WaitForMultipleObjects(natives.length(), natives.get_raw(), false, timeout)
+	if ret >= {@WAIT_OBJECT_0()@} && ret < len + {@WAIT_OBJECT_0()@} then
+		return ret - {@WAIT_OBJECT_0()@}
+	else if ret == {@WAIT_TIMEOUT()@} then
+		return 0-1
+	end
+	throw new wait_exception(GetLastError())
+end##

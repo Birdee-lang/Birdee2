@@ -245,11 +245,12 @@ namespace Birdee {
 				|| type == tok_long
 				|| type == tok_ulong
 				|| type == tok_uint
+				|| type == tok_short
 				|| type == tok_byte;
 		}
 		bool isSigned()
 		{
-			return 	index_level == 0 && (type == tok_int
+			return 	index_level == 0 && (type == tok_int || type == tok_short
 				|| type == tok_long || type == tok_byte);
 		}
 		bool isNumber() const
@@ -258,6 +259,7 @@ namespace Birdee {
 				|| type == tok_long
 				|| type == tok_ulong
 				|| type == tok_uint
+				|| type == tok_short
 				|| type == tok_float
 				|| type == tok_double
 				|| type == tok_byte;
@@ -418,6 +420,9 @@ namespace Birdee {
 			{
 			case tok_byte:
 				os << "const byte " << Val.v_int ;
+				break;
+			case tok_short:
+				os << "const short " << Val.v_int;
 				break;
 			case tok_int:
 				os << "const int " << Val.v_int ;
@@ -685,7 +690,7 @@ namespace Birdee {
 	class BD_CORE_API UnaryExprAST : public ExprAST {
 	public:
 		Token Op;
-		FunctionAST* func = nullptr;
+		bool is_overloaded = false;
 		unique_ptr<ExprAST> arg;
 		unique_ptr<StatementAST> Copy();
 		//first resolve variables then resolve class names
@@ -847,6 +852,7 @@ namespace Birdee {
 			CAPTURE_REF,  //the variable is in "context" object of another function, this variable is a reference to it
 		}capture_import_type= CAPTURE_NONE, capture_export_type=CAPTURE_NONE;
 
+		unique_ptr<VariableSingleDefAST> CopyNoInitializer();
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
 		void PreGenerateExternForGlobal(const string& package_name);

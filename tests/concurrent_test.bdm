@@ -1,7 +1,10 @@
 import concurrent.threading:thread
 import concurrent.sync:*
+import concurrent.syncdef:future
+import functional.option:option
 
-{@from bdassert import bdassert@}
+{@from bdassert import bdassert
+from bdutils import *@}
 dim v = 0
 dim m = new mutex
 function add() 
@@ -23,12 +26,47 @@ t3.join()
 {@bdassert("v==300000")@}
 println("Lock testing ok")
 
+dim v1 = 1
 dim result = create_future[int]()
+dim parsed_result = result.and_then(func (r as option[int]) as option[int]
+	v1 = v1 + 1
+	println("1st then")
+	return r
+end).and_then(func (r as option[int]) as option[int]
+	{@bdassert("r.get()==32")@}
+	v1 = v1 + 1
+	println("2nd then")
+	return r
+end)
 
 new thread(function ()
 	concurrent.threading.sleep(1000)
 	result.success(32)
 end)
 
-{@bdassert("result.await().get() == 32")@}
+parsed_result.await()
+{@bdassert("v1==3")@}
 println("future testing ok")
+
+
+func build_future(sleep_sec as int) as future[int]
+	dim r = create_future[int]()
+	new thread(function ()
+		concurrent.threading.sleep(1000 * sleep_sec)
+		r.success(sleep_sec)
+	end)
+	return r
+end
+
+dim fut as future[int][] = new future[int] * 3
+for dim i =0 till 3
+	fut[i] = build_future(i+1)
+end
+
+if {@set_bool(get_os_name()=="windows")@} then
+	dim done_idx = await_multi(fut,0-1).get_result().get()
+	{@bdassert("done_idx==1")@}
+	println("multi future testing ok")
+else
+	println("multi future testing skipped for linux")
+end
