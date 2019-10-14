@@ -30,7 +30,27 @@ BD_CORE_API extern void RollbackTemplateInstances();
 #define DLLEXPORT __declspec(dllexport)
 #else
 #define DLLEXPORT
+#include <readline/readline.h>
+#include <readline/history.h>
 #endif
+
+
+void get_line_from_stdin(std::string& str, const char* prompt)
+{
+#ifdef _WIN32
+	std::cout << prompt;
+	std::getline(std::cin, str);
+#else
+	char* rlbuf = readline(prompt);
+	if (!rlbuf)
+		std::exit(0);
+	if (strlen(rlbuf) > 0) {
+		add_history(rlbuf);
+	}
+	str = rlbuf;
+	free(rlbuf);
+#endif
+}
 
 //a line-cached stdin stream
 class StdinStream : public Birdee::Stream
@@ -50,8 +70,7 @@ public:
 			}
 			if (std::cin.eof())
 				std::exit(0);
-			std::cout << "........ ";
-			std::getline(std::cin, buf);
+			get_line_from_stdin(buf, "........ ");
 			buf += '\n'; buf += '\n';
 			buf += TOKENIZER_PENDING_CHAR;
 			buf_cnt = 0;
@@ -104,6 +123,8 @@ int main()
 	std::unique_ptr < llvm::orc::KaleidoscopeJIT> TheJIT = make_unique<llvm::orc::KaleidoscopeJIT>();
 #ifdef _WIN32
 	AddFunctions(TheJIT.get());
+#else
+	rl_bind_key('\t', rl_insert);
 #endif
 	//cu.options->is_print_ir = true;
 	cu.symbol_prefix = "__repl.";
@@ -120,9 +141,8 @@ You can try and see Birdee codes here. Type ":q" to exit.
 )";
 	for (;;)
 	{
-		std::cout << "birdee>> ";
 		std::string str;
-		std::getline(std::cin, str);
+		get_line_from_stdin(str, "birdee>> ");
 		if (str == ":q")
 			break;
 		if (str.substr(0, str_printir.size()) == str_printir)
