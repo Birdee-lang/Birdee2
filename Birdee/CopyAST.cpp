@@ -102,6 +102,11 @@ namespace Birdee
 		return std::move(ret);
 	}
 
+	unique_ptr<StatementAST> Birdee::DeferBlockAST::Copy()
+	{
+		return  make_unique<DeferBlockAST>(defer_block.Copy(), Pos);
+	}
+
 	std::unique_ptr<StatementAST> Birdee::IndexExprAST::Copy()
 	{
 		return make_unique<IndexExprAST>(unique_ptr_cast<ExprAST>(Expr->Copy()), unique_ptr_cast<ExprAST>(Index->Copy()),Pos);

@@ -3423,6 +3423,14 @@ If usage vararg name is "", match the closest vararg
 		return expr->GetLValue(checkHas);
 	}
 
+	DeferBlockAST::DeferBlockAST(ASTBasicBlock&& defer_block, SourcePos pos) : defer_block(std::move(defer_block)) {
+		Pos = pos;
+	}
+	void DeferBlockAST::Phase1()
+	{
+		defer_block.Phase1();
+	}
+
 	TryBlockAST::TryBlockAST(ASTBasicBlock&& try_block,
 		vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
 		vector<ASTBasicBlock>&& catch_blocks, SourcePos pos)

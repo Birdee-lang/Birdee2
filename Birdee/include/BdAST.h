@@ -61,6 +61,7 @@ namespace llvm
 	class StructType;
 	class DIType;
 	class TargetMachine;
+	class BasicBlock;
 }
 namespace Birdee {
 	using std::string;
@@ -1449,6 +1450,25 @@ namespace Birdee {
 			vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
 			vector<ASTBasicBlock>&& catch_blocks, SourcePos pos);
 	};
+
+BD_CORE_API class DeferBlockAST : public StatementAST
+{
+public:
+	ASTBasicBlock defer_block;
+
+	virtual Value* Generate();
+	// do acutal code generation
+	virtual Value* DoGenerate(int idx, llvm::BasicBlock* resume_block, llvm::BasicBlock* normal_block);
+	virtual void Phase1();
+	virtual unique_ptr<StatementAST> Copy();
+	virtual void print(int level) {
+		StatementAST::print(level);
+		std::cout << "DeferBlockAST \n";
+		defer_block.print(level + 1);
+		StatementAST::print(level);
+	}
+	DeferBlockAST(ASTBasicBlock&& defer_block, SourcePos pos);
+};
 
 	class BD_CORE_API ThrowAST : public StatementAST
 	{

@@ -1,0 +1,10 @@
+function F()
+	try
+		defer
+			println("AA")
+		end
+		println("B")
+	catch e as runtime_exception
+
+	end
+end

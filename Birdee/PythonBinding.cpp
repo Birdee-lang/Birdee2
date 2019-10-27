@@ -391,6 +391,12 @@ void RegisiterClassForBinding2(py::module& m) {
 				for(auto& itm: b.body)
 					pyfunc(GetRef(itm));
 		});
+	py::class_<DeferBlockAST, StatementAST>(m, "DeferBlockAST")
+		.def_property_readonly("defer_block", [](DeferBlockAST& ths) {return GetRef(ths.defer_block.body); })
+		.def("run", [](DeferBlockAST& ths, py::object& pyfunc) {
+			for (auto& b : ths.defer_block.body)
+				pyfunc(GetRef(b));
+		});
 	py::class_<ThrowAST, StatementAST>(m, "ThrowAST")
 		.def_property("expr", [](ThrowAST& ths) {return GetRef(ths.expr); },
 			[](ThrowAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })

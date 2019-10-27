@@ -106,6 +106,7 @@ namespace Birdee
 	{"try",tok_try},
 	{"catch",tok_catch},
 	{"throw",tok_throw},
+	{"defer",tok_defer},
 	};
 
 	BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r)
