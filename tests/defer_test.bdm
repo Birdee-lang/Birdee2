@@ -1,10 +1,94 @@
-function F()
+##
+function try_caught()
 	try
 		defer
-			println("AA")
+			println("try_caught AA")
 		end
+		throw new runtime_exception("@#@#")
 		println("B")
 	catch e as runtime_exception
 
 	end
 end
+try_caught()
+
+function try_uncaught()
+	dim f = func ()
+		try
+			defer
+				println("try_uncaught AA")
+			end
+			println("Inner")
+			throw new runtime_exception("@#@#")
+			println("B")
+		catch e as someclass
+			println("SOMECLASS")
+		end
+	end
+	try
+		println("DO try")
+		f()
+	catch e as runtime_exception
+		println("OUTER")
+	end
+end
+
+try_uncaught()
+
+
+function notry()
+	dim f = func ()
+		defer
+			println("notry AA")
+		end
+		println("Inner")
+		throw new runtime_exception("@#@#")
+		println("B")
+	end
+	try
+		f()
+	catch e as runtime_exception
+		println("OUTER")
+	end
+end
+notry()
+
+function nothrow()
+	defer
+		println("nothrow AA")
+	end
+	println("Inner")
+end
+nothrow()
+##
+
+@enable_rtti
+class someclass
+end
+declare func getchar() as int
+#getchar()
+
+
+#println("DONE")
+
+function notry_multi()
+	dim f = func ()
+		defer
+			println("notry AA")
+		end
+		defer
+			println("notry BB")
+		end
+		println("Inner")
+		throw new runtime_exception("@#@#")
+		defer
+			println("notry CC")
+		end
+	end
+	try
+		f()
+	catch e as runtime_exception
+		println("OUTER")
+	end
+end
+notry_multi()

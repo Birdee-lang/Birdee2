@@ -511,42 +511,41 @@ extern "C" {
 				}
 
 				if (!(actions & _UA_SEARCH_PHASE)) {
-					if (exceptionMatched)
-					{
+
 #ifdef EXCEPTION_DEBUG
-						fprintf(stderr,
-							"handleLsda(...): installed landing pad "
-							"context.\n");
+					fprintf(stderr,
+						"handleLsda(...): installed landing pad "
+						"context.\n");
 #endif
 
-						// Found landing pad for the PC.
-						// Set Instruction Pointer to so we re-enter function
-						// at landing pad. The landing pad is created by the
-						// compiler to take two parameters in registers.
+					// Found landing pad for the PC.
+					// Set Instruction Pointer to so we re-enter function
+					// at landing pad. The landing pad is created by the
+					// compiler to take two parameters in registers.
+					_Unwind_SetGR(context,
+						__builtin_eh_return_data_regno(0),
+						(uintptr_t)exceptionObject);
+
+					// Note: this virtual register directly corresponds
+					//       to the return of the llvm.eh.selector intrinsic
+					if (!actionEntry || !exceptionMatched) {
+						// We indicate cleanup only
 						_Unwind_SetGR(context,
-							__builtin_eh_return_data_regno(0),
-							(uintptr_t)exceptionObject);
-
-						// Note: this virtual register directly corresponds
-						//       to the return of the llvm.eh.selector intrinsic
-						if (!actionEntry || !exceptionMatched) {
-							// We indicate cleanup only
-							_Unwind_SetGR(context,
-								__builtin_eh_return_data_regno(1),
-								0);
-						}
-						else {
-							// Matched type info index of llvm.eh.selector intrinsic
-							// passed here.
-							_Unwind_SetGR(context,
-								__builtin_eh_return_data_regno(1),
-								actionValue);
-						}
-
-						// To execute landing pad set here
-						_Unwind_SetIP(context, funcStart + landingPad);
-						ret = _URC_INSTALL_CONTEXT;
+							__builtin_eh_return_data_regno(1),
+							0);
 					}
+					else {
+						// Matched type info index of llvm.eh.selector intrinsic
+						// passed here.
+						_Unwind_SetGR(context,
+							__builtin_eh_return_data_regno(1),
+							actionValue);
+					}
+
+					// To execute landing pad set here
+					_Unwind_SetIP(context, funcStart + landingPad);
+					ret = _URC_INSTALL_CONTEXT;
+
 				}
 				else if (exceptionMatched) {
 #ifdef EXCEPTION_DEBUG
