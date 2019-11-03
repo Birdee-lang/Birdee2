@@ -175,9 +175,14 @@ struct DebugInfo {
 
 struct LexcialBasicBlockInfo
 {
+private:
+	//(Optional) Return value
+	Value* return_value = nullptr;
+public:
 	// the defer block reasons
 	static constexpr int DEFER_NORMAL_EXIT = 1;
 	static constexpr int DEFER_EXCEPTION_EXIT = 2;
+	static constexpr int DEFER_RETURN_EXIT = 3;
 
 	//if landingpad!=null, we are in a try-block/we have a defer block
 	BasicBlock* landingpad;
@@ -188,12 +193,25 @@ struct LexcialBasicBlockInfo
 	vector<DeferBlockAST*> defers;
 	vector<BasicBlock*> defer_bb;
 	BasicBlock* exit_block = nullptr;
+	// the parent block, if is null, it means this is the top-BB for a function or top-level code
+	LexcialBasicBlockInfo* parent;
+	FunctionAST* func;
 	bool is_in_try;
+	bool may_return = false;
+	bool is_defer_block;
 
-	explicit LexcialBasicBlockInfo(llvm::BasicBlock* landingpad) : landingpad(landingpad) {
-		is_in_try = landingpad != nullptr;
-	}
+	explicit LexcialBasicBlockInfo(llvm::BasicBlock* landingpad, bool is_defer_block);
 	void GenerateJumpToDeferBlocks();
+
+	LexcialBasicBlockInfo* GetDeferBBForReturn()
+	{
+		if (!defers.empty())
+			return this;
+		if (parent)
+			return parent->GetDeferBBForReturn();
+		return nullptr;
+	}
+	llvm::Value* GetOrCreateReturnValue();
 	//resume_block: The BB that contains "resume" instruction. Jump to this BB will continue to unwind the stack.
 	//normal_block: The BB that is for normal execution if no exception occurs
 	void GenerateDeferBlocks(BasicBlock* resume_block, BasicBlock* normal_block);
@@ -1075,7 +1093,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	auto dbginfo = PrepareFunctionDebugInfo(F, functy, SourcePos(0, 1, 1), nullptr);
 	dinfo.LexicalBlocks.push_back(dbginfo);
 
-	gen_context.basic_block_info.push_back(make_unique<LexcialBasicBlockInfo>(nullptr));
+	gen_context.basic_block_info.push_back(make_unique<LexcialBasicBlockInfo>(nullptr, false));
 	helper.cur_llvm_func = F;
 	// Push the current scope.
 
@@ -1781,8 +1799,9 @@ void LexcialBasicBlockInfo::GenerateJumpToDeferBlocks()
 {
 	if (!defers.empty())
 	{
-		assert(!IsCurrentTerminator());
-		builder.CreateBr(defer_bb.front());
+		//assert(!IsCurrentTerminator());
+		if (!IsCurrentTerminator())
+			builder.CreateBr(defer_bb.front());
 		auto normal_block = BasicBlock::Create(context, "defer.cont", helper.cur_llvm_func);
 		GenerateDeferBlocks(nullptr, normal_block);
 		builder.SetInsertPoint(normal_block);
@@ -1796,13 +1815,54 @@ void LexcialBasicBlockInfo::GenerateDeferBlocks(BasicBlock* resume_block, BasicB
 	}
 }
 
-bool Birdee::ASTBasicBlock::Generate()
+
+LexcialBasicBlockInfo::LexcialBasicBlockInfo(llvm::BasicBlock* landingpad, bool is_defer_block)
+	: landingpad(landingpad), is_defer_block(is_defer_block){
+	if (gen_context.basic_block_info.empty())
+	{
+		func = nullptr;
+		this->parent = nullptr;
+	}
+	else
+	{
+		auto parent = gen_context.basic_block_info.back().get();
+		auto curfunc = gen_context.cur_func;
+		this->parent = (curfunc == parent->func) ? parent : nullptr;
+		func = curfunc;
+	}
+	is_in_try = landingpad != nullptr;
+}
+
+llvm::Value* LexcialBasicBlockInfo::GetOrCreateReturnValue()
 {
-	gen_context.basic_block_info.push_back(make_unique<LexcialBasicBlockInfo>(nullptr));
+	if (return_value)
+		return return_value;
+	if (!parent)
+	{
+		// if we are in top-level of a function
+		auto IP = builder.saveIP();
+		Instruction* inst = &(*helper.cur_llvm_func->getEntryBlock().begin());
+		builder.SetInsertPoint(inst);
+		return_value = builder.CreateAlloca(helper.cur_llvm_func->getReturnType(), nullptr, "__returnval");
+		builder.restoreIP(IP);
+		return return_value;
+	}
+	return_value = parent->GetOrCreateReturnValue();
+	return return_value;
+}
+
+bool PushAndGenerateBB(std::vector<std::unique_ptr<StatementAST>>& body, bool is_defer_block)
+{
+	gen_context.basic_block_info.push_back(std::make_unique<LexcialBasicBlockInfo>(nullptr, is_defer_block));
 	GenerateInCurrentEnvironment(body);
 	gen_context.basic_block_info.back()->GenerateJumpToDeferBlocks();
 	gen_context.basic_block_info.pop_back();
 	return IsCurrentTerminator();
+}
+
+bool Birdee::ASTBasicBlock::Generate()
+{
+	return PushAndGenerateBB(body, false);
 }
 
 llvm::Value * Birdee::UpcastExprAST::Generate()
@@ -2270,14 +2330,33 @@ Value * Birdee::NumberExprAST::Generate()
 Value * Birdee::ReturnAST::Generate()
 {
 	dinfo.emitLocation(this);
-	if (Val)
+	auto& bbinfo = gen_context.basic_block_info.back();
+	if (bbinfo->is_defer_block)
+		throw CompileError(Pos, "Cannot return within a defer block");
+	auto defer_entry = bbinfo->GetDeferBBForReturn();
+	if (defer_entry)
 	{
-		Value* ret = Val->Generate();
-		return builder.CreateRet(ret);
+		builder.CreateStore(builder.getInt8(LexcialBasicBlockInfo::DEFER_RETURN_EXIT), defer_entry->exit_reason);
+		defer_entry->may_return = true;
+		if (Val)
+		{
+			Value* ret = Val->Generate();
+			auto retptr = bbinfo->GetOrCreateReturnValue();
+			builder.CreateStore(ret, retptr);
+		}
+		return builder.CreateBr(defer_entry->defer_bb.front());
 	}
 	else
 	{
-		return builder.CreateRet(nullptr);
+		if (Val)
+		{
+			Value* ret = Val->Generate();
+			return builder.CreateRet(ret);
+		}
+		else
+		{
+			return builder.CreateRet(nullptr);
+		}
 	}
 }
 
@@ -3205,9 +3284,32 @@ Value * Birdee::DeferBlockAST::DoGenerate(int idx, BasicBlock* resume_block, Bas
 		builder.SetInsertPoint(info.exit_block);
 		auto switchinst = builder.CreateSwitch(builder.CreateLoad(info.exit_reason), resume_block, 1);
 		switchinst->addCase(builder.getInt8(LexcialBasicBlockInfo::DEFER_NORMAL_EXIT), normal_block);
+		if (info.may_return)
+		{
+			LexcialBasicBlockInfo* return_parent = nullptr;
+			auto retbb = BasicBlock::Create(context, "defer.return", helper.cur_llvm_func, normal_block);
+			if (info.parent)
+				return_parent = info.parent->GetDeferBBForReturn();
+			builder.SetInsertPoint(retbb);
+			if (return_parent)
+			{
+				assert(return_parent->exit_reason);
+				builder.CreateStore(builder.getInt8(LexcialBasicBlockInfo::DEFER_RETURN_EXIT), return_parent->exit_reason);
+				return_parent->may_return = true;
+				builder.CreateBr(return_parent->defer_bb.front());
+			}
+			else
+			{
+				if (helper.cur_llvm_func->getReturnType()->isVoidTy())
+					builder.CreateRetVoid();
+				else
+					builder.CreateRet(builder.CreateLoad(info.GetOrCreateReturnValue()));
+			}
+			switchinst->addCase(builder.getInt8(LexcialBasicBlockInfo::DEFER_RETURN_EXIT), retbb);
+		}
 		builder.restoreIP(IP);
 	}
-	bool is_term = defer_block.Generate();
+	bool is_term = PushAndGenerateBB(defer_block.body, true);
 	if (!is_term)
 	{
 		// jump to next defer block
@@ -3233,7 +3335,7 @@ llvm::Value * Birdee::TryBlockAST::Generate()
 	BasicBlock* landing = BasicBlock::Create(context, "landingpad", helper.cur_llvm_func);
 	BasicBlock* cont = BasicBlock::Create(context, "try.cont", helper.cur_llvm_func);
 
-	gen_context.basic_block_info.push_back(std::make_unique<LexcialBasicBlockInfo>(landing));
+	gen_context.basic_block_info.push_back(std::make_unique<LexcialBasicBlockInfo>(landing, false));
 	auto& bbinfo = *gen_context.basic_block_info.back();
 	GenerateInCurrentEnvironment(try_block.body);
 	BasicBlock* exit_block = (bbinfo.defer_bb.empty()) ? cont : bbinfo.defer_bb.front();

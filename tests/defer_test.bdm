@@ -60,16 +60,7 @@ function nothrow()
 	println("Inner")
 end
 nothrow()
-##
 
-@enable_rtti
-class someclass
-end
-declare func getchar() as int
-#getchar()
-
-
-#println("DONE")
 
 function notry_multi()
 	dim f = func ()
@@ -92,3 +83,92 @@ function notry_multi()
 	end
 end
 notry_multi()
+
+function caught_multi()
+	try
+		defer
+			println("caught AA")
+		end
+		defer
+			println("caught BB")
+		end
+		println("Inner")
+		throw new runtime_exception("@#@#")
+		defer
+			println("caught CC")
+		end
+	catch e as runtime_exception
+		println("OUTER")
+	end
+end
+caught_multi()
+
+
+function defer_return()
+	println("HELLO")
+	defer
+		println("OUTER EXIT")
+	end
+	if true then
+		println("INNER")
+		defer
+			println("INNER EXIT")
+		end
+		println("INNER After")
+		return
+	end
+	println("CONT")
+end
+
+defer_return()
+
+
+function defer_return_val() as int
+	println("HELLO")
+	defer
+		println("OUTER EXIT")
+	end
+	if true then
+		println("INNER")
+		defer
+			println("INNER EXIT")
+		end
+		println("INNER After")
+		return 23
+	end
+	println("CONT")
+	return 32
+end
+
+println(int2str(defer_return_val()))
+##
+
+@enable_rtti
+class someclass
+end
+declare func getchar() as int
+#getchar()
+
+function try_defer_return()
+	try
+		println("HELLO")
+		defer
+			println("OUTER EXIT")
+		end
+		if true then
+			println("INNER")
+			defer
+				println("INNER EXIT")
+			end
+			println("INNER After")
+			return
+		end
+		println("CONT")
+	catch e as runtime_exception
+
+	end
+end
+
+try_defer_return()
+
+println("DONE")
