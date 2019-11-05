@@ -141,13 +141,6 @@ function defer_return_val() as int
 end
 
 println(int2str(defer_return_val()))
-##
-
-@enable_rtti
-class someclass
-end
-declare func getchar() as int
-#getchar()
 
 function try_defer_return()
 	try
@@ -170,5 +163,15 @@ function try_defer_return()
 end
 
 try_defer_return()
+
+##
+
+@enable_rtti
+class someclass
+end
+declare func getchar() as int
+#getchar()
+
+
 
 println("DONE")

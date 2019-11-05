@@ -199,6 +199,7 @@ public:
 	bool is_in_try;
 	bool may_return = false;
 	bool is_defer_block;
+	bool landingpad_used = false;
 
 	explicit LexcialBasicBlockInfo(llvm::BasicBlock* landingpad, bool is_defer_block);
 	void GenerateJumpToDeferBlocks();
@@ -1672,10 +1673,12 @@ llvm::Function* GetMallocArr()
 
 Value* DoGenerateCall(Value* func,const vector<Value*>& args)
 {
-	if (gen_context.basic_block_info.back()->landingpad) //if we are in try
+	auto binfo = gen_context.basic_block_info.back().get();
+	if (binfo->landingpad) //if we are in try
 	{
 		BasicBlock *BB = BasicBlock::Create(context, "normal", helper.cur_llvm_func);
-		auto ret = builder.CreateInvoke(func, BB, gen_context.basic_block_info.back()->landingpad, args);
+		binfo->landingpad_used = true;
+		auto ret = builder.CreateInvoke(func, BB, binfo->landingpad, args);
 		builder.SetInsertPoint(BB);
 		return ret;
 	}
@@ -3264,19 +3267,31 @@ Value * Birdee::DeferBlockAST::DoGenerate(int idx, BasicBlock* resume_block, Bas
 		if (!resume_block)
 		{
 			assert(!info.is_in_try);
-			auto IP = builder.saveIP();
-			auto landing = info.landingpad;
-			landing->moveBefore(BB);
-			builder.SetInsertPoint(landing);
-			// create landing pad and resume block
-			auto pad = builder.CreateLandingPad(GetLandingPadType(), 0);
-			builder.CreateStore(builder.getInt8(LexcialBasicBlockInfo::DEFER_EXCEPTION_EXIT), info.exit_reason);
-			pad->setCleanup(true);
-			builder.CreateBr(BB);
 
-			resume_block = BasicBlock::Create(context, "defer.resume", helper.cur_llvm_func, normal_block);
-			builder.SetInsertPoint(resume_block);
-			builder.CreateResume(pad);
+			auto IP = builder.saveIP();
+			if (!info.landingpad_used)
+			{
+				info.landingpad->removeFromParent();
+				info.landingpad->deleteValue();
+				resume_block = BasicBlock::Create(context, "defer.resume", helper.cur_llvm_func, normal_block);
+				builder.SetInsertPoint(resume_block);
+				builder.CreateUnreachable();
+			}
+			else
+			{
+				auto landing = info.landingpad;
+				landing->moveBefore(BB);
+				builder.SetInsertPoint(landing);
+				// create landing pad and resume block
+				auto pad = builder.CreateLandingPad(GetLandingPadType(), 0);
+				builder.CreateStore(builder.getInt8(LexcialBasicBlockInfo::DEFER_EXCEPTION_EXIT), info.exit_reason);
+				pad->setCleanup(true);
+				builder.CreateBr(BB);
+				resume_block = BasicBlock::Create(context, "defer.resume", helper.cur_llvm_func, normal_block);
+				builder.SetInsertPoint(resume_block);
+				builder.CreateResume(pad);
+			}	
+
 			builder.restoreIP(IP);
 		}
 		auto IP = builder.saveIP();
@@ -3343,6 +3358,8 @@ llvm::Value * Birdee::TryBlockAST::Generate()
 	{
 		builder.CreateBr(exit_block);
 	}
+	if (!bbinfo.landingpad_used)
+		throw CompileError(Pos, "In try block, at least one call to a function is required");
 	landing->moveAfter(builder.GetInsertBlock());
 	cont->moveAfter(landing);
 	builder.SetInsertPoint(landing);

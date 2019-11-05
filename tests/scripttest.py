@@ -42,6 +42,23 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+assert_generate_ok('''
+function aaa()
+	defer
+		println("SSSS")
+	end
+end
+''')
+
+assert_generate_fail('''
+function aaa()
+	try
+	catch e as runtime_exception
+		println("HAHA")
+	end
+end
+''')
+
 assert_fail('''
 struct A
 	public b as int
