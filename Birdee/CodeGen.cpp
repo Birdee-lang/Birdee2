@@ -1336,7 +1336,17 @@ DIType * Birdee::PrototypeAST::GenerateDebugType(bool gen_closure)
 
 Value * Birdee::ScriptAST::Generate()
 {
-	return stmt ? stmt->Generate():nullptr;
+	if (stmt.empty())
+	{
+		return nullptr;
+	}
+	else
+	{
+		auto ret = stmt.front()->Generate();
+		for (int i = 1; i < stmt.size(); i++)
+			stmt[i]->Generate();
+		return ret;
+	}
 }
 
 void Birdee::ClassAST::PreGenerate()

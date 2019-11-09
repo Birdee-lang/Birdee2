@@ -412,8 +412,13 @@ namespace Birdee
 	{
 		auto ret = make_unique<ScriptAST>(script, is_top_level);
 		ret->Pos = Pos;
-		if (stmt)
-			ret->stmt = stmt->Copy();
+		if (stmt.size())
+		{
+			for (auto& v : stmt)
+			{
+				ret->stmt.emplace_back(v->Copy());
+			}
+		}
 		return std::move(ret);
 	}
 

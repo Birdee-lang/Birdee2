@@ -82,7 +82,10 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def("is_integer", &ResolvedType::isInteger);
 		
 	py::class_<StatementAST>(m, "StatementAST")
-		.def_readwrite("pos", &StatementAST::Pos);
+		.def_readwrite("pos", &StatementAST::Pos)
+		.def("copy", [](StatementAST& ths) {
+			return new UniquePtrStatementAST(ths.Copy());
+		});
 
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
 		.def_readwrite("resolved_type", &ExprAST::resolved_type)
@@ -124,7 +127,7 @@ void RegisiterClassForBinding2(py::module& m) {
 
 	py::class_<FunctionAST, ExprAST>(m, "FunctionAST")
 		.def_property_readonly("body", [](FunctionAST& ths) {
-			return &(ths.Body.body);
+			return GetRef(ths.Body.body);
 		})
 		.def_property_readonly("proto", [](FunctionAST& ths) {
 			return std::reference_wrapper<PrototypeAST>(*ths.Proto.get());
