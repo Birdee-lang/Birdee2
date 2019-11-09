@@ -521,6 +521,9 @@ extern "C" {
 						exceptionClass,
 						exceptionObject);
 				}
+				else if (actions & _UA_CLEANUP_PHASE) {
+					exceptionMatched = M_SEARCH_CLEAN_UP;
+				}
 
 				if (!(actions & _UA_SEARCH_PHASE)) {
 

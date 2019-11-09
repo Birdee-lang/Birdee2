@@ -1,4 +1,3 @@
-
 {@from bdassert import bdassert@}
 
 @enable_rtti
@@ -11,7 +10,7 @@ end
 
 dim state = 0
 func add()=> state = state + 1
-##/
+
 function try_caught()
 	try
 		defer
@@ -54,36 +53,31 @@ end
 try_uncaught()
 {@bdassert("state==3")@}
 state=0
-/##
 
 function notry()
 	dim f = func ()
 		defer
-			#{@bdassert("state==1")@}
-			#add()
-			println("DEFER")
+			{@bdassert("state==1")@}
+			add()
 		end
-		#{@bdassert("state==0")@}
-		#add()
+		{@bdassert("state==0")@}
+		add()
 		throw new my_exception
-		#add()
 	end
 	try
 		f()
 	catch e as my_exception
-		println(int2str(state))
-		#{@bdassert("state==2")@}
-		#add()
+		{@bdassert("state==2")@}
+		add()
 	end
 end
 declare function getchar() as int
 #println("Hello")
-getchar()
+#getchar()
 notry()
-#{@bdassert("state==3")@}
+{@bdassert("state==3")@}
 state=0
 
-##/
 function nothrow()
 	defer
 		{@bdassert("state==1")@}
@@ -275,4 +269,3 @@ defer_throw()
 state=0
 
 println("Defer test DONE")
-/##

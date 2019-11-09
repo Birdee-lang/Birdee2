@@ -30,6 +30,11 @@ declare function getchar() as int
 #println("Hello")
 #getchar()
 
+dim state = 0
+func add()=> state = state + 1
+
+{@from bdassert import bdassert@}
+
 function f1()
 
 	try
@@ -39,24 +44,32 @@ function f1()
 		e.print()
 	catch e as E2
 		e.print()
+		{@bdassert("state==1")@}
+		add()
 		as_instance[E3](e).for_each(func (e3 as E3) => println(int2str(e3.dummy2)))
 	catch e as E3
 		e.print()
 	end
 	println("Continue")
+	{@bdassert("state==2")@}
+	add()
 end
 
 function f2()
 
 	try
+		{@bdassert("state==0")@}
+		add()
 		throw new E3("yo",135)
 	catch e as E1
+		breakpoint()
 		print("f2")
 		e.print()
 	##catch e as E2
 		print("f2")
 		e.print()##
 	end
+	breakpoint()
 	println("Continue(Should never go here)")
 end
 
