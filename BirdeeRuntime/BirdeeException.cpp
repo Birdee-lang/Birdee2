@@ -289,7 +289,12 @@ extern "C" {
 		return result;
 	}
 
-
+	enum SEARCH_RESULT
+	{
+		M_SEARCH_MATCHED,
+		M_SEARCH_CLEAN_UP,
+		M_SEARCH_UNMACHED
+	};
 	/// Deals with Dwarf actions matching our type infos
 	/// (OurExceptionType_t instances). Returns whether or not a dwarf emitted
 	/// action matches the supplied exception type. If such a match succeeds,
@@ -308,18 +313,18 @@ extern "C" {
 	/// @param exceptionObject thrown _Unwind_Exception instance.
 	/// @returns whether or not a type info was found. False is returned if only
 	///          a cleanup was found
-	static bool handleActionValue(int64_t *resultAction,
+	static SEARCH_RESULT handleActionValue(int64_t *resultAction,
 		uint8_t TTypeEncoding,
 		const uint8_t *ClassInfo,
 		uintptr_t actionEntry,
 		uint64_t exceptionClass,
 		struct _Unwind_Exception *exceptionObject) {
-		bool ret = false;
-
+		bool matched = false;
+		bool is_cleanup = false;
 		if (!resultAction ||
 			!exceptionObject ||
 			(exceptionClass != MY_EXCEPTION_CLASS))
-			return(ret);
+			return(M_SEARCH_UNMACHED);
 		EmptyExceptionStruct* expptr = (EmptyExceptionStruct*)exceptionObject;
 		BirdeeTypeInfo* tyinfo = expptr->pobj->type;
 
@@ -369,9 +374,13 @@ extern "C" {
 #endif
 				if (birdee_0type__info_0is__parent__of(ThisClassInfo, tyinfo)) {
 					*resultAction = typeOffset;
-					ret = true;
+					matched = true;
 					break;
 				}
+			}
+			else
+			{
+				is_cleanup = true;
 			}
 
 #ifdef EXCEPTION_DEBUG
@@ -383,8 +392,11 @@ extern "C" {
 
 			actionPos += actionOffset;
 		}
-
-		return(ret);
+		if (matched)
+			return M_SEARCH_MATCHED;
+		if (is_cleanup)
+			return M_SEARCH_CLEAN_UP;
+		return M_SEARCH_UNMACHED;
 	}
 
 
@@ -492,7 +504,7 @@ extern "C" {
 #endif
 			}
 
-			bool exceptionMatched = false;
+			SEARCH_RESULT exceptionMatched = M_SEARCH_UNMACHED;
 
 			if ((start <= pcOffset) && (pcOffset < (start + length))) {
 #ifdef EXCEPTION_DEBUG
@@ -517,37 +529,37 @@ extern "C" {
 						"handleLsda(...): installed landing pad "
 						"context.\n");
 #endif
-
-					// Found landing pad for the PC.
-					// Set Instruction Pointer to so we re-enter function
-					// at landing pad. The landing pad is created by the
-					// compiler to take two parameters in registers.
-					_Unwind_SetGR(context,
-						__builtin_eh_return_data_regno(0),
-						(uintptr_t)exceptionObject);
-
-					// Note: this virtual register directly corresponds
-					//       to the return of the llvm.eh.selector intrinsic
-					if (!actionEntry || !exceptionMatched) {
-						// We indicate cleanup only
+					if (exceptionMatched == M_SEARCH_CLEAN_UP || exceptionMatched == M_SEARCH_MATCHED) {
+						// Found landing pad for the PC.
+						// Set Instruction Pointer to so we re-enter function
+						// at landing pad. The landing pad is created by the
+						// compiler to take two parameters in registers.
 						_Unwind_SetGR(context,
-							__builtin_eh_return_data_regno(1),
-							0);
-					}
-					else {
-						// Matched type info index of llvm.eh.selector intrinsic
-						// passed here.
-						_Unwind_SetGR(context,
-							__builtin_eh_return_data_regno(1),
-							actionValue);
-					}
+							__builtin_eh_return_data_regno(0),
+							(uintptr_t)exceptionObject);
 
-					// To execute landing pad set here
-					_Unwind_SetIP(context, funcStart + landingPad);
-					ret = _URC_INSTALL_CONTEXT;
+						// Note: this virtual register directly corresponds
+						//       to the return of the llvm.eh.selector intrinsic
+						if (!actionEntry || exceptionMatched == M_SEARCH_CLEAN_UP) {
+							// We indicate cleanup only
+							_Unwind_SetGR(context,
+								__builtin_eh_return_data_regno(1),
+								0);
+						}
+						else {
+							// Matched type info index of llvm.eh.selector intrinsic
+							// passed here.
+							_Unwind_SetGR(context,
+								__builtin_eh_return_data_regno(1),
+								actionValue);
+						}
 
+						// To execute landing pad set here
+						_Unwind_SetIP(context, funcStart + landingPad);
+						ret = _URC_INSTALL_CONTEXT;
+					}
 				}
-				else if (exceptionMatched) {
+				else if (exceptionMatched == M_SEARCH_MATCHED) {
 #ifdef EXCEPTION_DEBUG
 					fprintf(stderr,
 						"handleLsda(...): setting handler found.\n");

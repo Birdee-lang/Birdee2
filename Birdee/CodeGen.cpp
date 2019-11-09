@@ -193,7 +193,7 @@ public:
 	vector<DeferBlockAST*> defers;
 	vector<BasicBlock*> defer_bb;
 	BasicBlock* exit_block = nullptr;
-	// the parent block, if is null, it means this is the top-BB for a function or top-level code
+	// the parent block, if is null, it means this is the top-BB for a function or top-level code (or top-level defer code)
 	LexcialBasicBlockInfo* parent;
 	FunctionAST* func;
 	bool is_in_try;
@@ -203,6 +203,19 @@ public:
 
 	explicit LexcialBasicBlockInfo(llvm::BasicBlock* landingpad, bool is_defer_block);
 	void GenerateJumpToDeferBlocks();
+
+	// find the landing pad in current and ancestor lexcial BBs
+	BasicBlock* GetBelongingLandingPad()
+	{
+		if (landingpad)
+		{
+			landingpad_used = true;
+			return landingpad;
+		}
+		if (parent)
+			return parent->GetBelongingLandingPad();
+		return nullptr;
+	}
 
 	LexcialBasicBlockInfo* GetDeferBBForReturn()
 	{
@@ -1674,11 +1687,11 @@ llvm::Function* GetMallocArr()
 Value* DoGenerateCall(Value* func,const vector<Value*>& args)
 {
 	auto binfo = gen_context.basic_block_info.back().get();
-	if (binfo->landingpad) //if we are in try
+	auto landingpad = binfo->GetBelongingLandingPad();
+	if (landingpad) //if we are in try
 	{
 		BasicBlock *BB = BasicBlock::Create(context, "normal", helper.cur_llvm_func);
-		binfo->landingpad_used = true;
-		auto ret = builder.CreateInvoke(func, BB, binfo->landingpad, args);
+		auto ret = builder.CreateInvoke(func, BB, landingpad, args);
 		builder.SetInsertPoint(BB);
 		return ret;
 	}
@@ -1828,10 +1841,20 @@ LexcialBasicBlockInfo::LexcialBasicBlockInfo(llvm::BasicBlock* landingpad, bool 
 	}
 	else
 	{
-		auto parent = gen_context.basic_block_info.back().get();
-		auto curfunc = gen_context.cur_func;
-		this->parent = (curfunc == parent->func) ? parent : nullptr;
-		func = curfunc;
+		if (is_defer_block)
+		{
+			this->parent = nullptr; // if is top level defer code
+			func = gen_context.cur_func;
+		}
+		else
+		{
+			auto parent = gen_context.basic_block_info.back().get();
+			auto curfunc = gen_context.cur_func;
+			this->parent = (curfunc == parent->func) ? parent : nullptr;
+			func = curfunc;
+			if (this->parent)
+				this->is_defer_block |= this->parent->is_defer_block; //if parent is defer, all its children are in defer block
+		}
 	}
 	is_in_try = landingpad != nullptr;
 }
@@ -1854,9 +1877,9 @@ llvm::Value* LexcialBasicBlockInfo::GetOrCreateReturnValue()
 	return return_value;
 }
 
-bool PushAndGenerateBB(std::vector<std::unique_ptr<StatementAST>>& body, bool is_defer_block)
+bool PushAndGenerateBB(std::vector<std::unique_ptr<StatementAST>>& body, bool is_top_level_defer_block)
 {
-	gen_context.basic_block_info.push_back(std::make_unique<LexcialBasicBlockInfo>(nullptr, is_defer_block));
+	gen_context.basic_block_info.push_back(std::make_unique<LexcialBasicBlockInfo>(nullptr, is_top_level_defer_block));
 	GenerateInCurrentEnvironment(body);
 	gen_context.basic_block_info.back()->GenerateJumpToDeferBlocks();
 	gen_context.basic_block_info.pop_back();
@@ -3272,7 +3295,7 @@ Value * Birdee::DeferBlockAST::DoGenerate(int idx, BasicBlock* resume_block, Bas
 			if (!info.landingpad_used)
 			{
 				info.landingpad->removeFromParent();
-				info.landingpad->deleteValue();
+				//info.landingpad->deleteValue();
 				resume_block = BasicBlock::Create(context, "defer.resume", helper.cur_llvm_func, normal_block);
 				builder.SetInsertPoint(resume_block);
 				builder.CreateUnreachable();

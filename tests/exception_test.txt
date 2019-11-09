@@ -26,7 +26,7 @@ class E3 : E2
 	@virtual public func print() => println("E3"+str)
 end
 
-#declare function getchar() as int
+declare function getchar() as int
 #println("Hello")
 #getchar()
 
