@@ -1,0 +1,25 @@
+
+dim cnt=0
+class AAA
+	public func close()=> cnt=cnt+1
+end
+
+{@
+from bdutils import *
+from autoscope import autoclose
+from bdassert import *
+@}
+
+func ttt()
+	@autoclose
+	dim f = new AAA
+	if true then
+		return
+	end
+	@autoclose
+	dim t = new AAA
+end
+
+ttt()
+{@bdassert("cnt==1")@}
+println("auto close ok")

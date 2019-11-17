@@ -61,6 +61,7 @@ namespace llvm
 	class StructType;
 	class DIType;
 	class TargetMachine;
+	class BasicBlock;
 }
 namespace Birdee {
 	using std::string;
@@ -895,38 +896,6 @@ namespace Birdee {
 		}
 	};
 
-#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
-	class VariableMultiDefAST : public VariableDefAST {
-#else
-	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
-#endif
-	public:
-		BD_CORE_API void Phase1()
-		{
-			for (auto& a : lst)
-				a->Phase1();
-		}
-		BD_CORE_API llvm::Value* Generate();
-		BD_CORE_API std::unique_ptr<StatementAST> Copy();
-		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
-		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
-		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
-			Pos = pos;
-		}
-		BD_CORE_API void move(unique_ptr<VariableDefAST>&& current,
-			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
-		{
-			for (auto&& var : lst)
-				func(std::move(var));
-		}
-
-		BD_CORE_API void print(int level) {
-			//VariableDefAST::print(level);
-			for (auto& a : lst)
-				a->print(level);
-		}
-	};
-
 	class BD_CORE_API LocalVarExprAST : public ResolvedIdentifierExprAST {
 	public:
 		VariableSingleDefAST* def;
@@ -1376,28 +1345,6 @@ namespace Birdee {
 
 	};
 
-	class BD_CORE_API ScriptAST : public ExprAST
-	{
-	public:
-		//ScriptAST can be contained in template argument in a BasicTypeExpr. So it can serve as an expression, or can be served
-		//as a resolved type. The field type_data is only valid when stmt is empty (when the user only calls set_type but never calls set_ast() ).
-		//But if stmt is empty, type_data can be invalid in some cases - user did not call either set_ast() or set_type()
-		ResolvedType type_data;
-		//In most cases, ScriptAST is used as a general expr.
-		unique_ptr<StatementAST> stmt;
-		bool is_top_level;
-		string script;
-		virtual Value* Generate();
-		virtual void Phase1();
-		virtual unique_ptr<StatementAST> Copy();
-		virtual void print(int level) {
-			ExprAST::print(level);
-			std::cout << "script " << script<<"\n";
-		}
-		ScriptAST(const string& str, bool is_top_level):script(str), is_top_level(is_top_level){}
-		virtual llvm::Value* GetLValue(bool checkHas);
-	};
-
 	class BD_CORE_API FunctionToClosureAST : public ExprAST
 	{
 	public:
@@ -1425,30 +1372,24 @@ namespace Birdee {
 		};
 	};
 
-#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
-	class TryBlockAST : public StatementAST 
-#else
-	class BD_CORE_API TryBlockAST : public StatementAST
-#endif
-	{
-	public:
-		ASTBasicBlock try_block;
-		vector<unique_ptr<VariableSingleDefAST>> catch_variables;
-		vector<ASTBasicBlock> catch_blocks;
+BD_CORE_API class DeferBlockAST : public StatementAST
+{
+public:
+	ASTBasicBlock defer_block;
 
-		BD_CORE_API virtual Value* Generate();
-		BD_CORE_API virtual void Phase1();
-		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
-		BD_CORE_API virtual void print(int level) {
-			StatementAST::print(level);
-			std::cout << "TryBlockAST \n";
-			try_block.print(level + 1);
-			StatementAST::print(level);
-		}
-		BD_CORE_API TryBlockAST(ASTBasicBlock&& try_block,
-			vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
-			vector<ASTBasicBlock>&& catch_blocks, SourcePos pos);
-	};
+	virtual Value* Generate();
+	// do acutal code generation
+	virtual Value* DoGenerate(int idx, llvm::BasicBlock* resume_block, llvm::BasicBlock* normal_block);
+	virtual void Phase1();
+	virtual unique_ptr<StatementAST> Copy();
+	virtual void print(int level) {
+		StatementAST::print(level);
+		std::cout << "DeferBlockAST \n";
+		defer_block.print(level + 1);
+		StatementAST::print(level);
+	}
+	DeferBlockAST(ASTBasicBlock&& defer_block, SourcePos pos);
+};
 
 	class BD_CORE_API ThrowAST : public StatementAST
 	{
@@ -1466,9 +1407,91 @@ namespace Birdee {
 		ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos);
 	};
 
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class TryBlockAST : public StatementAST
+#else
+	class BD_CORE_API TryBlockAST : public StatementAST
+#endif
+	{
+	public:
+		ASTBasicBlock try_block;
+		vector<unique_ptr<VariableSingleDefAST>> catch_variables;
+		vector<ASTBasicBlock> catch_blocks;
+
+		BD_CORE_API virtual Value* Generate();
+		BD_CORE_API virtual void Phase1();
+		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
+		BD_CORE_API virtual void print(int level) {
+			StatementAST::print(level);
+			::std::cout << "TryBlockAST \n";
+			try_block.print(level + 1);
+			StatementAST::print(level);
+		}
+		BD_CORE_API TryBlockAST(ASTBasicBlock&& try_block,
+			vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
+			vector<ASTBasicBlock>&& catch_blocks, SourcePos pos);
+	};
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class ScriptAST : public ExprAST
+#else
+	class BD_CORE_API ScriptAST : public ExprAST
+#endif
+	{
+	public:
+		//ScriptAST can be contained in template argument in a BasicTypeExpr. So it can serve as an expression, or can served
+		//as a resolved type. The field type_data is only valid when stmt is empty (when the user only calls set_type but never calls set_ast() ).
+		//But if stmt is empty, type_data can be invalid in some cases - user did not call either set_ast() or set_type()
+		ResolvedType type_data;
+		//In most cases, ScriptAST is used as a general expr.
+		vector<unique_ptr<StatementAST>> stmt;
+		bool is_top_level;
+		string script;
+		BD_CORE_API virtual Value* Generate();
+		BD_CORE_API virtual void Phase1();
+		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
+		BD_CORE_API virtual void print(int level) {
+			ExprAST::print(level);
+			std::cout << "script " << script << "\n";
+		}
+		BD_CORE_API ScriptAST(const string& str, bool is_top_level) :script(str), is_top_level(is_top_level) {}
+		BD_CORE_API virtual llvm::Value* GetLValue(bool checkHas);
+	};
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class VariableMultiDefAST : public VariableDefAST {
+#else
+	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
+#endif
+	public:
+		BD_CORE_API void Phase1()
+		{
+			for (auto& a : lst)
+				a->Phase1();
+		}
+		BD_CORE_API llvm::Value* Generate();
+		BD_CORE_API std::unique_ptr<StatementAST> Copy();
+		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
+		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
+		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) : lst(std::move(vec)) {
+			Pos = pos;
+		}
+		BD_CORE_API void move(unique_ptr<VariableDefAST>&& current,
+			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
+		{
+			for (auto&& var : lst)
+				func(std::move(var));
+		}
+
+		BD_CORE_API void print(int level) {
+			//VariableDefAST::print(level);
+			for (auto& a : lst)
+				a->print(level);
+		}
+	};
+
 }
-
-
 
 namespace std
 {

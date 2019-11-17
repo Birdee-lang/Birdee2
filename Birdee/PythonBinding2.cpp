@@ -20,7 +20,7 @@ BD_CORE_API std::reference_wrapper<ClassAST> GetCurrentPreprocessedClass();
 extern std::unique_ptr<Type> ParseTypeName();
 extern unique_ptr<StatementAST> ParseStatement(bool is_top_level);
 
-static unique_ptr<StatementAST> outexpr = nullptr;
+static vector<unique_ptr<StatementAST>> outexpr;
 static ResolvedType outtype;
 static ScriptAST* cur_script_ast = nullptr;
 
@@ -172,26 +172,33 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 		throw CompileError(ths->Pos, string("\nScript exception:\n") + e.what());
 	}
 	ths->stmt = std::move(outexpr);
-	if (ths->stmt)
+	if (ths->stmt.size())
 	{
-		if (instance_of<ExprAST>(ths->stmt.get()))
+		int idx = 0;
+		for (auto& v : ths->stmt)
 		{
-			auto expr_ptr = (ExprAST*)ths->stmt.get();
-			if(!expr_ptr->resolved_type.isResolved())
-				ths->stmt->Phase1();
-			ths->resolved_type = expr_ptr->resolved_type;
+			if (instance_of<ExprAST>(v.get()))
+			{
+				auto expr_ptr = (ExprAST*)v.get();
+				if (!expr_ptr->resolved_type.isResolved())
+					v->Phase1();
+				if (idx == 0)
+					ths->resolved_type = expr_ptr->resolved_type;
+			}
+			else
+			{
+				v->Phase1();
+				ths->resolved_type.type = tok_error;
+			}
+			idx += 1;
 		}
-		else
-		{
-			ths->stmt->Phase1();
-			ths->resolved_type.type = tok_error;
-		}
+
 	}
 	else
 	{
 		ths->type_data = outtype;
 	}
-	outexpr = nullptr;
+	outexpr.clear();
 	outtype = ResolvedType();
 	cur_script_ast = nullptr;
 }
@@ -327,7 +334,7 @@ BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType*
 	}
 	*out = outtype;
 	outtype.type = tok_error;
-	outexpr = nullptr;
+	outexpr.clear();
 }
 
 BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,StatementAST* impl,SourcePos pos, void* globals)
@@ -437,8 +444,8 @@ void RegisiterClassForBinding(py::module& m)
 	m.def("get_target_bits", []()->int {
 		return 64;
 	});
-	m.def("get_cur_script", []()->std::reference_wrapper<ScriptAST> {
-		return GetRef(cur_script_ast);
+	m.def("get_cur_script", []()->std::reference_wrapper<StatementAST>{
+		return std::reference_wrapper<StatementAST>(*cur_script_ast);
 	});
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
@@ -469,7 +476,7 @@ void RegisiterClassForBinding(py::module& m)
 
 	m.def("expr", CompileExpr);
 	m.def("stmt", CompileStmt);
-	m.def("set_ast", [](UniquePtrStatementAST& ptr) {outexpr = ptr.move(); });
+	m.def("set_ast", [](UniquePtrStatementAST& ptr) {outexpr.emplace_back(ptr.move()); });
 	m.def("set_type", [](ResolvedType& ty) {outtype = ty; });
 	m.def("get_cur_func", GetCurrentPreprocessedFunction);
 	m.def("get_cur_class", GetCurrentPreprocessedClass);
@@ -617,9 +624,7 @@ void RegisiterClassForBinding(py::module& m)
 
 	py::class_ < ScriptAST, ExprAST>(m, "ScriptAST")
 		.def_static("new", [](const string& str, bool is_top_level) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str, is_top_level)); })
-		.def_property("stmt", [](ScriptAST& ths) {return GetRef(ths.stmt); }, [](ScriptAST& ths, UniquePtrStatementAST& v) {
-			ths.stmt = v.move_expr();
-		})
+		.def_property_readonly("stmt", [](ScriptAST& ths) {return GetRef(ths.stmt); })
 		.def_readwrite("script", &ScriptAST::script)
 		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.stmt)); });
 
@@ -660,13 +665,13 @@ void RegisiterClassForBinding(py::module& m)
 	RegisterNumCastClass<tok_uint, tok_int>(m);
 	RegisterNumCastClass<tok_ulong, tok_long>(m);
 
-	/*RegisterNumCastClass<tok_ulong, tok_ulong);
-	RegisterNumCastClass<tok_long, tok_long);
-	RegisterNumCastClass<tok_byte, tok_byte);
-	RegisterNumCastClass<tok_uint, tok_uint);
-	RegisterNumCastClass<tok_int, tok_int);
-	RegisterNumCastClass<tok_float, tok_float);
-	RegisterNumCastClass<tok_double, tok_double);*/
+	//RegisterNumCastClass<tok_ulong, tok_ulong);
+	//RegisterNumCastClass<tok_long, tok_long);
+	//RegisterNumCastClass<tok_byte, tok_byte);
+	//RegisterNumCastClass<tok_uint, tok_uint);
+	//RegisterNumCastClass<tok_int, tok_int);
+	//RegisterNumCastClass<tok_float, tok_float);
+	//RegisterNumCastClass<tok_double, tok_double);
 
 	RegisterNumCastClass<tok_int, tok_long>(m);
 	RegisterNumCastClass<tok_int, tok_byte>(m);
@@ -695,7 +700,6 @@ void RegisiterClassForBinding(py::module& m)
 	RegisterNumCastClass<tok_ulong, tok_uint>(m);
 	RegisterNumCastClass<tok_byte, tok_short>(m);
 	RegisterNumCastClass<tok_short, tok_byte>(m);
-	
 }
 
 extern "C" PyObject * pybind11_init_impl_birdeec() {

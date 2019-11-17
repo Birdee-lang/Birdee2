@@ -1159,12 +1159,14 @@ namespace Birdee
 			},
 				[&this_template_args, &template_arg](ScriptAST* ex) {
 				ex->Phase1();
-				if (ex->stmt) // if the user called set_ast(), use ScriptAST as an expression
+				if (ex->stmt.size()) // if the user called set_ast(), use ScriptAST as an expression
 				{
+					CompileAssert(ex->stmt.size() == 1, ex->Pos,
+						"You should call set_ast once in the script, because it is in a template argument");
 					//if ex->resolved_type.isResolved(), then it's an expression. Otherwise, it's an general statement 
 					CompileAssert(ex->resolved_type.isResolved(), ex->Pos,
 						"The returned AST of this script must be an expression, because it is in a template argument");
-					ParseRawOneTemplateArg(unique_ptr_cast<ExprAST>(std::move(ex->stmt)), this_template_args); //recursively parse the expression
+					ParseRawOneTemplateArg(unique_ptr_cast<ExprAST>(std::move(ex->stmt.front())), this_template_args); //recursively parse the expression
 				}
 				else
 				{
@@ -3417,10 +3419,19 @@ If usage vararg name is "", match the closest vararg
 
 	llvm::Value * Birdee::ScriptAST::GetLValue(bool checkHas)
 	{
-		CompileAssert(instance_of<ExprAST>(stmt.get()), Pos, "Getting LValue from statement is illegal");
-		auto expr = static_cast<ExprAST*>(stmt.get());
+		CompileAssert(stmt.size(), Pos, "Cannot get LValue from empty script");
+		CompileAssert(instance_of<ExprAST>(stmt.front().get()), Pos, "Getting LValue from statement is illegal");
+		auto expr = static_cast<ExprAST*>(stmt.front().get());
 		assert(expr->resolved_type.isResolved());
 		return expr->GetLValue(checkHas);
+	}
+
+	DeferBlockAST::DeferBlockAST(ASTBasicBlock&& defer_block, SourcePos pos) : defer_block(std::move(defer_block)) {
+		Pos = pos;
+	}
+	void DeferBlockAST::Phase1()
+	{
+		defer_block.Phase1();
 	}
 
 	TryBlockAST::TryBlockAST(ASTBasicBlock&& try_block,

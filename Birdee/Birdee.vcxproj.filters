@@ -252,5 +252,8 @@
     <None Include="..\BirdeeHome\src\functional\closures.bdm">
       <Filter>资源文件\blib\functional</Filter>
     </None>
+    <None Include="..\BirdeeHome\pylib\autoscope.py">
+      <Filter>资源文件\pylib</Filter>
+    </None>
   </ItemGroup>
 </Project>

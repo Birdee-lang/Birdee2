@@ -799,6 +799,7 @@ BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 }
 
 unique_ptr<TryBlockAST> ParseTry();
+unique_ptr<DeferBlockAST> ParseDefer();
 std::unique_ptr<ForBlockAST> ParseFor();
 std::unique_ptr<WhileBlockAST> ParseWhile();
 
@@ -908,6 +909,11 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=to
 			push_expr(std::move(ParseTry()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
 			break;
+		case tok_defer:
+			tokenizer.GetNextToken(); //eat defer
+			push_expr(std::move(ParseDefer()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after defer-block");
+			break;
 		case tok_throw:
 		{
 			auto pos = tokenizer.GetSourcePos();
@@ -930,7 +936,7 @@ done:
 unique_ptr<TryBlockAST> ParseTry()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
-	CompileAssert(tok_new, "Expecting a newline after try");
+	CompileAssert(tok_newline, "Expecting a newline after try");
 	ASTBasicBlock bb;
 	ParseBasicBlock(bb, /*optional_tok*/tok_error, /*delimiter*/tok_catch, /*allow_end*/false);
 	vector<ASTBasicBlock> catches;
@@ -946,6 +952,15 @@ unique_ptr<TryBlockAST> ParseTry()
 		ParseBasicBlock(catches.back(), /*optional_tok*/tok_try, /*delimiter*/tok_catch,/*allow_end*/true);
 	}
 	return make_unique<TryBlockAST>(std::move(bb), std::move(catch_vars), std::move(catches), pos);
+}
+
+unique_ptr<DeferBlockAST> ParseDefer()
+{
+	SourcePos pos = tokenizer.GetSourcePos();
+	CompileAssert(tok_newline, "Expecting a newline after defer");
+	ASTBasicBlock bb;
+	ParseBasicBlock(bb, /*optional_tok*/tok_defer);
+	return make_unique<DeferBlockAST>(std::move(bb), pos);
 }
 
 std::unique_ptr<WhileBlockAST> ParseWhile()
@@ -1885,6 +1900,11 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 		ret = ParseTry();
 		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
 		break;
+	case tok_defer:
+		tokenizer.GetNextToken(); //eat defer
+		ret = ParseDefer();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after defer-block");
+		break;
 	case tok_throw:
 	{
 		auto pos = tokenizer.GetSourcePos();
@@ -2053,6 +2073,11 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			tokenizer.GetNextToken(); //eat try
 			push_expr(std::move(ParseTry()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
+			break;
+		case tok_defer:
+			tokenizer.GetNextToken(); //eat defer
+			push_expr(std::move(ParseDefer()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after defer-block");
 			break;
 		case tok_throw:
 		{

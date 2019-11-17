@@ -14,6 +14,7 @@ struct lazy_t[T, TFunc]
 			return v
 		end
 	end
+	public func __deref__() as T => get()
 	public func init(f as TFunc) => data.set(f)
 end
 

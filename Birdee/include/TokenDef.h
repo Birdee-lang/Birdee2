@@ -101,6 +101,7 @@ namespace Birdee
 		tok_not,
 		tok_xor,
 		tok_into,
+		tok_defer,
 	};
 
 	enum NodeType {
