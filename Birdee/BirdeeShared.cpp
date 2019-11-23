@@ -164,6 +164,32 @@ static struct Initializer
 }mod_initializer;
 
 
+size_t Birdee::str_view::hash() const
+{
+	size_t result = 0;
+	const size_t prime = 31;
+	auto itr = str->begin() + starts;
+	for (size_t i = 0; i < len; ++i, ++itr) {
+		result = *itr + (result * prime);
+	}
+	return result;
+}
+
+bool Birdee::str_view::operator==(const str_view & other) const
+{
+	return std::equal(str->begin() + starts, str->begin() + (starts + len), other.str->begin() + other.starts);
+}
+
+std::string Birdee::str_view::to_string() const
+{
+	std::string ret;
+	ret.reserve(len);
+	auto itr = str->begin() + starts;
+	for (size_t i = 0; i < len; ++i, ++itr) {
+		ret.push_back(*itr);
+	}
+	return ret;
+}
 
 void Birdee::Tokenizer::ParseString()
 {

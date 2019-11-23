@@ -151,9 +151,14 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 		cu.init_scripts.push_back(func);
 	}},
 	{"enable_rtti", [](StatementAST* stmt,bool is_top_level) {
-		CompileAssert(isa<ClassAST>(stmt),"The init_script can only be applied on class definitions");
+		CompileAssert(isa<ClassAST>(stmt),"The enable_rtti can only be applied on class definitions");
 		ClassAST* cls = static_cast<ClassAST*>(stmt);
 		cls->needs_rtti = true;
+	}},
+	{"extension", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(isa<FunctionAST>(stmt) && is_top_level,"The extension annotation can only be applied on function definitions in the top level");
+		FunctionAST* f = static_cast<FunctionAST*>(stmt);
+		f->is_extension = true;
 	}},
 };
 

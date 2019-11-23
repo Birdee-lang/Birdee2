@@ -51,7 +51,6 @@ namespace std
 			return has((int)t);
 		}
 	};
-
 }
 namespace llvm
 {
@@ -73,12 +72,24 @@ namespace Birdee {
 	using ::llvm::Value;
 	using std::make_unique;
 	
-	/*template<typename T, typename... Args>
-	std::unique_ptr<T> make_unique(Args&&... args) {
-		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-	}*/
+	struct pair_hash
+	{
+		template <class T1, class T2>
+		std::size_t operator() (const std::pair<T1, T2> &pair) const
+		{
+			return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+		}
+	};
 
-	
+	BD_CORE_API struct str_view
+	{
+		const std::string* str;
+		size_t starts;
+		size_t len;
+		size_t hash() const;
+		std::string to_string() const;
+		bool operator==(const str_view& other) const;
+	};
 
 	class ClassAST;
 	class FunctionAST;
@@ -95,6 +106,7 @@ namespace Birdee {
 
 	class AnnotationStatementAST;
 	
+	using string_ref = std::reference_wrapper<const string>;
 	struct ImportedModule
 	{
 		//mapping from name to <Symbol,is_public>
@@ -103,11 +115,12 @@ namespace Birdee {
 		unordered_map<string, std::pair<unique_ptr<VariableSingleDefAST>, bool>> dimmap;
 		unordered_map<string, std::pair<unique_ptr<PrototypeAST>, bool>> functypemap;
 
-		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
-		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
-		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
-		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
+		unordered_map<string_ref, ClassAST*> imported_classmap;
+		unordered_map<string_ref, FunctionAST*> imported_funcmap;
+		unordered_map<string_ref, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<string_ref, PrototypeAST*> imported_functypemap;
 
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash> class_extend_funcmap;
 		vector<vector<string>> user_imports;
 		vector<unique_ptr<AnnotationStatementAST>> annotations;
 		PyHandle py_scope;
@@ -347,16 +360,22 @@ namespace Birdee {
 		vector<string> search_path; //the search paths, with "/" at the end
 		vector<unique_ptr<StatementAST>> toplevel;
 		//name to <symbol, is_public> mapping
-		unordered_map<std::reference_wrapper<const string>, std::pair<ClassAST*,bool>> classmap;
-		unordered_map<std::reference_wrapper<const string>, std::pair<FunctionAST*,bool>> funcmap;
-		unordered_map<std::reference_wrapper<const string>, std::pair<VariableSingleDefAST*,bool>> dimmap;
-		unordered_map<std::reference_wrapper<const string>, std::pair<unique_ptr<PrototypeAST>,bool>> functypemap;
+		unordered_map<string_ref, std::pair<ClassAST*,bool>> classmap;
+		unordered_map<string_ref, std::pair<FunctionAST*,bool>> funcmap;
+		unordered_map<string_ref, std::pair<VariableSingleDefAST*,bool>> dimmap;
+		unordered_map<string_ref, std::pair<unique_ptr<PrototypeAST>,bool>> functypemap;
 
 		//maps from short names ("import a.b:c" => "c") to the imported AST
-		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
-		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
-		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
-		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
+		unordered_map<string_ref, ClassAST*> imported_classmap;
+		unordered_map<string_ref, FunctionAST*> imported_funcmap;
+		unordered_map<string_ref, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<string_ref, PrototypeAST*> imported_functypemap;
+
+		//holder for auto-generated functype by scripts and extension functions
+		vector<unique_ptr<PrototypeAST>> generated_functy;
+
+		//class extension functions: (class, method_name)->function
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash> class_extend_funcmap;
 
 		//the scripts that are marked "init_script". They will be exported to the "bmm" file
 		vector<ScriptAST*> init_scripts;
@@ -1079,9 +1098,10 @@ namespace Birdee {
 		vector<VariableSingleDefAST*> captured_var;
 		bool capture_this = false;
 		bool capture_super = false;
-		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
+		unordered_map<string_ref, unique_ptr< VariableSingleDefAST>> imported_captured_var;
 		FunctionAST* parent = nullptr;
 		bool capture_on_stack = false;
+		bool is_extension = false;
 
 		llvm::Value* exported_capture_pointer;
 		llvm::Value* imported_capture_pointer;
@@ -1503,12 +1523,22 @@ namespace std
 			return hash<uintptr_t>()(a.rawhash());
 		}
 	};
+
 	template <>
 	struct hash<reference_wrapper<Birdee::PrototypeAST>>
 	{
 		std::size_t operator()(const reference_wrapper<Birdee::PrototypeAST> a) const
 		{
 			return a.get().rawhash();
+		}
+	};
+
+	template <>
+	struct hash<Birdee::str_view>
+	{
+		std::size_t operator()(const Birdee::str_view& a) const
+		{
+			return a.hash();
 		}
 	};
 }
