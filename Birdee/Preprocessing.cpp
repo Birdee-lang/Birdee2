@@ -485,18 +485,18 @@ public:
 		class_stack.pop_back();
 	}
 
-	bool isInTemplateOfOtherModuleAndDoImport()
+	ImportedModule* GetAndInportCurrentTemplateModule()
 	{
-		bool ret = false;
+		ImportedModule* ret = nullptr;
 		if (!template_stack.empty() && template_stack.back().imported_mod)
 		{
-			ret = true;
-			template_stack.back().imported_mod->HandleImport();
+			ret = template_stack.back().imported_mod;
+			ret->HandleImport();
 		}
 		if (!template_class_stack.empty() && template_class_stack.back().imported_mod)
 		{
-			ret = true;
-			template_class_stack.back().imported_mod->HandleImport();
+			ret = template_class_stack.back().imported_mod;
+			ret->HandleImport();
 		}
 		return ret;
 	}
@@ -601,7 +601,7 @@ public:
 			// return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
 		}
 
-		bool isInOtherModule = isInTemplateOfOtherModuleAndDoImport();
+		bool isInOtherModule = GetAndInportCurrentTemplateModule();
 		if (isInOtherModule)
 		{//if in template of another module, search global vars from the module
 			auto ret = GetGlobalFromImportedTemplate(name);
@@ -1406,7 +1406,7 @@ namespace Birdee
 				//e.g. T = int[], then T[] should be int[][]
 				return;
 			}
-			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
+			scope_mgr.GetAndInportCurrentTemplateModule();
 			//if we are in a template and it is imported from another modules
 			auto find_in_template_env = [&pos](ResolvedType& ths, const ScopeManager::TemplateEnv& env, const string& str)
 			{
@@ -2045,6 +2045,37 @@ namespace Birdee
 		return ret;
 	}
 
+	void AddFunctionToClassExtension(FunctionAST* func, unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap)
+	{
+		auto Proto = func->Proto.get();
+		auto& Pos = func->Pos;
+		assert(!Proto->cls);
+		assert(!Proto->is_closure);
+		CompileAssert(Proto->resolved_args.size()
+			&& IsResolvedTypeClass(Proto->resolved_args.front()->resolved_type),
+			Pos, string("The type of the class extension function's first parameter should be a class"));
+		auto& funcname = Proto->GetName();
+		auto pos = funcname.find('_');
+		if (pos != string::npos)
+		{
+			pos += 1;
+			CompileAssert(pos < funcname.length(), Pos, string("Bad class extension function name. It must have at lest 1 character after \'_\'"));
+		}
+		else
+		{
+			pos = 0;
+		}
+		size_t len = funcname.length() - pos;
+		auto clsast = Proto->resolved_args.front()->resolved_type.class_ast;
+		std::pair<ClassAST*, str_view> k = std::make_pair(clsast, str_view{ &funcname, pos, len });
+		auto olditr = targetmap.find(k);
+		CompileAssert(olditr == targetmap.end(), Pos,
+			string("The extension name ") + k.second.to_string()
+			+ " for class " + clsast->GetUniqueName() + " has already been defined at " + olditr->second->GetName());
+		std::pair< std::pair<ClassAST*, str_view>, FunctionAST*> v = std::make_pair(k, func);
+		targetmap.insert(v);
+	}
+
 	void FunctionAST::Phase0()
 	{
 		FunctionAST* template_func = template_source_func;
@@ -2109,33 +2140,10 @@ If usage vararg name is "", match the closest vararg
 		CompileAssert(!is_vararg, Pos, string("Cannot resolve vararg parameter: \"") + vararg_name + "\"");
 		if (this->is_extension)
 		{
-			assert(!Proto->cls);
-			assert(!Proto->is_closure);
-			CompileAssert(Proto->resolved_args.size() 
-				&& IsResolvedTypeClass(Proto->resolved_args.front()->resolved_type), 
-				Pos, string("The type of the class extension function's first parameter should be a class"));
-			auto& funcname = Proto->GetName();
-			auto pos = funcname.find('_');
-			if (pos != string::npos)
-			{
-				pos += 1;
-				CompileAssert(pos < funcname.length(), Pos, string("Bad class extension function name. It must have at lest 1 character after \'_\'"));
-			}
-			else
-			{
-				pos = 0;
-			}
-			size_t len = funcname.length() - pos;
-			auto clsast = Proto->resolved_args.front()->resolved_type.class_ast;
-			std::pair<ClassAST*, str_view> k = std::make_pair(clsast, str_view{&funcname, pos, len});
-			auto olditr = cu.class_extend_funcmap.find(k);
-			CompileAssert(olditr == cu.class_extend_funcmap.end(), Pos,
-				string("The extension name ") + k.second.to_string()
-				+ " for class " + clsast->GetUniqueName() +" has been already defined at " + olditr->second->GetName());
-			std::pair< std::pair<ClassAST*, str_view>, FunctionAST*> v = std::make_pair(k, this);
-			cu.class_extend_funcmap.insert(v);
+			AddFunctionToClassExtension(this, cu.class_extend_funcmap);
 		}
 	}
+
 	void FunctionTemplateInstanceExprAST::Phase1()
 	{
 		Phase1(false);
@@ -2323,8 +2331,13 @@ If usage vararg name is "", match the closest vararg
 					Pos, string("Accessing a private member") + member + " outside of a class");
 				return thsfunc->decl->resolved_type;
 			}
-			auto extended = cu.class_extend_funcmap.find(std::make_pair(cur_cls, str_view{ &member, 0, member.length() }));
-			if (extended != cu.class_extend_funcmap.end())
+			unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>* extension_map;
+			if (auto mod = scope_mgr.GetAndInportCurrentTemplateModule())
+				extension_map = &mod->class_extend_funcmap;
+			else
+				extension_map = &cu.class_extend_funcmap;
+			auto extended = extension_map->find(std::make_pair(cur_cls, str_view{ &member, 0, member.length() }));
+			if (extended != extension_map->end())
 			{
 				kind = MemberExprAST::member_imported_function;
 				thsextension = extended->second;

@@ -189,6 +189,11 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 		if (itr != func.end())
 			ret->link_name = itr->get<string>();
 	}
+	{
+		auto itr = func.find("is_extension");
+		if (itr != func.end())
+			ret->is_extension = itr->get<bool>();
+	}
 	ret->resolved_type.type = tok_func;
 	ret->resolved_type.proto_ast = protoptr;
 	return std::move(ret);

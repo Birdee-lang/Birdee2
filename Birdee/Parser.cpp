@@ -67,7 +67,8 @@ namespace Birdee
 		};
 		return tok_names[tok];
 	}
-	
+	extern 	void AddFunctionToClassExtension(FunctionAST* func, 
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap);
 }
 
 inline int DoWarn(const string& str)
@@ -1709,7 +1710,12 @@ void DoImportPackageAll(const vector<string>& package)
 	for (auto& itr : mod->funcmap)
 	{
 		if (itr.second.second)
-			InsertName(cu.imported_funcmap, itr.first, itr.second.first.get());
+		{
+			auto func = itr.second.first.get();
+			InsertName(cu.imported_funcmap, itr.first, func);
+			if (func->is_extension)
+				AddFunctionToClassExtension(func, cu.class_extend_funcmap);
+		}
 	}
 	for (auto& itr : mod->functypemap)
 	{
@@ -1719,22 +1725,28 @@ void DoImportPackageAll(const vector<string>& package)
 }
 
 template<typename T,typename NodeT>
-bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
+auto FindAndInsertName(NodeT& node,T& namemap, const string& name) -> decltype(namemap.cbegin()->second.first.get())
 {
 	auto dim = namemap.find(name);
 	if (dim != namemap.end() && dim->second.second)
 	{
-		InsertName(node,dim->first, dim->second.first.get());
-		return true;
+		auto ret = dim->second.first.get();
+		InsertName(node,dim->first, ret);
+		return ret;
 	}
-	return false;
+	return nullptr;
 }
 
 BD_CORE_API void DoImportName(const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
-	if (FindAndInsertName(cu.imported_funcmap, mod->funcmap, name)) return;
+	if (auto func = FindAndInsertName(cu.imported_funcmap, mod->funcmap, name))
+	{
+		if (func->is_extension)
+			AddFunctionToClassExtension(func, cu.class_extend_funcmap);
+		return;
+	}
 	if (FindAndInsertName(cu.imported_classmap, mod->classmap, name)) return;
 	if (FindAndInsertName(cu.imported_functypemap, mod->functypemap, name)) return;
 	throw CompileError("Cannot find name " + name + " from module " + GetModuleNameByArray(package));
@@ -1754,7 +1766,12 @@ void DoImportNameInImportedModule(ImportedModule* to_mod,const vector<string>& p
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(to_mod->imported_dimmap, mod->dimmap, name)) return;
-	if (FindAndInsertName(to_mod->imported_funcmap, mod->funcmap, name)) return;
+	if (auto func = FindAndInsertName(to_mod->imported_funcmap, mod->funcmap, name))
+	{
+		if (func->is_extension)
+			AddFunctionToClassExtension(func, to_mod->class_extend_funcmap);
+		return;
+	}
 	if (FindAndInsertName(to_mod->imported_classmap, mod->classmap, name)) return;
 	if (FindAndInsertName(to_mod->imported_functypemap, mod->functypemap, name)) return;
 	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
@@ -1776,7 +1793,12 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 	for (auto& itr : mod->funcmap)
 	{
 		if (itr.second.second)
-			InsertName(to_mod->imported_funcmap, itr.first, itr.second.first.get());
+		{
+			auto func = itr.second.first.get();
+			InsertName(to_mod->imported_funcmap, itr.first, func);
+			if (func->is_extension)
+				AddFunctionToClassExtension(func, to_mod->class_extend_funcmap);
+		}
 	}
 	for (auto& itr : mod->functypemap)
 	{

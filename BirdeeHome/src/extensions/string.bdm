@@ -1,0 +1,74 @@
+package extensions
+
+import unsafe
+
+@private declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
+
+@extension function string___mul__(v as string, n as uint) as string
+	dim len = v.length()
+	dim buf = new byte * (len * n)
+	for dim i=0 till n
+		memcpy(addressof(buf[i*len]), v.get_raw(), len, 1, false)
+	end
+	return new string:copy_bytes(buf,0 , len * n)
+end
+
+@private func ptr_add(p as pointer, a as int) as pointer
+	return unsafe.ptr_cast[pointer](unsafe.ptr_cast[ulong](p) + a)
+end
+
+@private func ptr_diff(p as pointer, a as pointer) as long
+	return unsafe.ptr_cast[long](p) - unsafe.ptr_cast[long](a)
+end
+
+struct string_view
+	private str as string
+	private start as uint
+	private len as uint
+
+	public func __init__(str as string, start as uint, len as uint)
+		this.str = str
+		this.start = start
+		this.len = len
+	end
+
+	public func __deref__() as string
+		return new string:copy_bytes(str.get_bytes(), start, len)
+	end
+
+	public func __getitem__(idx as uint) as byte => str[idx + start]
+
+	public func length() as uint => len
+
+	public func get_raw() as pointer => ptr_add(str.get_raw(), start)
+	public function find(substr as string_view, _start as uint) as int
+		dim ptr = ptr_add(str.get_raw(), start + _start)
+		dim f = strstr(ptr, substr.get_raw())
+		if f != pointerof(null) then
+			return ptr_diff(f, ptr)
+		else
+			return -1
+		end
+	end
+end
+
+@extension
+function string1_view(str as string, start as uint, len as uint) as string_view
+	dim ret as string_view
+	ret.__init__(str, start, len)
+	return ret
+end
+
+@extension function string_viewall(v as string) as string_view => v.view(0, v.length())
+
+@private declare function strstr(big as pointer, little as pointer) as pointer
+
+@extension function string_find(v as string, substr as string_view, start as uint) as int
+	dim ptr = ptr_add(v.get_raw(), start)
+	dim f = strstr(ptr, substr.get_raw())
+	if f != pointerof(null) then
+		return ptr_diff(f, ptr)
+	else
+		return -1
+	end
+end
