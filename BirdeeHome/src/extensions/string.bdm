@@ -3,6 +3,11 @@ package extensions
 import unsafe
 
 @private declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
+@private declare function strncmp (a as pointer,b as pointer, num as uint) as int
+@private declare function strstr(big as pointer, little as pointer) as pointer
+@private declare function atoi(s as pointer) as int
+@private declare function atoll(s as pointer) as long
+@private declare function atof(s as pointer) as double
 
 @extension function string___mul__(v as string, n as uint) as string
 	dim len = v.length()
@@ -50,6 +55,22 @@ struct string_view
 			return -1
 		end
 	end
+
+	public func __eq__(other as string_view) as boolean
+		if len != other.len then
+			return false
+		end
+		if str === other.str && start == other.start then
+			return true
+		end
+		return 0==strncmp(get_raw(), other.get_raw(), len)
+	end
+
+	public func __ne__(other as string_view) as boolean => !__eq__(other)
+
+	public function to_int() as int => atoi(get_raw())
+	public function to_long() as long => atoll(get_raw())
+	public function to_double() as double => atof(get_raw())
 end
 
 @extension
@@ -61,7 +82,6 @@ end
 
 @extension function string_viewall(v as string) as string_view => v.view(0, v.length())
 
-@private declare function strstr(big as pointer, little as pointer) as pointer
 
 @extension function string_find(v as string, substr as string_view, start as uint) as int
 	dim ptr = ptr_add(v.get_raw(), start)
@@ -72,3 +92,7 @@ end
 		return -1
 	end
 end
+
+@extension function string_to_int(v as string) as int => atoi(v.get_raw())
+@extension function string_to_double(v as string) as double => atof(v.get_raw())
+@extension function string_to_long(v as string) as long => atoll(v.get_raw())

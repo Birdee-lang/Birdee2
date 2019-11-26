@@ -177,6 +177,10 @@ size_t Birdee::str_view::hash() const
 
 bool Birdee::str_view::operator==(const str_view & other) const
 {
+	if (other.len != len)
+		return false;
+	if (other.str == str && starts == other.starts)
+		return true;
 	return std::equal(str->begin() + starts, str->begin() + (starts + len), other.str->begin() + other.starts);
 }
 
