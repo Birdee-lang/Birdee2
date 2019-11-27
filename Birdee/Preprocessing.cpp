@@ -2055,7 +2055,10 @@ namespace Birdee
 			&& IsResolvedTypeClass(Proto->resolved_args.front()->resolved_type),
 			Pos, string("The type of the class extension function's first parameter should be a class"));
 		auto& funcname = Proto->GetName();
-		auto pos = funcname.find('_');
+		auto pos = funcname.find('.'); // skip all char before the first .
+		if (pos == string::npos)
+			pos = 0;
+		pos = funcname.find('_', pos);
 		if (pos != string::npos)
 		{
 			pos += 1;

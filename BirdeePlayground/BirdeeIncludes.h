@@ -9,14 +9,26 @@ jit->addNative("extensions_0string_0ptr__diff",extensions_0string_0ptr__diff);
 extern void extensions_0string_0string______mul____();
 jit->addNative("extensions_0string_0string______mul____",extensions_0string_0string______mul____);
 
+extern void extensions_0string_0check__index();
+jit->addNative("extensions_0string_0check__index",extensions_0string_0check__index);
+
 extern void extensions_0string_0string1__view();
 jit->addNative("extensions_0string_0string1__view",extensions_0string_0string1__view);
 
 extern void extensions_0string_0string__viewall();
 jit->addNative("extensions_0string_0string__viewall",extensions_0string_0string__viewall);
 
+extern void extensions_0string_0string__findview();
+jit->addNative("extensions_0string_0string__findview",extensions_0string_0string__findview);
+
 extern void extensions_0string_0string__find();
 jit->addNative("extensions_0string_0string__find",extensions_0string_0string__find);
+
+extern void extensions_0string_0string__splitview();
+jit->addNative("extensions_0string_0string__splitview",extensions_0string_0string__splitview);
+
+extern void extensions_0string_0string__split();
+jit->addNative("extensions_0string_0string__split",extensions_0string_0string__split);
 
 extern void extensions_0string_0string__to__int();
 jit->addNative("extensions_0string_0string__to__int",extensions_0string_0string__to__int);
@@ -42,8 +54,14 @@ jit->addNative("extensions_0string_0string__view_0length",extensions_0string_0st
 extern void extensions_0string_0string__view_0get__raw();
 jit->addNative("extensions_0string_0string__view_0get__raw",extensions_0string_0string__view_0get__raw);
 
+extern void extensions_0string_0string__view_0view();
+jit->addNative("extensions_0string_0string__view_0view",extensions_0string_0string__view_0view);
+
 extern void extensions_0string_0string__view_0find();
 jit->addNative("extensions_0string_0string__view_0find",extensions_0string_0string__view_0find);
+
+extern void extensions_0string_0string__view_0split();
+jit->addNative("extensions_0string_0string__view_0split",extensions_0string_0string__view_0split);
 
 extern void extensions_0string_0string__view_0____eq____();
 jit->addNative("extensions_0string_0string__view_0____eq____",extensions_0string_0string__view_0____eq____);

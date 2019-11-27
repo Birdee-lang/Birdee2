@@ -1,6 +1,7 @@
 package extensions
 
 import unsafe
+import vector:vector
 
 @private declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
 @private declare function strncmp (a as pointer,b as pointer, num as uint) as int
@@ -26,6 +27,12 @@ end
 	return unsafe.ptr_cast[long](p) - unsafe.ptr_cast[long](a)
 end
 
+function check_index(str as string, idx as uint)
+	if idx > str.length() then
+			throw new runtime_exception("Index out of index")
+	end
+end
+
 struct string_view
 	private str as string
 	private start as uint
@@ -46,15 +53,16 @@ struct string_view
 	public func length() as uint => len
 
 	public func get_raw() as pointer => ptr_add(str.get_raw(), start)
-	public function find(substr as string_view, _start as uint) as int
-		dim ptr = ptr_add(str.get_raw(), start + _start)
-		dim f = strstr(ptr, substr.get_raw())
-		if f != pointerof(null) then
-			return ptr_diff(f, ptr)
-		else
-			return -1
+
+	public func view(_start as uint, _len as uint) as string_view
+		if _len > 0 && _start + _len > len then
+			throw new runtime_exception("Index out of index")
 		end
+		return string1_view(str, start + _start, _len)
 	end
+
+	public function find(substr as string_view, _start as uint) as int => string_find_template(this, substr, start)
+	public function split(substr as string_view) as string_view[] => string_split_template(this, substr)
 
 	public func __eq__(other as string_view) as boolean
 		if len != other.len then
@@ -76,22 +84,58 @@ end
 @extension
 function string1_view(str as string, start as uint, len as uint) as string_view
 	dim ret as string_view
+	if len > 0 && start + len > str.length() then
+		throw new runtime_exception("Index out of index")
+	end
 	ret.__init__(str, start, len)
 	return ret
 end
 
 @extension function string_viewall(v as string) as string_view => v.view(0, v.length())
 
-
-@extension function string_find(v as string, substr as string_view, start as uint) as int
+function string_find_template[T1, T](v as T1, substr as T, start as uint) as int
 	dim ptr = ptr_add(v.get_raw(), start)
 	dim f = strstr(ptr, substr.get_raw())
 	if f != pointerof(null) then
-		return ptr_diff(f, ptr)
+		dim idx = ptr_diff(f, ptr) + start
+		if idx >= v.length() then
+			return -1
+		else
+			return idx
+		end
 	else
 		return -1
 	end
 end
+
+@extension function string_findview(v as string, substr as string_view, start as uint) as int => string_find_template(v, substr, start)
+@extension function string_find(v as string, substr as string, start as uint) as int => string_find_template(v, substr, start)
+
+function string_split_template[T1, T](v as T1, substr as T) as string_view[]
+	dim buf = new vector[string_view](0)
+	dim len = substr.length()
+	dim idx = string_find_template(v, substr, 0)
+	dim last = 0
+	while idx > 0
+		buf.push_back(v.view(last, idx - last))
+		last = idx + len
+		idx = last
+		if idx >= v.length() then
+			break
+		end
+		idx = string_find_template(v, substr, idx)
+	end
+	buf.push_back(v.view(last, v.length() - last))
+	dim srcbuf =  buf.buffer()
+	dim ret = new string_view*buf.size()
+	for dim i=0 till buf.size()
+		ret[i] = srcbuf[i]
+	end
+	return ret
+end
+
+@extension function string_splitview(v as string, substr as string_view) as string_view[] => string_split_template(v, substr)
+@extension function string_split(v as string, substr as string) as string_view[] => string_split_template(v, substr)
 
 @extension function string_to_int(v as string) as int => atoi(v.get_raw())
 @extension function string_to_double(v as string) as double => atof(v.get_raw())
