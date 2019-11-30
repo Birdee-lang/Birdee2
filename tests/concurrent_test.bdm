@@ -15,6 +15,7 @@ function add()
 	end
 end
 
+
 dim t1 = new thread(add)
 dim t2 = new thread(add)
 dim t3 = new thread(add)
@@ -25,6 +26,88 @@ t3.join()
 
 {@bdassert("v==300000")@}
 println("Lock testing ok")
+
+func cond_test()
+	dim cond = new condition_variable
+	dim cond_cnt  = 0
+	dim done_cnt = 0
+	dim m = new mutex
+	dim cond_single_await = func ()
+		m.acquire()
+		cond.await_cond(m, func() as boolean => cond_cnt > 0)
+		done_cnt = done_cnt+ 1
+		println("Cond await done" + int2str(done_cnt))
+		cond_cnt = cond_cnt -1
+		m.release()
+	end
+
+	dim t1 = new thread(cond_single_await)
+	dim t2 = new thread(cond_single_await)
+	dim t3 = new thread(cond_single_await)
+	concurrent.threading.sleep(500)
+
+	{@bdassert("done_cnt == 0")@}
+	m.acquire()
+	cond_cnt=1
+	m.release()
+
+	cond.notify()
+	concurrent.threading.sleep(1000)
+	cond_cnt=1
+	println("done_cnt" + int2str(done_cnt))
+	{@bdassert("done_cnt == 1")@}
+
+	cond.notify()
+	concurrent.threading.sleep(1000)
+	cond_cnt=1
+	{@bdassert("done_cnt == 2")@}
+
+	cond.notify()
+	concurrent.threading.sleep(1000)
+	{@bdassert("done_cnt == 3")@}
+	{@bdassert("cond_cnt == 0")@}
+	t1.join()
+	t2.join()
+	t3.join()
+end
+
+cond_test()
+println("Cond test done")
+
+func cond_bcast_test()
+	dim cond = new condition_variable
+	dim cond_cnt  = 0
+	dim done_cnt = 0
+	dim m = new mutex
+	dim cond_single_await = func ()
+		m.acquire()
+		cond.await_cond(m, func() as boolean => cond_cnt > 0)
+		done_cnt = done_cnt+ 1
+		cond_cnt = cond_cnt -1
+		m.release()
+	end
+
+	dim t1 = new thread(cond_single_await)
+	dim t2 = new thread(cond_single_await)
+	dim t3 = new thread(cond_single_await)
+	concurrent.threading.sleep(500)
+
+	{@bdassert("done_cnt == 0")@}
+	m.acquire()
+	cond_cnt=3
+	m.release()
+
+	cond.notify_all()
+	concurrent.threading.sleep(1000)
+	{@bdassert("done_cnt == 3")@}
+	{@bdassert("cond_cnt == 0")@}
+	t1.join()
+	t2.join()
+	t3.join()
+end
+
+cond_bcast_test()
+println("Cond bcast test done")
 
 dim v1 = 1
 dim result = create_future[int]()
@@ -70,3 +153,4 @@ if {@set_bool(get_os_name()=="windows")@} then
 else
 	println("multi future testing skipped for linux")
 end
+
