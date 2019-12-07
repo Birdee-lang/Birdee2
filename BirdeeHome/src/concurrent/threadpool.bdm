@@ -1,3 +1,5 @@
+package concurrent
+
 import concurrent.sync:*
 import concurrent.syncdef:*
 import concurrent.threading:*
@@ -68,12 +70,13 @@ set_type(RetT)
 			while q.empty() && !stop
 				empty_cond.await(lock, -1)
 			end
+			if stop then
+				lock.release()
+				return
+			end
 			dim v = q.pop()
 			full_cond.notify()
 			lock.release()
-			if stop then
-				return
-			end
 			v()
 		end
 	end
@@ -89,8 +92,3 @@ set_type(RetT)
 		end
 	end
 end
-
-dim pool = new threadpool(3,3)
-dim f = pool.submit(func (a as int, b as int) as int => a+ b, 1, 3)
-f.await()
-println(int2str(f.get_result().get()))
