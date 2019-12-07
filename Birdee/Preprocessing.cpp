@@ -1634,6 +1634,19 @@ namespace Birdee
 		}
 		return true;
 	}
+	bool PrototypeAST::operator<(const PrototypeAST & that) const
+	{
+		if ((int)is_closure > (int)that.is_closure)
+			return false;
+		else if ((int)is_closure < (int)that.is_closure)
+			return true;
+		
+		if (!(resolved_type == that.resolved_type))
+		{
+			return resolved_type < that.resolved_type;
+		}
+		return resolved_args < that.resolved_args;
+	}
 	std::size_t PrototypeAST::rawhash() const
 	{
 		const PrototypeAST* proto = this;
@@ -1668,7 +1681,7 @@ namespace Birdee
 		if (type == tok_package)
 			return import_node < that.import_node;
 		if (type == tok_func)
-			return proto_ast < that.proto_ast;
+			return *proto_ast < *that.proto_ast;
 		return false;		
 	}
 	bool Birdee::Type::operator<(const Type & that)
@@ -2907,24 +2920,26 @@ If usage vararg name is "", match the closest vararg
 				return;
 			DeduceTemplateArgFromArg(proto->RetType.get(), rty.proto_ast->resolved_type, name2type, Pos);
 			auto args = proto->Args.get();
-			auto param_size = rty.proto_ast->resolved_args.size();
-			if (isa<VariableMultiDefAST>(args))
-			{
-				auto& lst = static_cast<VariableMultiDefAST*>(args)->lst;
-				for (int i = 0; i < lst.size(); i++)
+			if (args) {
+				auto param_size = rty.proto_ast->resolved_args.size();
+				if (isa<VariableMultiDefAST>(args))
 				{
-					if (i >= param_size)
-						return;
-					DeduceTemplateArgFromArg(lst[i]->type.get(), rty.proto_ast->resolved_args[i]->resolved_type, name2type, Pos);
+					auto& lst = static_cast<VariableMultiDefAST*>(args)->lst;
+					for (int i = 0; i < lst.size(); i++)
+					{
+						if (i >= param_size)
+							return;
+						DeduceTemplateArgFromArg(lst[i]->type.get(), rty.proto_ast->resolved_args[i]->resolved_type, name2type, Pos);
+					}
 				}
-			}
-			else
-			{
-				assert(isa<VariableSingleDefAST>(args));
-				if (param_size == 0)
-					return;
-				DeduceTemplateArgFromArg(static_cast<VariableSingleDefAST*>(args)->type.get(),
-					rty.proto_ast->resolved_args[0]->resolved_type, name2type, Pos);
+				else
+				{
+					assert(isa<VariableSingleDefAST>(args));
+					if (param_size == 0)
+						return;
+					DeduceTemplateArgFromArg(static_cast<VariableSingleDefAST*>(args)->type.get(),
+						rty.proto_ast->resolved_args[0]->resolved_type, name2type, Pos);
+				}
 			}
 		}
 	}

@@ -657,10 +657,18 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		tokenizer.GetNextToken();
 		break;
 	default:
-		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
+		if (tokenizer.CurTok == tok_closure || tokenizer.CurTok == tok_functype)
 		{
+			bool is_closure = tokenizer.CurTok == tok_closure;
+			tokenizer.GetNextToken(); //eat function
+			auto expr = make_unique<BasicTypeExprAST>();
+			expr->Pos = tokenizer.GetSourcePos();
+			expr->type = make_unique<PrototypeType>(ParseFunctionPrototype(nullptr, false, nullptr, is_closure, false, false));
+			firstexpr = std::move(expr);
+		}
+		else if (basic_types.find(tokenizer.CurTok) != basic_types.end()) {
 			CompileAssert(anno.empty(), "Annotations cannot be applied on types");
-			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok,tokenizer.GetSourcePos());
+			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok, tokenizer.GetSourcePos());
 			tokenizer.GetNextToken();
 		}
 		else

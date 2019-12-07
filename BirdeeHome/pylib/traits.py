@@ -136,7 +136,7 @@ Returns the resolvedtype of what the function returns
 '''
 def return_type_of(expr):
 	proto = expr.resolved_type
-	require_(is_prototype_(proto))
+	require_(is_prototype(proto))
 	return proto.get_detail().return_type
 
 '''

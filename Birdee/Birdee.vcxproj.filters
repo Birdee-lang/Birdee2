@@ -255,5 +255,8 @@
     <None Include="..\BirdeeHome\pylib\autoscope.py">
       <Filter>资源文件\pylib</Filter>
     </None>
+    <None Include="..\BirdeeHome\src\concurrent\threadpool.bdm">
+      <Filter>资源文件\blib</Filter>
+    </None>
   </ItemGroup>
 </Project>

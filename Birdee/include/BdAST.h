@@ -460,7 +460,7 @@ namespace Birdee {
 		Value * Generate();
 		virtual void Phase1() {}
 		BasicTypeExprAST() {}
-		BasicTypeExprAST(Token token, SourcePos pos) { Pos = pos; type = make_unique<Type>(token); };
+		BasicTypeExprAST(Token token, SourcePos pos) { Pos = pos; type = make_unique<Type>(token); }
 		void print(int level) {
 			ExprAST::print(level); std::cout << "BasicType"<<type->type<<"\n";
 		}
@@ -923,6 +923,7 @@ namespace Birdee {
 		bool is_closure;
 		friend BD_CORE_API bool operator == (const PrototypeAST&, const PrototypeAST&);
 		
+		bool operator < (const PrototypeAST&) const;
 		std::size_t rawhash() const; 
 		//compare the arguments, return type and the belonging class, without comparing is_closure field
 		bool IsSamePrototype(const PrototypeAST&) const;
@@ -1371,8 +1372,11 @@ namespace Birdee {
 			return nullptr;
 		};
 	};
-
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	BD_CORE_API class  DeferBlockAST : public StatementAST
+#else
 	class BD_CORE_API DeferBlockAST : public StatementAST
+#endif
 	{
 	public:
 		ASTBasicBlock defer_block;

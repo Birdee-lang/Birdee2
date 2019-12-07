@@ -301,6 +301,7 @@
     <None Include="..\BirdeeHome\src\concurrent\sync.bdm" />
     <None Include="..\BirdeeHome\src\concurrent\syncdef.bdm" />
     <None Include="..\BirdeeHome\src\concurrent\threading.bdm" />
+    <None Include="..\BirdeeHome\src\concurrent\threadpool.bdm" />
     <None Include="..\BirdeeHome\src\functional\closures.bdm" />
     <None Include="..\BirdeeHome\src\functional\lazy.bdm" />
     <None Include="..\BirdeeHome\src\hash.bdm" />
