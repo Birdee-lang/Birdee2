@@ -4,7 +4,7 @@ deb-src http://apt.llvm.org/xenial/ llvm-toolchain-xenial-6.0 main
 EOF
 wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update
-sudo apt-get install -y llvm-6.0 python3-dev libgc-dev
+sudo apt-get install -y llvm-6.0 python3-dev libgc-dev libreadline-dev
 pip3 install pybind11
 sudo ln -s -r /usr/include/llvm-6.0/llvm /usr/include/llvm
 sudo ln -s -r /usr/include/llvm-c-6.0/llvm-c/ /usr/include/llvm-c
