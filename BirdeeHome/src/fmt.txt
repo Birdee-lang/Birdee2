@@ -25,10 +25,10 @@ arg_idx=0
 
 def check_arg(arg_idx,arg_cnt):
 	if arg_idx>=arg_cnt:
-		raise RuntimeError(f'Too less arguments given. Expecting the {arg_idx}-th argument, but {arg_cnt} are given')
+		raise RuntimeError('Too less arguments given. Expecting the {arg_idx}-th argument, but {arg_cnt} are given'.format(arg_idx=arg_idx,arg_cnt=arg_cnt))
 def check_type(args,idx,ty):
 	if args[idx].resolved_type!=ty:
-		raise RuntimeError(f'Expecting the {idx}-th argument to be {ty}, but {args[idx].resolved_type} is given')
+		raise RuntimeError('Expecting the {idx}-th argument to be {ty}, but {args[idx].resolved_type} is given'.format(idx=idx, ty=ty))
 
 for i in range(len(fmt)):
 	if in_ctrl:
@@ -37,26 +37,26 @@ for i in range(len(fmt)):
 			cur_str+='%'
 		else:
 			if cur_str:
-				body.push_back(expr(f"print('''{cur_str}''')"))
+				body.push_back(expr("print('''{cur_str}''')".format(cur_str=cur_str)))
 				cur_str=""
 			check_arg(arg_idx,arg_cnt)
 			if fmt[i]=='d':
 				check_type(args,arg_idx,ty_int)
-				body.push_back(expr(f"print(int2str(___vararg{arg_idx}))"))
+				body.push_back(expr("print(int2str(___vararg{arg_idx}))".format(arg_idx=arg_idx)))
 			elif fmt[i]=='s':
 				check_type(args,arg_idx,ty_str)
-				body.push_back(expr(f"print(___vararg{arg_idx})"))
+				body.push_back(expr("print(___vararg{arg_idx})".format(arg_idx=arg_idx)))
 			elif fmt[i]=='f':
 				check_type(args,arg_idx,ty_str)
-				body.push_back(expr(f"print(double2str(___vararg{arg_idx}))"))
+				body.push_back(expr("print(double2str(___vararg{arg_idx}))".format(arg_idx=arg_idx)))
 			elif fmt[i]=='p':
 				check_type(args,arg_idx,ty_pointer)
-				body.push_back(expr(f"print(pointer2str(___vararg{arg_idx}))"))
+				body.push_back(expr("print(pointer2str(___vararg{arg_idx}))".format(arg_idx=arg_idx)))
 			elif fmt[i]=='b':
 				check_type(args,arg_idx,ty_bool)
-				body.push_back(expr(f"print(bool2str(___vararg{arg_idx}))"))
+				body.push_back(expr("print(bool2str(___vararg{arg_idx}))".format(arg_idx=arg_idx)))
 			else:
-				raise RuntimeError(f"Bad control character {fmt[i]}")
+				raise RuntimeError("Bad control character {fmt}".format(fmt=fmt[i]))
 			arg_idx+=1
 	else:
 		if fmt[i]!='%':
@@ -65,9 +65,9 @@ for i in range(len(fmt)):
 			in_ctrl=True
 
 if arg_idx!=arg_cnt:
-	raise RuntimeError(f"Too many arguments given. Expecting {arg_idx} but {arg_cnt} are given")
+	raise RuntimeError("Too many arguments given. Expecting {arg_idx} but {arg_cnt} are given".format(arg_idx=arg_idx,arg_cnt=arg_cnt))
 if cur_str:
-	body.push_back(expr(f"print('''{cur_str}''')"))
+	body.push_back(expr("print('''{cur_str}''')".format(cur_str=cur_str)))
 @}
 end
 

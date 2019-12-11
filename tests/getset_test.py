@@ -1,7 +1,6 @@
 from birdeec import *
 
-top_level(
-'''
+top_level('''
 {@from getset import *@}
 
 dim c as string[]
@@ -17,8 +16,7 @@ end
 dim f as SomeClass=new SomeClass
 f.set_c(new string * 3)
 println(f.get_c()[0])
-'''
-)
+''')
 
 process_top_level()
 print("Done")

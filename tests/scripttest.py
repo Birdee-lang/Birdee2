@@ -512,13 +512,13 @@ end
 add2(1,"2")''')
 
 ddd="'''"
-assert_ok(f'''
+assert_ok('''
 dim a = {ddd}asd
 
 
 \n\a
 {ddd}, b as int
-print(a)''')
+print(a)'''.format(ddd=ddd))
 
 
 #tests for python script scopes

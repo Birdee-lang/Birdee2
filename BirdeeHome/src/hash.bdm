@@ -19,7 +19,7 @@ if ty.is_integer():
 elif ty.index_level==0 and ty.base==BasicType.CLASS:
 	set_ast(expr("v.__hash__()"))
 else:
-	raise Exception(f"Cannot hash the type: {ty}")
+	raise Exception("Cannot hash the type: {ty}".format(ty=ty))
 @}
 end
 

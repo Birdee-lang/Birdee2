@@ -27,7 +27,7 @@ def tuple_add_constructor(func):
 	body=func.body
 	idx=0
 	for arg in args:
-		body.push_back(stmt("ret.v{idx}=___vararg{idx}".format(idx=idx))
+		body.push_back(stmt("ret.v{idx}=___vararg{idx}".format(idx=idx)))
 		idx+=1
 	body.push_back(ReturnAST.new(expr("ret")))
 @}
