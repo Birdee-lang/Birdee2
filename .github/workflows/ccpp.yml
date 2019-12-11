@@ -9,9 +9,11 @@ jobs:
     
     steps:
     - uses: actions/checkout@v1
-    - name: apt
-      run: sudo apt-get install -y python3-dev libgc-dev
+    - name: dependencies
+      run: bash install_dependencies
     - name: make
       run: make
+      env:
+        BIRDEE_HOME: ./BirdeeHome
     - name: make tests
       run: make tests
