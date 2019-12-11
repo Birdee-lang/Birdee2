@@ -10,7 +10,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: dependencies
-      run: bash install_dependencies
+      run: bash install_dependencies.sh
     - name: make
       run: make
       env:
