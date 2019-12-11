@@ -27,7 +27,7 @@ LIBS ?= -pthread
 export PWD_DIR CXX CPPFLAGS LIBS COMPILER_DIR INC_DIR BIN_DIR PYLIBS LIB_DIR BLIB_DIR TESTS_DIR
 
 ##
-all: directories compiler runtime libraries playground
+all: directories compiler runtime libraries #playground
 
 directories: ${BIN_DIR} ${LIB_DIR}
 
