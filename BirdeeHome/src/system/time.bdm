@@ -1,0 +1,5 @@
+package system
+
+import {@"system.specific.win32.time" if get_os_name()=="windows" else "system.specific.unistd.time"@}:*
+
+function get_milliseconds() as ulong => _get_milliseconds()

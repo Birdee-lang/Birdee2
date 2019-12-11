@@ -14,7 +14,9 @@ declare function pthread_exit(p as pointer)
 declare function sleep (seconds as int)
 declare function pthread_cond_init(cv as pointer,cattr as pointer) as int
 declare function pthread_cond_wait(cv as pointer,mutex as pointer) as int
+declare function pthread_cond_timedwait(cv as pointer,mutex as pointer, times as pointer) as int
 declare function pthread_cond_signal(cv as pointer) as int
+declare function pthread_cond_broadcast(cv as pointer) as int
 declare function pthread_cond_destroy(cv as pointer) as int
 declare function pthread_mutex_destroy(mutex as pointer) as int
 declare function pthread_mutex_init(mutex as pointer,attr as pointer) as int
@@ -25,6 +27,27 @@ declare function pthread_join(thread as pointer, retval as pointer) as int
 {@
 assert(get_os_name()=='linux' and get_target_bits()==64)
 @}
+
+@init_script
+{@
+from bdconst import *
+define("POLLIN",		0x0001)
+define("POLLPRI",		0x0002)
+define("POLLOUT",		0x0004)
+define("POLLERR",		0x0008)
+define("POLLHUP",		0x0010)
+define("POLLNVAL",	0x0020)
+define("ETIMEDOUT",	110)
+@}
+
+struct timespec
+	public tv_sec as ulong
+	public tv_nsec as long
+	public func from_milli(ms as ulong)
+		tv_sec = ms / 1000
+		tv_nsec = (ms % 1000) * 1000000
+	end
+end
 
 struct mutex_t
 	private v1 as pointer
@@ -58,6 +81,28 @@ struct cond_t
 	private v4 as pointer
 	private v5 as pointer
 	private v6 as pointer
+	public func init() => pthread_cond_init(addressof(this), pointerof(null))
+	public func await(pMut as pointer, milli as int) as boolean
+		dim ret as int
+		if milli < 0 then
+			ret = pthread_cond_wait(addressof(this), pMut)
+		else
+			dim t as timespec
+			t.from_milli(milli)
+			ret = pthread_cond_timedwait(addressof(this), pMut, addressof(t))
+		end
+		if ret == 0 then
+			return true
+		else
+			if ret != {@ETIMEDOUT()@} then
+				throw new wait_exception(ret)
+			end
+			return false
+		end
+	end
+	public function notify_all() => pthread_cond_broadcast(addressof(this))
+	public function notify() => pthread_cond_signal(addressof(this))
+	public function del() => pthread_cond_destroy(addressof(this))
 end
 
 struct _event
@@ -67,28 +112,28 @@ struct _event
 
 	public function init()
 		mutex.init()
-		pthread_cond_init(addressof(cond), pointerof(null))
+		cond.init()
 		is_triggered = false
 	end
 
 	public function set()
 		mutex.enter()
 		is_triggered = true
-		pthread_cond_signal(addressof(cond))
+		cond.notify()
 		mutex.leave()
 	end
 
 	public function await()
 		mutex.enter()
 		while !is_triggered
-			pthread_cond_wait(addressof(cond), addressof(mutex))
+			cond.await(addressof(mutex), -1)
 		end
 		mutex.leave()
 	end
 
 	public function del()
 		mutex.del()
-		pthread_cond_destroy(addressof(cond))
+		cond.del()
 	end
 end
 
@@ -156,16 +201,6 @@ class poll_exception:wait_exception
 	public func get_message() as string => "Poll error: " + msg
 end
 
-@init_script
-{@
-from bdconst import *
-define("POLLIN",		0x0001)
-define("POLLPRI",		0x0002)
-define("POLLOUT",		0x0004)
-define("POLLERR",		0x0008)
-define("POLLHUP",		0x0010)
-define("POLLNVAL",	0x0020)
-@}
 class future_fd : concurrent.syncdef.future[int]
 	private handle as awaitable_handle
 	public function __init__(_native as int, _in_event as int)

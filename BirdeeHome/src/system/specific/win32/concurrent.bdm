@@ -24,6 +24,13 @@ declare function EnterCriticalSection(pCS as pointer)
 declare function LeaveCriticalSection(pCS as pointer)
 declare function DeleteCriticalSection(pCS as pointer)
 
+declare function InitializeConditionVariable(p as pointer)
+declare function WakeConditionVariable(p as pointer)
+declare function WakeAllConditionVariable(p as pointer)
+declare function SleepConditionVariableCS(p as pointer, pCritical as pointer, dwMilliseconds as int) as int
+declare function SleepConditionVariableSRW(p as pointer, pCritical as pointer, dwMilliseconds as int, flags as ulong) as int
+
+
 @init_script
 {@
 from bdconst import *
@@ -31,6 +38,7 @@ define("WAIT_ABANDONED", 0x00000080)
 define("WAIT_OBJECT_0", 0)
 define("WAIT_TIMEOUT", 0x00000102)
 define("WAIT_FAILED", 0xFFFFFFFF)
+define("ERROR_TIMEOUT", 0x000005B4)
 @}
 
 struct mutex_t_kernel
@@ -81,6 +89,26 @@ struct mutex_t
 
 	public function del()
 		DeleteCriticalSection(addressof(this))
+	end
+end
+
+struct cond_t
+	private data as pointer
+	public func init() => InitializeConditionVariable(addressof(data))
+	public func await(pCS as pointer, milli as int) as boolean
+		if SleepConditionVariableCS(addressof(data), pCS, milli) == 0 then
+			dim errno = GetLastError()
+			if errno != {@ERROR_TIMEOUT()@} then
+				throw new wait_exception(errno)
+			end
+			return false
+		else
+			return true
+		end
+	end
+	public function notify_all() => WakeAllConditionVariable(addressof(data))
+	public function notify() => WakeConditionVariable(addressof(data))
+	public function del()
 	end
 end
 
