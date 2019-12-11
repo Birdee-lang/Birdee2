@@ -7,7 +7,7 @@ def tuple_add_fields(cls):
 		if arg.kind!=TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE:
 			raise RuntimeError("The {}-th template argument should be a type".format(idx))
 		ty = arg.resolved_type
-		class_body(cls, f'public v{idx} as {ty}\n')
+		class_body(cls, 'public v{idx} as {ty}\n'.format(idx=idx,ty=ty))
 		idx+=1
 
 def tuple_expand_vararg(): #make a type "tuple[...]"
@@ -18,8 +18,8 @@ def tuple_expand_vararg(): #make a type "tuple[...]"
 			raise RuntimeError("The {}-th template argument should be a type".format(idx))
 		targs.append(str(targ.resolved_type))
 	strtypes=','.join(targs) # etc int,float,string
-	#print(resolve_type(f"tuple[{strtypes}]"))
-	set_type(resolve_type(f"tuple[{strtypes}]"))	
+	#print(resolve_type("tuple[{strtypes}]".format(strtypes=strtypes)))
+	set_type(resolve_type("tuple[{strtypes}]".format(strtypes=strtypes)))	
 
 def tuple_add_constructor(func):
 	assert(isinstance(func,FunctionAST))
@@ -27,7 +27,7 @@ def tuple_add_constructor(func):
 	body=func.body
 	idx=0
 	for arg in args:
-		body.push_back(stmt(f"ret.v{idx}=___vararg{idx}"))
+		body.push_back(stmt("ret.v{idx}=___vararg{idx}".format(idx=idx))
 		idx+=1
 	body.push_back(ReturnAST.new(expr("ret")))
 @}
