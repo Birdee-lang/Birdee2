@@ -12,8 +12,10 @@ jobs:
     - name: dependencies
       run: bash install_dependencies.sh
     - name: make
-      run: make
+      run: make -j8
       env:
-        BIRDEE_HOME: ./BirdeeHome
+        BIRDEE_HOME: /home/runner/work/Birdee2/Birdee2/BirdeeHome
     - name: make tests
       run: make tests
+      env:
+        BIRDEE_HOME: /home/runner/work/Birdee2/Birdee2/BirdeeHome
