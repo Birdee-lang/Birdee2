@@ -1,7 +1,8 @@
-cat <<EOF > /etc/apt/sources.list.d/llvm.list
+cat <<EOF > /tmp/llvm.list
 deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-6.0 main
 deb-src http://apt.llvm.org/xenial/ llvm-toolchain-xenial-6.0 main
 EOF
+sudo cp /tmp/llvm.list /etc/apt/sources.list.d/llvm.list
 wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update
 sudo apt-get install -y llvm-6.0 python3-dev libgc-dev libreadline-dev
