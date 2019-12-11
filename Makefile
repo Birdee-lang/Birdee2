@@ -20,7 +20,7 @@ PLAYGROUND_DIR=$(PWD_DIR)/BirdeePlayground
 
 PYLIBS = $(shell python3-config --libs)
 CXX ?= g++
-CPPFLAGS ?= -g -DBIRDEE_USE_DYN_LIB -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(shell python3 -m pybind11 --includes) -no-pie
+CPPFLAGS ?= -g -DBIRDEE_USE_DYN_LIB -std=c++14 -g -I$(INC_DIR) -I$(INC_DIR2) $(shell python3 -m pybind11 --includes)
 LIBS ?= -pthread
 
 ##
