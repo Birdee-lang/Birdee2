@@ -26,7 +26,7 @@ ${TEST_BIN_DIR}:
 	$(TEST_BIN_DIR)/$*.out
 
 %.pytest:
-	$(BIN_DIR)/birdeec -s -i $*.py -o bin/$*.o
+	$(BIN_DIR)/birdeec -s -i $*.py -o $(TEST_BIN_DIR)/$*.o
 
 %.module:
 	python3 $(BLIB_DIR)/../pylib/bbuild.py -i ${TESTS_DIR} -o $(TEST_BIN_DIR)  $*
