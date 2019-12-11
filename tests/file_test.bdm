@@ -7,13 +7,13 @@ from system_0io_0filedef import *
 from bdassert import bdassert
 @}
 
-dim outf = new output_file("bin/file_text.log", {@CREATE_OVERWRITE()@})
+dim outf = new output_file("/tmp/file_text.log", {@CREATE_OVERWRITE()@})
 for dim i=0 to 1000
 	outf.writestr(int2str(i)+"\n")
 end
 outf.close()
 
-dim scanner = new string_scanner(new input_file("bin/file_text.log"))
+dim scanner = new string_scanner(new input_file("/tmp/file_text.log"))
 #dim scanner = new string_scanner(stdin)
 
 dim str as string = scanner.get_line()
