@@ -16,6 +16,7 @@ all:${TEST_BIN_DIR} autoclose_test.test array_literal.test class_inherit_import.
 
 ${TEST_BIN_DIR}:
 	${MKDIR_P} ${TEST_BIN_DIR}
+	${MKDIR_P} ${TESTS_DIR}/bin
 
 %.ttest:
 	python3 $(BLIB_DIR)/../pylib/bbuild.py -i ${TESTS_DIR} -o $(TEST_BIN_DIR) -lc "-pthread" -le $(TEST_BIN_DIR)/$*.out $*
