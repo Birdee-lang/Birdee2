@@ -71,6 +71,7 @@ def parse_bmm(*pkg):
 	main_name = mangle_func(pkgname)+"_1main"
 	outf.write(get_code(main_name))
 
+parse_bmm('extensions','string')
 parse_bmm('hash')
 parse_bmm('concurrent','threading')
 parse_bmm('concurrent','sync')

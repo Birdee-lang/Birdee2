@@ -264,6 +264,10 @@ json BuildFunctionJson(FunctionAST* func)
 		args.push_back(BuildVariableJson(arg.get()));
 	}
 	ret["args"] = args;
+	if (func->is_extension)
+	{
+		ret["is_extension"] = true;
+	}
 	ret["return"] = ConvertTypeToIndex(func->Proto->resolved_type);
 	return ret;
 }

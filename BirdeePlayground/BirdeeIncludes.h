@@ -1,5 +1,86 @@
 extern "C"{
 void AddFunctions(llvm::orc::KaleidoscopeJIT* jit){
+extern void extensions_0string_0ptr__add();
+jit->addNative("extensions_0string_0ptr__add",extensions_0string_0ptr__add);
+
+extern void extensions_0string_0ptr__diff();
+jit->addNative("extensions_0string_0ptr__diff",extensions_0string_0ptr__diff);
+
+extern void extensions_0string_0string______mul____();
+jit->addNative("extensions_0string_0string______mul____",extensions_0string_0string______mul____);
+
+extern void extensions_0string_0check__index();
+jit->addNative("extensions_0string_0check__index",extensions_0string_0check__index);
+
+extern void extensions_0string_0string1__view();
+jit->addNative("extensions_0string_0string1__view",extensions_0string_0string1__view);
+
+extern void extensions_0string_0string__viewall();
+jit->addNative("extensions_0string_0string__viewall",extensions_0string_0string__viewall);
+
+extern void extensions_0string_0string__findview();
+jit->addNative("extensions_0string_0string__findview",extensions_0string_0string__findview);
+
+extern void extensions_0string_0string__find();
+jit->addNative("extensions_0string_0string__find",extensions_0string_0string__find);
+
+extern void extensions_0string_0string__splitview();
+jit->addNative("extensions_0string_0string__splitview",extensions_0string_0string__splitview);
+
+extern void extensions_0string_0string__split();
+jit->addNative("extensions_0string_0string__split",extensions_0string_0string__split);
+
+extern void extensions_0string_0string__to__int();
+jit->addNative("extensions_0string_0string__to__int",extensions_0string_0string__to__int);
+
+extern void extensions_0string_0string__to__double();
+jit->addNative("extensions_0string_0string__to__double",extensions_0string_0string__to__double);
+
+extern void extensions_0string_0string__to__long();
+jit->addNative("extensions_0string_0string__to__long",extensions_0string_0string__to__long);
+
+extern void extensions_0string_0string__view_0____init____();
+jit->addNative("extensions_0string_0string__view_0____init____",extensions_0string_0string__view_0____init____);
+
+extern void extensions_0string_0string__view_0____deref____();
+jit->addNative("extensions_0string_0string__view_0____deref____",extensions_0string_0string__view_0____deref____);
+
+extern void extensions_0string_0string__view_0____getitem____();
+jit->addNative("extensions_0string_0string__view_0____getitem____",extensions_0string_0string__view_0____getitem____);
+
+extern void extensions_0string_0string__view_0length();
+jit->addNative("extensions_0string_0string__view_0length",extensions_0string_0string__view_0length);
+
+extern void extensions_0string_0string__view_0get__raw();
+jit->addNative("extensions_0string_0string__view_0get__raw",extensions_0string_0string__view_0get__raw);
+
+extern void extensions_0string_0string__view_0view();
+jit->addNative("extensions_0string_0string__view_0view",extensions_0string_0string__view_0view);
+
+extern void extensions_0string_0string__view_0find();
+jit->addNative("extensions_0string_0string__view_0find",extensions_0string_0string__view_0find);
+
+extern void extensions_0string_0string__view_0split();
+jit->addNative("extensions_0string_0string__view_0split",extensions_0string_0string__view_0split);
+
+extern void extensions_0string_0string__view_0____eq____();
+jit->addNative("extensions_0string_0string__view_0____eq____",extensions_0string_0string__view_0____eq____);
+
+extern void extensions_0string_0string__view_0____ne____();
+jit->addNative("extensions_0string_0string__view_0____ne____",extensions_0string_0string__view_0____ne____);
+
+extern void extensions_0string_0string__view_0to__int();
+jit->addNative("extensions_0string_0string__view_0to__int",extensions_0string_0string__view_0to__int);
+
+extern void extensions_0string_0string__view_0to__long();
+jit->addNative("extensions_0string_0string__view_0to__long",extensions_0string_0string__view_0to__long);
+
+extern void extensions_0string_0string__view_0to__double();
+jit->addNative("extensions_0string_0string__view_0to__double",extensions_0string_0string__view_0to__double);
+
+extern void extensions_0string_0_1main();
+jit->addNative("extensions_0string_0_1main",extensions_0string_0_1main);
+
 extern void hash_0int__hash();
 jit->addNative("hash_0int__hash",hash_0int__hash);
 

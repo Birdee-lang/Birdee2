@@ -844,8 +844,8 @@ void Birdee::CompileUnit::SwitchModule()
 	}
 	for (auto& fty : functypemap)
 	{
-		mod->mod->functypemap[fty.first.get()] = std::move(fty.second);
 		imported_functypemap[fty.second.first->Name] = fty.second.first.get();
+		mod->mod->functypemap[fty.first.get()] = std::move(fty.second);
 	}
 	for (auto& stmt : toplevel)
 	{
@@ -1712,17 +1712,14 @@ Value* DoGenerateCall(Value* func,const vector<Value*>& args)
 Value* GenerateCall(Value* func, PrototypeAST* proto, Value* obj, const vector<unique_ptr<ExprAST>>& Args,SourcePos pos)
 {
 	vector<Value*> args;
-	if (proto->is_closure)
+	if (obj)
 	{
-		if (obj)
-		{
-			args.push_back(obj);
-		}
-		else
-		{
-			args.push_back(builder.CreateExtractValue(func, 1)); //push the closure capture
-			func = builder.CreateExtractValue(func, 0);
-		}
+		args.push_back(obj);
+	}
+	else if (proto->is_closure)
+	{
+		args.push_back(builder.CreateExtractValue(func, 1)); //push the closure capture
+		func = builder.CreateExtractValue(func, 0);
 	}
 	for (auto& vargs : Args)
 	{
@@ -2501,7 +2498,9 @@ namespace Birdee
 
 bool Birdee::MemberExprAST::isMemberFunction()
 {
-	if (kind == member_imported_function && Obj) //if there is an object in member expr and the function is imported
+	//if there is an object in member expr and the function is imported
+	//extension function can go here
+	if (kind == member_imported_function && Obj)
 		return true;
 	return kind == member_function || kind == member_virtual_function;
 }
