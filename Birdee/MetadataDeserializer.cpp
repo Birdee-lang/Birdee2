@@ -30,6 +30,11 @@ extern void ParseClassInPlace(ClassAST* ret, bool is_struct);
 extern std::vector<std::string> Birdee::source_paths;
 extern void Birdee_Register_Module(const string& name, void* globals);
 
+namespace Birdee
+{
+	extern 	void AddFunctionToClassExtension(FunctionAST* func,
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap);
+}
 /*
 fix-me: Load template class & functions & instances
 link templates to instances by name (for every new template source imported, remember find instances in orphans)
@@ -189,6 +194,11 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 		if (itr != func.end())
 			ret->link_name = itr->get<string>();
 	}
+	{
+		auto itr = func.find("is_extension");
+		if (itr != func.end())
+			ret->is_extension = itr->get<bool>();
+	}
 	ret->resolved_type.type = tok_func;
 	ret->resolved_type.proto_ast = protoptr;
 	return std::move(ret);
@@ -200,6 +210,10 @@ void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
 	for (auto& itr : globals)
 	{
 		auto var = BuildFunctionFromJson(itr, nullptr);
+		if (var->is_extension)
+		{
+			AddFunctionToClassExtension(var.get(), mod.class_extend_funcmap);
+		}
 		var->PreGenerate();
 		auto name = var->Proto->GetName();
 		mod.funcmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));

@@ -302,6 +302,7 @@ namespace Birdee
 		string vararg_n =  vararg_name;
 		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, is_vararg,std::move(vararg_n), Pos);
 		ret->isTemplateInstance = isTemplateInstance;
+		ret->is_extension = is_extension;
 		return std::move(ret);
 	}
 
