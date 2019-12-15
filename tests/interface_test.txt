@@ -1,3 +1,9 @@
+import unsafe:ptr_cast
+import unsafe:bit_cast
+import unsafe:static_cast
+import unsafe:ptr_load
+import rtti:dyn_cast
+
 declare function getchar() as int
 
 {@from bdassert import bdassert@}
@@ -113,3 +119,50 @@ it3_s = bigs
 {@bdassert('it3_s.d(9) == "sparrow itest3 d 9"')@}
 
 println("interface test ok")
+
+# dyn_cast for interface test
+interface itest4
+	public abstract func xxx() as string
+end
+
+try
+	s = dyn_cast[sparrow](bigs)
+	it_s = dyn_cast[itest](bigs)
+	it2_s = dyn_cast[itest2](bigs)
+	it3_s = dyn_cast[itest3](bigs)
+
+	{@bdassert('s.a() == "big sparrow itest a"')@}
+	{@bdassert('s.b(6) == "sparrow itest b 6"')@}
+
+	{@bdassert('it_s.a() == "big sparrow itest a"')@}
+	{@bdassert('it_s.b(7) == "sparrow itest b 7"')@}
+
+	{@bdassert('it2_s.a() == "big sparrow itest a"')@}
+	{@bdassert('it2_s.b(8) == "sparrow itest b 8"')@}
+	{@bdassert('it2_s.c(8) == "big sparrow itest2 c 8"')@}
+
+	{@bdassert('it3_s.d(9) == "sparrow itest3 d 9"')@}
+
+	{@bdassert('dyn_cast[big_sparrow](s) !== null')@}
+
+	dim s2 = new sparrow
+	{@bdassert('dyn_cast[big_sparrow](s2) === null')@}
+
+	it_s = dyn_cast[itest](s)
+	{@bdassert('it_s !== null')@}
+
+	dim bigs2 = dyn_cast[big_sparrow](it_s)
+	{@bdassert('bigs2 !== null')@}
+	{@bdassert('bigs2.a() == "big sparrow itest a"')@}
+	{@bdassert('bigs2.b(9) == "sparrow itest b 9"')@}
+
+	it3_s = dyn_cast[itest3](it_s)
+	{@bdassert('it3_s !== null')@}
+	{@bdassert('it3_s.d(9) == "sparrow itest3 d 9"')@}
+
+	{@bdassert('dyn_cast[itest4](it_s) === null')@}
+catch e as runtime_exception
+	print(e.msg)
+end
+
+println("dyn_cast for interface test ok")

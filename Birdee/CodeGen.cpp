@@ -215,7 +215,7 @@ struct GeneratorContext
 
 	// a map for global variables of each impl virtual table in a cls
 	unordered_map<ClassAST*, 
-		unordered_map<vector<FunctionAST*>*, GlobalVariable*>> itable_single_gv_map;
+		unordered_map<ClassAST*, GlobalVariable*>> itable_single_gv_map;
 	// maps for struct type of all impls in a cls
 	unordered_map<ClassAST*, StructType*> itable_type_map;
 	unordered_map<ClassAST*, DIType*> itable_dtype_map;
@@ -290,6 +290,23 @@ static StructType* GetOrCreateVTableType(int vcnt)
 	return ty;
 }
 
+static StructType* GetOrCreateITableType(int vcnt)
+{
+	assert(vcnt > 0);
+	auto itr = gen_context.itable_single_type_map.find(vcnt);
+	StructType* ty;
+	if (itr != gen_context.itable_single_type_map.end())
+	{
+		ty = itr->second;
+	}
+	else
+	{
+		ty = StructType::create({ ArrayType::get(builder.getInt8PtrTy(),vcnt) });
+		gen_context.itable_single_type_map[vcnt] = ty;
+	}
+	return ty;
+}
+
 static GlobalVariable* CreateTypeInfoWithVTableGlobal(ClassAST* cls)
 {
 	string name;
@@ -336,57 +353,38 @@ Constant* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	return ConstantExpr::getPointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
 }
 
-/*
-static StructType* GetOrCreateSingleITableType(int vcnt)
-{
-	assert(vcnt > 0);
-	auto itr = gen_context.itable_single_type_map.find(vcnt);
-	StructType* ty;
-	if (itr != gen_context.itable_single_type_map.end())
-	{
-		ty = itr->second;
-	}
-	else
-	{
-		ty = StructType::create({ GetTypeInfoType()->llvm_type, builder.getInt64Ty(), ArrayType::get(builder.getInt8PtrTy(),vcnt) });
-		gen_context.itable_single_type_map[vcnt] = ty;
-	}
-	return ty;
-}
-*/
-
 GlobalVariable* GetOrCreateSingleITable(
-		ClassAST* cls, vector<FunctionAST*> * p_vtable, int vtable_idx)
+		ClassAST* cls, ClassAST* interface, int table_size, int vtable_idx)
 {
 	if (gen_context.itable_single_gv_map.count(cls) != 0 &&
-		gen_context.itable_single_gv_map[cls].count(p_vtable) != 0) {
-		return gen_context.itable_single_gv_map[cls][p_vtable];
+		gen_context.itable_single_gv_map[cls].count(interface) != 0) {
+		return gen_context.itable_single_gv_map[cls][interface];
 	}
 	string name;
 	MangleNameAndAppend(name, cls->GetUniqueName());
 	name += "0_typeinfo_vtable_" + std::to_string(vtable_idx);
 	GlobalVariable* newv;
-	if (p_vtable->size() == 0) {
+	if (table_size == 0) {
 		// create a normal rtti gv if vtable is empty
 		newv = new GlobalVariable(*module, GetTypeInfoType()->llvm_type,
 			true, GlobalVariable::LinkOnceODRLinkage, nullptr,
 			name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
 	}
 	else {
-		newv = new GlobalVariable(*module, GetOrCreateVTableType(p_vtable->size()),
+		newv = new GlobalVariable(*module, GetOrCreateITableType(table_size),
 			true, GlobalVariable::LinkOnceODRLinkage, nullptr,
 			name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
 	}
-	gen_context.itable_single_gv_map[cls][p_vtable] = newv;
+	gen_context.itable_single_gv_map[cls][interface] = newv;
 	return newv;
 }
 
 //Get or create itable global variable
 //automatically cast to rtti
 Constant* GetOrCreateTypeInfoGlobal(
-	ClassAST* cls, vector<FunctionAST*> * p_vtable, int vtable_idx)
+	ClassAST* cls, ClassAST* interface, int table_size, int vtable_idx)
 {
-	auto* ret = GetOrCreateSingleITable(cls, p_vtable, vtable_idx);
+	auto* ret = GetOrCreateSingleITable(cls, interface, table_size, vtable_idx);
 	return ConstantExpr::getPointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
 }
 
@@ -401,9 +399,10 @@ StructType* GetOrCreateITableType(ClassAST* cls)
 	else
 	{
 		vector<llvm::Type*> vtable_types;
-		for (auto & if_vd : cls->if_vtabledef) {
+		for (int i = 0; i < cls->if_vtabledef.size(); ++i) {
 			vtable_types.push_back(
-				GetOrCreateSingleITable(cls, &if_vd, vtable_types.size())->getType());
+				GetOrCreateSingleITable(cls, cls->implements[i], 
+					cls->if_vtabledef[i].size(), vtable_types.size())->getType());
 		}
 		ty = StructType::create(vtable_types);
 		gen_context.itable_type_map[cls] = ty;
@@ -443,9 +442,10 @@ DIType* GetOrCreateITableDType(ClassAST* cls)
 Constant* CreateITableConstant(ClassAST* cls)
 {
 	vector<llvm::Constant*> vtables;
-	for (auto & if_vd : cls->if_vtabledef) {
+	for (int i = 0; i < cls->if_vtabledef.size(); ++i) {
 		vtables.push_back(
-			GetOrCreateSingleITable(cls, &if_vd, vtables.size()));
+			GetOrCreateSingleITable(
+				cls, cls->implements[i], cls->if_vtabledef[i].size(), vtables.size()));
 	}
 	auto newv = ConstantStruct::get(GetOrCreateITableType(cls), vtables);
 	return newv;
@@ -1913,9 +1913,11 @@ llvm::Value * Birdee::UpcastExprAST::Generate()
 			auto tmp = builder.CreateAlloca(helper.GetTypeNode(resolved_type).llvm_ty, nullptr);
 			auto itable_ptr = builder.CreatePointerCast(tmp, 
 					GetTypeInfoType()->llvm_type->getPointerTo()->getPointerTo());
-			builder.CreateStore(GetOrCreateTypeInfoGlobal(cls, &cls->if_vtabledef[i], i), itable_ptr);
+			builder.CreateStore(
+				GetOrCreateTypeInfoGlobal(cls, cls->implements[i], cls->if_vtabledef[i].size(), i), itable_ptr);
 			auto obj_ptr = builder.CreateGEP(tmp, { builder.getInt32(0), builder.getInt32(1) });
-			builder.CreateStore(builder.CreatePointerCast(val, target->llvm_type->getPointerTo()), obj_ptr);
+			builder.CreateStore(
+				builder.CreatePointerCast(val, target->llvm_type->getPointerTo()), obj_ptr);
 			return builder.CreateLoad(tmp);
 		}
 	}
@@ -2516,7 +2518,9 @@ llvm::Value * Birdee::MemberExprAST::GenerateFunction()
 		{
 			//SomeInterface_fat_ptr obj =>{RttiVtable* pvtbale, SomeInterface* real_obj}
 			v = builder.CreatePointerCast(llvm_itable_obj,
-				GetOrCreateVTableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo());
+				GetOrCreateITableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo());
+			//char** pfunc = &(v[0].vtable[idx])
+			v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(0),builder.getInt32(func->virtual_idx) });
 		}
 		else
 		{
@@ -2525,9 +2529,9 @@ llvm::Value * Birdee::MemberExprAST::GenerateFunction()
 				GetOrCreateVTableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo()->getPointerTo());
 			//RttiVtable* pvtable = *ppvatable
 			v = builder.CreateLoad(v);
+			//char** pfunc = &(v[0].vtable[idx])
+			v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(func->virtual_idx) });
 		}
-		//char** pfunc = &(v[0].vtable[idx])
-		v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(func->virtual_idx) });
 		v = builder.CreateLoad(v);
 		//PFUNC func = (PFUNC)*pfunc
 		std::string s = Obj->resolved_type.class_ast->vtabledef[func->virtual_idx]->GetName();
@@ -2800,12 +2804,48 @@ llvm::Value * Birdee::ClassAST::Generate()
 			tyinfo->setDSOLocal(true);
 		}
 
+		ClassAST* type_info_cls = GetTypeInfoType();
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
 		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
-		Constant* parent_rtti = parent_class ? GetOrCreateTypeInfoGlobal(parent_class) : Constant::getNullValue(GetTypeInfoType()->llvm_type->getPointerTo());
-		auto rtti_val = ConstantStruct::get(GetTypeInfoType()->llvm_type, {
+		Constant* parent_rtti = parent_class ? GetOrCreateTypeInfoGlobal(parent_class) : Constant::getNullValue(type_info_cls->llvm_type->getPointerTo());
+
+		vector<Constant*> interf_rttis;
+		for (auto & impl : implements) {
+			interf_rttis.push_back(GetOrCreateTypeInfoGlobal(impl));
+		}
+		// create a GV to hold interfaces rtti
+		vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),
+			ArrayType::get(type_info_cls->llvm_type->getPointerTo(), interf_rttis.size()) };
+		auto interf_array_ty = StructType::create(context, types);
+		auto interf_array_data = ConstantArray::get(ArrayType::get(type_info_cls->llvm_type->getPointerTo(), interf_rttis.size()), interf_rttis);
+		GlobalVariable* interf_gv = new GlobalVariable(*module, interf_array_ty, false, GlobalValue::PrivateLinkage,
+			ConstantStruct::get(interf_array_ty, { builder.getInt32(interf_rttis.size()), interf_array_data }));
+
+		// create a GV to hold implement itables
+		vector<Constant*> itables;
+		for (int i = 0; i < implements.size(); ++i) {
+			itables.push_back(ConstantExpr::getPointerCast(
+				GetOrCreateTypeInfoGlobal(this, implements[i], this->if_vtabledef[i].size(), i), llvm::Type::getInt8PtrTy(context)));
+		}
+		// create a GV to hold interfaces rtti
+		vector<llvm::Type*> itable_types{ llvm::Type::getInt32Ty(context),
+			ArrayType::get(llvm::Type::getInt8PtrTy(context), itables.size()) };
+		auto itable_array_ty = StructType::create(context, itable_types);
+		auto itable_array_data = ConstantArray::get(ArrayType::get(llvm::Type::getInt8PtrTy(context), itables.size()), itables);
+		GlobalVariable* itables_gv = new GlobalVariable(*module, itable_array_ty, false, GlobalValue::PrivateLinkage,
+			ConstantStruct::get(itable_array_ty, { builder.getInt32(itables.size()), itable_array_data }));
+		
+		assert(type_info_cls->fields.size() >= 5 && "imcompatible type_info, please check your birdee lib version");
+		auto rtti_val = ConstantStruct::get(type_info_cls->llvm_type, {
 				const_ptr_5,
 				parent_rtti,
+				builder.getInt32(interf_rttis.size()),
+				ConstantExpr::getPointerCast(interf_gv, 
+						// get resolve type of impl array (the 4th field)
+						helper.GetType(type_info_cls->fields[3].decl->resolved_type)),
+				ConstantExpr::getPointerCast(itables_gv,
+						// get resolve type of itable array (the 5th field)
+						helper.GetType(type_info_cls->fields[4].decl->resolved_type)),
 			});
 		//if the class has vtable, the rtti is wrapped in rtti-vtable struct
 		auto val = rtti_val;
@@ -2825,18 +2865,17 @@ llvm::Value * Birdee::ClassAST::Generate()
 		}
 		tyinfo->setInitializer(val);
 
-		// initialize impl vtable global variables
+		// initialize itable global variables
 		if (!is_abstract && if_vtabledef.size() > 0) {
 			for (int i = 0; i < if_vtabledef.size(); ++i) {
-				auto gv = GetOrCreateSingleITable(this, &if_vtabledef[i], i);
+				auto gv = GetOrCreateSingleITable(this, implements[i], if_vtabledef[i].size(), i);
 				vector<Constant*> table;
 				for (auto func : if_vtabledef[i]) {
 					auto llvm_func = func->GetLLVMFunc();
 					assert(llvm::isa<Function>(*llvm_func));
 					table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(llvm_func), builder.getInt8PtrTy()));
 				}
-				auto impl_val = ConstantStruct::get(GetOrCreateVTableType(if_vtabledef[i].size()), {
-						rtti_val,
+				auto impl_val = ConstantStruct::get(GetOrCreateITableType(if_vtabledef[i].size()), {
 						ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(), if_vtabledef[i].size()), table)
 					});
 				gv->setInitializer(impl_val);
@@ -3063,19 +3102,27 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}
-	if (LHS->resolved_type.isReference() || 
+	if (LHS->resolved_type.isReference() || RHS->resolved_type.isReference() ||
 		(LHS->resolved_type.index_level == 0 && LHS->resolved_type.type == tok_pointer
 		&& RHS->resolved_type.index_level == 0 && RHS->resolved_type.type == tok_pointer))
 	{
+		auto lv = LHS->Generate();
+		auto rv = RHS->Generate();
+		if (LHS->resolved_type.isReference() && LHS->resolved_type.class_ast->is_interface) {
+			lv = builder.CreateExtractValue(lv, 1);
+		}
+		if (RHS->resolved_type.isReference() && RHS->resolved_type.class_ast->is_interface) {
+			rv = builder.CreateExtractValue(rv, 1);
+		}
 		if (Op == tok_cmp_equal || Op == tok_equal)
 		{
-			return builder.CreateICmpEQ(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
-				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
+			return builder.CreateICmpEQ(builder.CreatePtrToInt(lv, builder.getInt64Ty()),
+				builder.CreatePtrToInt(rv, builder.getInt64Ty()));
 		}
 		if (Op == tok_cmp_ne || Op == tok_ne)
 		{
-			return builder.CreateICmpNE(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
-				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
+			return builder.CreateICmpNE(builder.CreatePtrToInt(lv, builder.getInt64Ty()),
+				builder.CreatePtrToInt(rv, builder.getInt64Ty()));
 		}
 	}
 	if (isLogicToken(Op) || (LHS->resolved_type.type==tok_boolean && LHS->resolved_type.index_level==0) ) //boolean
@@ -3140,8 +3187,8 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 			return builder.CreateLoad(builder.CreateGEP(val, gep));
 		}
 		else {
-			val = builder.CreateExtractValue(val, 0);
-			val = builder.CreatePointerCast(val, GetTypeInfoType()->llvm_type->getPointerTo());
+			val = builder.CreateExtractValue(val, 1);
+			val = builder.CreatePointerCast(val, GetTypeInfoType()->llvm_type->getPointerTo()->getPointerTo());
 			return builder.CreateLoad(val);
 		}
 	}

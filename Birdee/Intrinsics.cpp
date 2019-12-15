@@ -17,7 +17,7 @@ do\
 extern Birdee::ClassAST* GetTypeInfoType();
 extern llvm::Constant* GetOrCreateTypeInfoGlobal(Birdee::ClassAST* cls);
 extern llvm::Constant* GetOrCreateTypeInfoGlobal(
-	Birdee::ClassAST* cls, std::vector<Birdee::FunctionAST*> * p_vtable, int vtable_idx);
+	Birdee::ClassAST* cls, Birdee::ClassAST* interface, int table_size, int vtable_idx);
 namespace Birdee
 {
 	extern llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty);
@@ -132,9 +132,80 @@ namespace Birdee
 		auto& targs = *func->template_instance_args;
 		auto v = args[0]->Generate();
 		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
-		auto srcty = GetLLVMTypeFromResolvedType(targs[1].type);
+		auto srcty = GetLLVMTypeFromResolvedType(targs[1].type);		
 		CompileAssert(GetLLVMTypeSizeInBit(ty) == GetLLVMTypeSizeInBit(srcty), func->Pos, 
 			string("Cannot bitcast from type ") + targs[1].type.GetString() + " to type " + targs[0].type.GetString() + ", because they have different sizes");
+		
+		/*
+		llvm::Type *SrcTy = v->getType();
+		llvm::PointerType *SrcPtrTy = llvm::dyn_cast<llvm::PointerType>(SrcTy->getScalarType());
+		llvm::PointerType *DstPtrTy = llvm::dyn_cast<llvm::PointerType>(ty->getScalarType());
+		if (!SrcTy->isFirstClassType()) {
+			CompileAssert(false, func->Pos, "fuck01!");
+		}
+		
+		if (!ty->isFirstClassType()) {
+			CompileAssert(false, func->Pos, "fuck02!");
+		}
+
+		if (SrcTy->isAggregateType()) {
+			CompileAssert(false, func->Pos, "fuck03!");
+		}
+
+		if (ty->isAggregateType()) {
+			CompileAssert(false, func->Pos, "fuck04!");
+		}
+
+		// BitCast implies a no-op cast of type only. No bits change.
+		// However, you can't cast pointers to anything but pointers.
+		if (!SrcPtrTy != !DstPtrTy)
+			CompileAssert(false, func->Pos, "fuck!");
+
+		// For non-pointer cases, the cast is okay if the source and destination bit
+		// widths are identical.
+		if (!SrcPtrTy) {
+			if (SrcTy->getPrimitiveSizeInBits() == ty->getPrimitiveSizeInBits())
+				CompileAssert(false, func->Pos, "fuck21!");
+			else
+				CompileAssert(false, func->Pos, "fuck22!");
+		}
+
+		// If both are pointers then the address spaces must match.
+		if (SrcPtrTy->getAddressSpace() != DstPtrTy->getAddressSpace())
+			CompileAssert(false, func->Pos, "fuck3!");
+
+		// A vector of pointers must have the same number of elements.
+		llvm::VectorType *SrcVecTy = llvm::dyn_cast<llvm::VectorType>(SrcTy);
+		llvm::VectorType *DstVecTy = llvm::dyn_cast<llvm::VectorType>(ty);
+		if (SrcVecTy && DstVecTy) {
+			CompileAssert(false, func->Pos, "fuck4!");
+			if (SrcVecTy->getNumElements() == DstVecTy->getNumElements()) {
+				CompileAssert(false, func->Pos, "fuck41!");
+			}
+			else {
+				CompileAssert(false, func->Pos, "fuck42!");
+			}
+		}
+		if (SrcVecTy) {
+			CompileAssert(false, func->Pos, "fuck5!");
+			if (SrcVecTy->getNumElements() == 1) {
+				CompileAssert(false, func->Pos, "fuck51!");
+			}
+			else {
+				CompileAssert(false, func->Pos, "fuck52!");
+			}
+		}
+		if (DstVecTy) {
+			CompileAssert(false, func->Pos, "fuck6!");
+			if (DstVecTy->getNumElements() == 1) {
+				CompileAssert(false, func->Pos, "fuck61!");
+			}
+			else {
+				CompileAssert(false, func->Pos, "fuck62!");
+			}
+		}
+		*/
+
 		return builder.CreateBitOrPointerCast(v, ty);
 	}
 
@@ -178,9 +249,11 @@ namespace Birdee
 					auto tmp = builder.CreateAlloca(ty, nullptr);
 					auto itable_ptr = builder.CreatePointerCast(tmp, 
 							GetTypeInfoType()->llvm_type->getPointerTo()->getPointerTo());
-					builder.CreateStore(GetOrCreateTypeInfoGlobal(from, &from->if_vtabledef[i], i), itable_ptr);
+					builder.CreateStore(
+						GetOrCreateTypeInfoGlobal(from, from->implements[i], from->if_vtabledef[i].size(), i), itable_ptr);
 					auto obj_ptr = builder.CreateGEP(tmp, { builder.getInt32(0), builder.getInt32(1) });
-					builder.CreateStore(builder.CreatePointerCast(v, target->llvm_type->getPointerTo()), obj_ptr);
+					builder.CreateStore(
+						builder.CreatePointerCast(v, target->llvm_type->getPointerTo()), obj_ptr);
 					return builder.CreateLoad(tmp);
 				}
 			}

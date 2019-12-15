@@ -2825,7 +2825,7 @@ If usage vararg name is "", match the closest vararg
 			{
 				auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield);
 				CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
-					Pos, string("Cannot find public method") + method + " in class " + cls->GetUniqueName() + " or it is a field or a function.");
+					Pos, string("Cannot find public method ") + method + " in class " + cls->GetUniqueName() + " or it is a field or a function.");
 				//note: we ignore the @virtual flag here, since we know exactly the class of which we "new" an object.
 				func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
 			} else { // no specifically calling __init__, complier tries to find one
@@ -3239,6 +3239,8 @@ If usage vararg name is "", match the closest vararg
 
 	void CallExprAST::Phase1()
 	{
+		if (resolved_type.isResolved())
+			return;
 		func_callee = FixFunctionForCall(Callee, Args, Pos);
 		CompileAssert(Callee->resolved_type.type == tok_func, Pos, "The expression should be callable");
 		// TODO: do not arg->Phase1 again

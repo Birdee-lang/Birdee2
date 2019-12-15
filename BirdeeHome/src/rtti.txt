@@ -1,5 +1,7 @@
 import unsafe:ptr_cast
+import unsafe:bit_cast
 import unsafe:static_cast
+import unsafe:ptr_load
 import functional.option:*
 
 #intrinsic
@@ -17,9 +19,48 @@ t1=bdutils.get_func_type_templ_at(0)
 t2=bdutils.get_func_type_templ_at(1)
 require_(  (t1.is_class(), lambda: "T1 must be a class"),
 	(t2.is_class(), lambda: "T2 must be a class") )
-bdutils.set_stmt('''get_type_info[T1]()''')
-bdutils.set_stmt('''get_type_info[T2]()''')
-bdutils.set_stmt('''return static_cast[T1](ptr)''')
+if t1.get_detail().is_interface and t2.get_detail().is_interface:
+	#require_( (t1.get_detail().has_parent(t2.get_detail()) or 
+	#	t2.get_detail().has_parent(t1.get_detail()), lambda: "T2 and T1 must be in same lineage"))
+	bdutils.set_stmt('''if typeof(ptr).is_impl_of(get_type_info[T1]()) then
+	dim tmp_t2 = ptr_load[unpacked_interface](addressof(ptr))
+	dim tmp_t1 as unpacked_interface
+	tmp_t1.itable = typeof(ptr).get_impl_itable(get_type_info[T1]())
+	if tmp_t1.itable === pointerof(null) then
+		tmp_t1.instance = pointerof(null)
+	else
+		tmp_t1.instance = tmp_t2.instance
+	end
+	return ptr_load[T1](addressof(tmp_t1))
+else
+	dim tmp_t1 as unpacked_interface
+	tmp_t1.itable = pointerof(null)
+	tmp_t1.instance = pointerof(null)
+	return ptr_load[T1](addressof(tmp_t1))
+end
+''')
+elif not t1.get_detail().is_interface and t2.get_detail().is_interface:
+	require_( (t1.get_detail().has_implement(t2.get_detail()), lambda: "T1 must implement T2"))
+	bdutils.set_stmt('''if get_type_info[T1]().is_parent_of(typeof(ptr)) then
+	dim tmp_t2 = ptr_load[unpacked_interface](addressof(ptr))
+	return ptr_cast[T1](tmp_t2.instance)
+else
+	return null
+end
+''')
+elif t1.get_detail().is_interface and not t2.get_detail().is_interface:
+	require_( (t2.get_detail().has_implement(t1.get_detail()), lambda: "T2 must implement T1"))
+	bdutils.set_stmt("return static_cast[T1](ptr)")
+else:
+	#both not interface
+	require_( (t1.get_detail().has_parent(t2.get_detail()) or 
+		t2.get_detail().has_parent(t1.get_detail()), lambda: "T2 and T1 must be in same lineage"))
+	bdutils.set_stmt('''if get_type_info[T1]().is_parent_of(typeof(ptr)) then
+	return ptr_cast[T1](ptr)
+else
+	return null
+end
+''')
 @}
 end
 
