@@ -1,0 +1,15 @@
+package system.specific.win32
+
+declare function QueryPerformanceFrequency(lpFrequency as pointer) as int
+declare function QueryPerformanceCounter(lpPerformanceCount as pointer) as int
+
+dim freq as ulong
+if QueryPerformanceFrequency(addressof(freq)) == 0 then
+	throw new runtime_exception("QueryPerformanceFrequency failed")
+end
+
+function _get_milliseconds() as ulong
+	dim now as ulong
+	QueryPerformanceCounter(addressof(now))
+	return 1000*now/freq
+end

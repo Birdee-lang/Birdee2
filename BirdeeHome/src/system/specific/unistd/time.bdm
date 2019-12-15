@@ -1,0 +1,14 @@
+package system.specific.unistd
+
+struct timeval
+	public tv_sec as ulong		#/* seconds */
+	public tv_usec as ulong	#/* and microseconds */
+end
+
+declare function gettimeofday(ptime as pointer, pzone as pointer) as int
+
+function _get_milliseconds() as ulong
+	dim tv as timeval
+	gettimeofday(addressof(tv), pointerof(null))
+	return tv.tv_sec*1000+tv.tv_usec/1000
+end

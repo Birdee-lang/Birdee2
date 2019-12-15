@@ -255,5 +255,17 @@
     <None Include="..\BirdeeHome\pylib\autoscope.py">
       <Filter>资源文件\pylib</Filter>
     </None>
+    <None Include="..\BirdeeHome\src\concurrent\threadpool.bdm">
+      <Filter>资源文件\blib</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\time.bdm">
+      <Filter>资源文件\blib\system</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\win32\time.bdm">
+      <Filter>资源文件\blib\system\specific\win32</Filter>
+    </None>
+    <None Include="..\BirdeeHome\src\system\specific\unistd\time.bdm">
+      <Filter>资源文件\blib\system\specific\unistd</Filter>
+    </None>
   </ItemGroup>
 </Project>

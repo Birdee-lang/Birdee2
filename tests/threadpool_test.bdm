@@ -1,0 +1,69 @@
+import concurrent.threadpool:threadpool
+import system.time:*
+import functional.option:*
+import concurrent.sync:*
+import concurrent.syncdef:future
+
+{@from bdassert import *@}
+
+
+func add(a as int, b as int) as int
+	concurrent.threading.sleep(1000)
+	return a + b
+end
+
+function check(res as int) as closure(r as option[int]) as option[int]
+	return func (r as option[int]) as option[int]
+		{@bdassert("r.get()==res")@}
+		println(int2str(r.get()))
+		return some(r.get())
+	end
+end
+
+func future_and_full_test()
+	dim pool = new threadpool(1,1)
+	dim f1 = pool.submit(add, 1, 3).and_then(check(4))
+	dim f2 = pool.submit(add, 2, 3).and_then(check(5))
+	dim f3 = pool.submit(add, 3, 3).and_then(check(6))
+	println("Pushing f4")
+	dim t1=get_milliseconds()
+	dim f4 = pool.submit(add, 3, 4).and_then(check(7))
+	dim t2=get_milliseconds()
+	println(int2str(t2-t1))
+	{@bdassert("t2-t1>=1000")@}
+	println("f4 DOne")
+	f1.await()
+	f2.await()
+	f3.await()
+	f4.await()
+	pool.close()
+	println("Close done")
+end
+
+func job_test()
+	dim lock = new mutex
+	dim pool = new threadpool(4,1000)
+	dim cnt = 0
+	dim res = new future[int]*20000
+	for dim i =0 till 20000
+		dim job = func () as int
+				lock.acquire()
+				cnt=cnt+1
+				lock.release()
+				return cnt
+			end
+		res[i]=pool.submit(job)
+	end
+	println("submit done")
+	for dim i =0 till 20000
+		res[i].await()
+	end
+	{@bdassert("cnt==20000")@}
+	pool.close()
+	println("Close done")
+end
+
+future_and_full_test()
+println("Testing submission of many jobs")
+job_test()
+println("Done")

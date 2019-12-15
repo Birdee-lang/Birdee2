@@ -1,0 +1,21 @@
+name: C/C++ CI
+
+on: [push,pull_request]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-16.04
+    
+    steps:
+    - uses: actions/checkout@v1
+    - name: dependencies
+      run: bash install_dependencies.sh
+    - name: make
+      run: make -j8
+      env:
+        BIRDEE_HOME: /home/runner/work/Birdee2/Birdee2/BirdeeHome
+    - name: make tests
+      run: make tests
+      env:
+        BIRDEE_HOME: /home/runner/work/Birdee2/Birdee2/BirdeeHome
