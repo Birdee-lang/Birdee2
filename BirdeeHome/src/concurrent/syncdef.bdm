@@ -33,11 +33,11 @@ class future[T] : awaitable
 end
 
 class future_then[T, T2] : future[T2]
-	private impl as future[T]
+	private implement as future[T]
 	private data as option[T2]
 	private thenfunc as closure (result as option[T]) as option[T2]
-	public function __init__(impl as future[T], thenfunc as closure (result as option[T]) as option[T2])
-		this.impl = impl
+	public function __init__(implement as future[T], thenfunc as closure (result as option[T]) as option[T2])
+		this.implement = implement
 		this.thenfunc = thenfunc
 		data = none[T2]()
 	end
@@ -46,18 +46,18 @@ class future_then[T, T2] : future[T2]
 	public function success(data as T2)
 		throw new runtime_exception("do not call future_then.success")
 	end
-	public function fail() => impl.fail()
-	public function do_await() => impl.do_await()
+	public function fail() => implement.fail()
+	public function do_await() => implement.do_await()
 	public function get_native_handle() as pointer
-		return impl.get_native_handle()
+		return implement.get_native_handle()
 	end
 
 	public function do_then()
-		impl.do_then()
-		data = thenfunc(impl.get_result())
+		implement.do_then()
+		data = thenfunc(implement.get_result())
 	end
 	public function get_result() as option[T2] => data
-	public function close() => impl.close()
+	public function close() => implement.close()
 end
 
 class wait_exception  : runtime_exception
