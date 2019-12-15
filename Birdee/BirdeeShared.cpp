@@ -64,6 +64,7 @@ namespace Birdee
 	{ "byte",tok_byte },
 	{ "ulong",tok_ulong},
 	{ "uint",tok_uint},
+	{ "short", tok_short},
 	{ "float",tok_float},
 	{ "double",tok_double},
 	{"package",tok_package},
@@ -108,6 +109,7 @@ namespace Birdee
 	{"try",tok_try},
 	{"catch",tok_catch},
 	{"throw",tok_throw},
+	{"defer",tok_defer},
 	};
 
 	BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r)
@@ -165,6 +167,36 @@ static struct Initializer
 }mod_initializer;
 
 
+size_t Birdee::str_view::hash() const
+{
+	size_t result = 0;
+	const size_t prime = 31;
+	auto itr = str->begin() + starts;
+	for (size_t i = 0; i < len; ++i, ++itr) {
+		result = *itr + (result * prime);
+	}
+	return result;
+}
+
+bool Birdee::str_view::operator==(const str_view & other) const
+{
+	if (other.len != len)
+		return false;
+	if (other.str == str && starts == other.starts)
+		return true;
+	return std::equal(str->begin() + starts, str->begin() + (starts + len), other.str->begin() + other.starts);
+}
+
+std::string Birdee::str_view::to_string() const
+{
+	std::string ret;
+	ret.reserve(len);
+	auto itr = str->begin() + starts;
+	for (size_t i = 0; i < len; ++i, ++itr) {
+		ret.push_back(*itr);
+	}
+	return ret;
+}
 
 void Birdee::Tokenizer::ParseString()
 {
@@ -309,8 +341,27 @@ Token Birdee::Tokenizer::gettok() {
 	if (single_token != single_operator_map.end())
 	{
 		IdentifierStr = LastChar;
-		while (single_operator_map.find(LastChar = GetChar()) != single_operator_map.end())
+		// search in token map for multi-character token
+		for (;;)
+		{
+			LastChar = GetChar();
+			// a small performance enhancement: if the character is not in single_operator_map
+			// we can just jump out of the loop
+			if (single_operator_map.find(LastChar) == single_operator_map.end())
+				break;
 			IdentifierStr += LastChar;
+			// search in token map,find a key in the map that starts with IdentifierStr
+			// https://stackoverflow.com/a/9350066
+			auto itr = token_map.lower_bound(IdentifierStr);
+			if (itr != token_map.end()) {
+				const string& key = itr->first;
+				if (key.compare(0, IdentifierStr.size(), IdentifierStr) == 0) // Really a prefix?
+					continue;
+			}
+			// a failed match will increase IdentifierStr.size() by 1, pop up the last character
+			IdentifierStr.pop_back();
+			break;
+		}
 		if (IdentifierStr.size() > 1)
 		{
 			auto moperator = token_map.find(IdentifierStr);

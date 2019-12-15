@@ -21,7 +21,7 @@ class vector[T]
 		buf=newbuf
 	end
 
-	public func __getitem__ (idx as T) as T
+	public func __getitem__ (idx as uint) as T
 		check_index(idx)
 		return buf[idx]
 	end
@@ -61,6 +61,18 @@ class vector[T]
 		buf[idx]=value
 	end
 
+	public func remove_at(idx as uint)
+		check_index(idx)
+		for dim i = idx + 1 till len
+			buf[i-1] = buf[i]
+		end
+		len = len - 1
+	end
+
+	public func pop_back()
+		check_index(0)
+		len = len - 1
+	end
 end
 
 

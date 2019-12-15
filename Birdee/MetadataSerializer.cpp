@@ -138,6 +138,7 @@ int ConvertClassToIndex(ClassAST* class_ast)
 				args.push_back(BuildTemplateArgumentJson(arg));
 			}
 			outjson["template_arguments"] = args;
+			outjson["template_source"] = ConvertClassToIndex(class_ast->template_source_class);
 		}
 		imported_class[out_idx] = std::move(outjson);
 		return current_idx;
@@ -223,6 +224,9 @@ json ConvertTypeToIndex(ResolvedType& type)
 	case tok_byte:
 		ret["base"] = -10;
 		break;
+	case tok_short:
+		ret["base"] = -11;
+		break;
 	case tok_class:
 		ret["base"] = ConvertClassToIndex(type.class_ast);
 		break;
@@ -260,6 +264,10 @@ json BuildFunctionJson(FunctionAST* func)
 		args.push_back(BuildVariableJson(arg.get()));
 	}
 	ret["args"] = args;
+	if (func->is_extension)
+	{
+		ret["is_extension"] = true;
+	}
 	ret["return"] = ConvertTypeToIndex(func->Proto->resolved_type);
 	return ret;
 }
@@ -339,6 +347,13 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 {
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
+
+	if (dump_qualified_name && cls.isTemplate()) // if is imported && is a template
+	{
+		// redirect to the class definition in another module
+		return json_cls;
+	}
+
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
 	json_cls["is_interface"] = cls.is_interface;

@@ -293,6 +293,7 @@
     <Text Include="llvm.txt" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\BirdeeHome\pylib\autoscope.py" />
     <None Include="..\BirdeeHome\pylib\bbuild.py" />
     <None Include="..\BirdeeHome\pylib\bdconst.py" />
     <None Include="..\BirdeeHome\pylib\getset.py" />
@@ -300,14 +301,24 @@
     <None Include="..\BirdeeHome\src\concurrent\sync.bdm" />
     <None Include="..\BirdeeHome\src\concurrent\syncdef.bdm" />
     <None Include="..\BirdeeHome\src\concurrent\threading.bdm" />
+    <None Include="..\BirdeeHome\src\concurrent\threadpool.bdm" />
+    <None Include="..\BirdeeHome\src\functional\closures.bdm" />
+    <None Include="..\BirdeeHome\src\functional\lazy.bdm" />
     <None Include="..\BirdeeHome\src\hash.bdm" />
     <None Include="..\BirdeeHome\src\list.bdm" />
     <None Include="..\BirdeeHome\src\system\io\file.bdm" />
     <None Include="..\BirdeeHome\src\system\io\filedef.bdm" />
+    <None Include="..\BirdeeHome\src\system\io\net.bdm" />
+    <None Include="..\BirdeeHome\src\system\io\netdef.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\unistd\concurrent.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\unistd\file.bdm" />
+    <None Include="..\BirdeeHome\src\system\specific\unistd\net.bdm" />
+    <None Include="..\BirdeeHome\src\system\specific\unistd\time.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\win32\concurrent.bdm" />
     <None Include="..\BirdeeHome\src\system\specific\win32\file.bdm" />
+    <None Include="..\BirdeeHome\src\system\specific\win32\net.bdm" />
+    <None Include="..\BirdeeHome\src\system\specific\win32\time.bdm" />
+    <None Include="..\BirdeeHome\src\system\time.bdm" />
     <None Include="..\BirdeeHome\src\typedptr.bdm" />
     <None Include="..\tests\ast_write_test.py" />
     <None Include="..\tests\concurrent_test.bdm" />

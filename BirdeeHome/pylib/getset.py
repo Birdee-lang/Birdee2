@@ -3,17 +3,17 @@ from birdeec import *
 def create_getter(clazz):
 	for field in clazz.fields:
 		if field.access==AccessModifier.PRIVATE:
-			class_body(clazz,f'''
-public function get_{field.decl.name}() as {field.decl.resolved_type}
-	return this.{field.decl.name}
+			class_body(clazz,'''
+public function get_{}() as {}
+	return this.{}
 end
-''')
+'''.format(field.decl.name, field.decl.resolved_type,field.decl.name))
 
 def create_setter(clazz):
 	for field in clazz.fields:
 		if field.access==AccessModifier.PRIVATE:
-			class_body(clazz,f'''
-public function set_{field.decl.name}(__value__ as {field.decl.resolved_type})
-	this.{field.decl.name}=__value__
+			class_body(clazz,'''
+public function set_{}(__value__ as {})
+	this.{}=__value__
 end
-''')
+'''.format(field.decl.name, field.decl.resolved_type,field.decl.name))

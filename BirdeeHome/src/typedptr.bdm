@@ -37,6 +37,7 @@ struct ref[T]
 	
 	public func get() as T => ptr_load[T](ptr)
 	public func set(value as T) => ptr_store[T](ptr, value)
+	public func __deref__() as T => get()
 
 	public func fptr[field as string]() as ref[{@get_field_type(get_func_expr_templ_at(0).value)@}]
 		dim p = get_field_ptr[field, T](ptr)

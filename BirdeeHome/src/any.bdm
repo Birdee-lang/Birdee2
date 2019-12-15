@@ -1,0 +1,107 @@
+import rtti:*
+import unsafe
+#import fmt:printany
+
+@enable_rtti
+class rtti_wrapper[T]
+	public data as T
+	public func __init__(d as T) => data = d
+end
+
+@init_script
+{@
+from bdutils import *
+
+def is_rtti_class(resolved_ty):
+	return resolved_ty.index_level==0 and resolved_ty.is_class() and resolved_ty.get_detail().needs_rtti
+
+def get_wrapped_type(resolved_ty = None):
+	if resolved_ty is None:
+		resolved_ty = get_func_type_templ_at(0)
+	if is_rtti_class(resolved_ty):
+		return resolved_ty
+	return resolve_type("rtti_wrapper[{}]".format(resolved_ty))
+@}
+
+function rtti_wrap[T](t as T) as {@set_type(get_wrapped_type())@}
+{@
+T = get_func_type_templ_at(0)
+if is_rtti_class(T):
+	set_stmt("return t")
+else:
+	set_stmt("return new rtti_wrapper[{}](t)".format(T))
+@}
+end
+
+struct any
+	public v as rtti_wrapper[int]
+	public func set[T](n as T)
+{@
+T = get_func_type_templ_at(0)
+if is_rtti_class(T):
+	set_stmt("v = unsafe.ptr_cast[rtti_wrapper[int]](n)")
+else:
+	set_stmt('''if v !== null && is_type[T]() then
+			unsafe.ptr_cast[rtti_wrapper[T]](v).data = n
+		else
+			v = unsafe.ptr_cast[rtti_wrapper[int]](rtti_wrap(n))
+		end
+''')	
+@}	
+	end
+
+	public func is_type[T]() as boolean
+{@
+T = get_func_type_templ_at(0)
+WrappedT = get_wrapped_type(T)
+@}
+		dim t_info = get_type_info[{@set_type(WrappedT)@}]()
+		dim v_info = typeof(v)
+		return t_info.is_parent_of(v_info)
+	end
+
+	public func get[T]() as T
+{@
+T = get_func_type_templ_at(0)
+WrappedT = get_wrapped_type(T)
+@}	
+		if is_type[T]() then
+			dim wrapped = unsafe.ptr_cast[{@set_type(WrappedT)@}](v)
+{@
+if T == WrappedT:
+	set_stmt("return wrapped")
+else:
+	set_stmt("return wrapped.data")
+@}
+		end
+		throw new runtime_exception("Bad cast Error")
+	end
+end
+
+##
+@enable_rtti
+class dummy2
+	public a as int
+	public b as int
+end
+
+dim t as any
+t.set(new runtime_exception("HAHA"))
+println(t.get[runtime_exception]().get_message())
+dim dm = new dummy2
+dm.a=1
+dm.b=2
+t.set(dm)
+printany(t.is_type[runtime_exception]())
+println("")
+printany(t.get[dummy2]().b)
+println("")
+t.set(12)
+printany(t.get[int]())
+println("")
+t.set(122)
+printany(t.get[int]())
+println("")
+t.set("123")
+println(t.get[string]())##
+

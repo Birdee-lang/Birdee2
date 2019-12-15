@@ -53,7 +53,6 @@ namespace std
 			return has((int)t);
 		}
 	};
-
 }
 namespace llvm
 {
@@ -63,6 +62,7 @@ namespace llvm
 	class StructType;
 	class DIType;
 	class TargetMachine;
+	class BasicBlock;
 }
 namespace Birdee {
 	using std::string;
@@ -74,12 +74,24 @@ namespace Birdee {
 	using ::llvm::Value;
 	using std::make_unique;
 	
-	/*template<typename T, typename... Args>
-	std::unique_ptr<T> make_unique(Args&&... args) {
-		return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
-	}*/
+	struct pair_hash
+	{
+		template <class T1, class T2>
+		std::size_t operator() (const std::pair<T1, T2> &pair) const
+		{
+			return std::hash<T1>()(pair.first) ^ std::hash<T2>()(pair.second);
+		}
+	};
 
-	
+	BD_CORE_API struct str_view
+	{
+		const std::string* str;
+		size_t starts;
+		size_t len;
+		size_t hash() const;
+		std::string to_string() const;
+		bool operator==(const str_view& other) const;
+	};
 
 	class ClassAST;
 	class FunctionAST;
@@ -96,6 +108,7 @@ namespace Birdee {
 
 	class AnnotationStatementAST;
 	
+	using string_ref = std::reference_wrapper<const string>;
 	struct ImportedModule
 	{
 		//mapping from name to <Symbol,is_public>
@@ -104,11 +117,12 @@ namespace Birdee {
 		unordered_map<string, std::pair<unique_ptr<VariableSingleDefAST>, bool>> dimmap;
 		unordered_map<string, std::pair<unique_ptr<PrototypeAST>, bool>> functypemap;
 
-		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
-		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
-		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
-		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
+		unordered_map<string_ref, ClassAST*> imported_classmap;
+		unordered_map<string_ref, FunctionAST*> imported_funcmap;
+		unordered_map<string_ref, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<string_ref, PrototypeAST*> imported_functypemap;
 
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash> class_extend_funcmap;
 		vector<vector<string>> user_imports;
 		vector<unique_ptr<AnnotationStatementAST>> annotations;
 		PyHandle py_scope;
@@ -247,11 +261,12 @@ namespace Birdee {
 				|| type == tok_long
 				|| type == tok_ulong
 				|| type == tok_uint
+				|| type == tok_short
 				|| type == tok_byte;
 		}
 		bool isSigned()
 		{
-			return 	index_level == 0 && (type == tok_int
+			return 	index_level == 0 && (type == tok_int || type == tok_short
 				|| type == tok_long || type == tok_byte);
 		}
 		bool isNumber() const
@@ -260,6 +275,7 @@ namespace Birdee {
 				|| type == tok_long
 				|| type == tok_ulong
 				|| type == tok_uint
+				|| type == tok_short
 				|| type == tok_float
 				|| type == tok_double
 				|| type == tok_byte;
@@ -346,16 +362,22 @@ namespace Birdee {
 		vector<string> search_path; //the search paths, with "/" at the end
 		vector<unique_ptr<StatementAST>> toplevel;
 		//name to <symbol, is_public> mapping
-		unordered_map<std::reference_wrapper<const string>, std::pair<ClassAST*,bool>> classmap;
-		unordered_map<std::reference_wrapper<const string>, std::pair<FunctionAST*,bool>> funcmap;
-		unordered_map<std::reference_wrapper<const string>, std::pair<VariableSingleDefAST*,bool>> dimmap;
-		unordered_map<std::reference_wrapper<const string>, std::pair<unique_ptr<PrototypeAST>,bool>> functypemap;
+		unordered_map<string_ref, std::pair<ClassAST*,bool>> classmap;
+		unordered_map<string_ref, std::pair<FunctionAST*,bool>> funcmap;
+		unordered_map<string_ref, std::pair<VariableSingleDefAST*,bool>> dimmap;
+		unordered_map<string_ref, std::pair<unique_ptr<PrototypeAST>,bool>> functypemap;
 
 		//maps from short names ("import a.b:c" => "c") to the imported AST
-		unordered_map<std::reference_wrapper<const string>, ClassAST*> imported_classmap;
-		unordered_map<std::reference_wrapper<const string>, FunctionAST*> imported_funcmap;
-		unordered_map<std::reference_wrapper<const string>, VariableSingleDefAST*> imported_dimmap;
-		unordered_map<std::reference_wrapper<const string>, PrototypeAST*> imported_functypemap;
+		unordered_map<string_ref, ClassAST*> imported_classmap;
+		unordered_map<string_ref, FunctionAST*> imported_funcmap;
+		unordered_map<string_ref, VariableSingleDefAST*> imported_dimmap;
+		unordered_map<string_ref, PrototypeAST*> imported_functypemap;
+
+		//holder for auto-generated functype by scripts and extension functions
+		vector<unique_ptr<PrototypeAST>> generated_functy;
+
+		//class extension functions: (class, method_name)->function
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash> class_extend_funcmap;
 
 		//the scripts that are marked "init_script". They will be exported to the "bmm" file
 		vector<ScriptAST*> init_scripts;
@@ -421,6 +443,9 @@ namespace Birdee {
 			case tok_byte:
 				os << "const byte " << Val.v_int ;
 				break;
+			case tok_short:
+				os << "const short " << Val.v_int;
+				break;
 			case tok_int:
 				os << "const int " << Val.v_int ;
 				break;
@@ -456,7 +481,7 @@ namespace Birdee {
 		Value * Generate();
 		virtual void Phase1() {}
 		BasicTypeExprAST() {}
-		BasicTypeExprAST(Token token, SourcePos pos) { Pos = pos; type = make_unique<Type>(token); };
+		BasicTypeExprAST(Token token, SourcePos pos) { Pos = pos; type = make_unique<Type>(token); }
 		void print(int level) {
 			ExprAST::print(level); std::cout << "BasicType"<<type->type<<"\n";
 		}
@@ -687,7 +712,7 @@ namespace Birdee {
 	class BD_CORE_API UnaryExprAST : public ExprAST {
 	public:
 		Token Op;
-		FunctionAST* func = nullptr;
+		bool is_overloaded = false;
 		unique_ptr<ExprAST> arg;
 		unique_ptr<StatementAST> Copy();
 		//first resolve variables then resolve class names
@@ -849,6 +874,7 @@ namespace Birdee {
 			CAPTURE_REF,  //the variable is in "context" object of another function, this variable is a reference to it
 		}capture_import_type= CAPTURE_NONE, capture_export_type=CAPTURE_NONE;
 
+		unique_ptr<VariableSingleDefAST> CopyNoInitializer();
 		llvm::Value* Generate();
 		void PreGenerateForGlobal();
 		void PreGenerateExternForGlobal(const string& package_name);
@@ -891,38 +917,6 @@ namespace Birdee {
 		}
 	};
 
-#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
-	class VariableMultiDefAST : public VariableDefAST {
-#else
-	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
-#endif
-	public:
-		BD_CORE_API void Phase1()
-		{
-			for (auto& a : lst)
-				a->Phase1();
-		}
-		BD_CORE_API llvm::Value* Generate();
-		BD_CORE_API std::unique_ptr<StatementAST> Copy();
-		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
-		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
-		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) :lst(std::move(vec)) {
-			Pos = pos;
-		}
-		BD_CORE_API void move(unique_ptr<VariableDefAST>&& current,
-			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
-		{
-			for (auto&& var : lst)
-				func(std::move(var));
-		}
-
-		BD_CORE_API void print(int level) {
-			//VariableDefAST::print(level);
-			for (auto& a : lst)
-				a->print(level);
-		}
-	};
-
 	class BD_CORE_API LocalVarExprAST : public ResolvedIdentifierExprAST {
 	public:
 		VariableSingleDefAST* def;
@@ -950,6 +944,7 @@ namespace Birdee {
 		bool is_closure;
 		friend BD_CORE_API bool operator == (const PrototypeAST&, const PrototypeAST&);
 		
+		bool operator < (const PrototypeAST&) const;
 		std::size_t rawhash() const; 
 		//compare the arguments, return type and the belonging class, without comparing is_closure field
 		bool IsSamePrototype(const PrototypeAST&) const;
@@ -1106,9 +1101,10 @@ namespace Birdee {
 		vector<VariableSingleDefAST*> captured_var;
 		bool capture_this = false;
 		bool capture_super = false;
-		unordered_map<std::reference_wrapper<const string>, unique_ptr< VariableSingleDefAST>> imported_captured_var;
+		unordered_map<string_ref, unique_ptr< VariableSingleDefAST>> imported_captured_var;
 		FunctionAST* parent = nullptr;
 		bool capture_on_stack = false;
+		bool is_extension = false;
 
 		llvm::Value* exported_capture_pointer;
 		llvm::Value* imported_capture_pointer;
@@ -1394,28 +1390,6 @@ namespace Birdee {
 
 	};
 
-	class BD_CORE_API ScriptAST : public ExprAST
-	{
-	public:
-		//ScriptAST can be contained in template argument in a BasicTypeExpr. So it can serve as an expression, or can be served
-		//as a resolved type. The field type_data is only valid when stmt is empty (when the user only calls set_type but never calls set_ast() ).
-		//But if stmt is empty, type_data can be invalid in some cases - user did not call either set_ast() or set_type()
-		ResolvedType type_data;
-		//In most cases, ScriptAST is used as a general expr.
-		unique_ptr<StatementAST> stmt;
-		bool is_top_level;
-		string script;
-		virtual Value* Generate();
-		virtual void Phase1();
-		virtual unique_ptr<StatementAST> Copy();
-		virtual void print(int level) {
-			ExprAST::print(level);
-			std::cout << "script " << script<<"\n";
-		}
-		ScriptAST(const string& str, bool is_top_level):script(str), is_top_level(is_top_level){}
-		virtual llvm::Value* GetLValue(bool checkHas);
-	};
-
 	class BD_CORE_API FunctionToClosureAST : public ExprAST
 	{
 	public:
@@ -1442,30 +1416,27 @@ namespace Birdee {
 			return nullptr;
 		};
 	};
-
 #ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
-	class TryBlockAST : public StatementAST 
+	BD_CORE_API class  DeferBlockAST : public StatementAST
 #else
-	class BD_CORE_API TryBlockAST : public StatementAST
+	class BD_CORE_API DeferBlockAST : public StatementAST
 #endif
 	{
 	public:
-		ASTBasicBlock try_block;
-		vector<unique_ptr<VariableSingleDefAST>> catch_variables;
-		vector<ASTBasicBlock> catch_blocks;
+		ASTBasicBlock defer_block;
 
-		BD_CORE_API virtual Value* Generate();
-		BD_CORE_API virtual void Phase1();
-		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
-		BD_CORE_API virtual void print(int level) {
+		virtual Value* Generate();
+		// do acutal code generation
+		virtual Value* DoGenerate(int idx, llvm::BasicBlock* resume_block, llvm::BasicBlock* normal_block);
+		virtual void Phase1();
+		virtual unique_ptr<StatementAST> Copy();
+		virtual void print(int level) {
 			StatementAST::print(level);
-			std::cout << "TryBlockAST \n";
-			try_block.print(level + 1);
+			std::cout << "DeferBlockAST \n";
+			defer_block.print(level + 1);
 			StatementAST::print(level);
 		}
-		BD_CORE_API TryBlockAST(ASTBasicBlock&& try_block,
-			vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
-			vector<ASTBasicBlock>&& catch_blocks, SourcePos pos);
+		DeferBlockAST(ASTBasicBlock&& defer_block, SourcePos pos);
 	};
 
 	class BD_CORE_API ThrowAST : public StatementAST
@@ -1484,9 +1455,91 @@ namespace Birdee {
 		ThrowAST(unique_ptr<ExprAST>&& expr, SourcePos pos);
 	};
 
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class TryBlockAST : public StatementAST
+#else
+	class BD_CORE_API TryBlockAST : public StatementAST
+#endif
+	{
+	public:
+		ASTBasicBlock try_block;
+		vector<unique_ptr<VariableSingleDefAST>> catch_variables;
+		vector<ASTBasicBlock> catch_blocks;
+
+		BD_CORE_API virtual Value* Generate();
+		BD_CORE_API virtual void Phase1();
+		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
+		BD_CORE_API virtual void print(int level) {
+			StatementAST::print(level);
+			::std::cout << "TryBlockAST \n";
+			try_block.print(level + 1);
+			StatementAST::print(level);
+		}
+		BD_CORE_API TryBlockAST(ASTBasicBlock&& try_block,
+			vector<unique_ptr<VariableSingleDefAST>>&& catch_variables,
+			vector<ASTBasicBlock>&& catch_blocks, SourcePos pos);
+	};
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class ScriptAST : public ExprAST
+#else
+	class BD_CORE_API ScriptAST : public ExprAST
+#endif
+	{
+	public:
+		//ScriptAST can be contained in template argument in a BasicTypeExpr. So it can serve as an expression, or can served
+		//as a resolved type. The field type_data is only valid when stmt is empty (when the user only calls set_type but never calls set_ast() ).
+		//But if stmt is empty, type_data can be invalid in some cases - user did not call either set_ast() or set_type()
+		ResolvedType type_data;
+		//In most cases, ScriptAST is used as a general expr.
+		vector<unique_ptr<StatementAST>> stmt;
+		bool is_top_level;
+		string script;
+		BD_CORE_API virtual Value* Generate();
+		BD_CORE_API virtual void Phase1();
+		BD_CORE_API virtual unique_ptr<StatementAST> Copy();
+		BD_CORE_API virtual void print(int level) {
+			ExprAST::print(level);
+			std::cout << "script " << script << "\n";
+		}
+		BD_CORE_API ScriptAST(const string& str, bool is_top_level) :script(str), is_top_level(is_top_level) {}
+		BD_CORE_API virtual llvm::Value* GetLValue(bool checkHas);
+	};
+
+#ifdef _MSC_VER  //msvc has a "bug" when adding BD_CORE_API here
+	class VariableMultiDefAST : public VariableDefAST {
+#else
+	class BD_CORE_API VariableMultiDefAST : public VariableDefAST {
+#endif
+	public:
+		BD_CORE_API void Phase1()
+		{
+			for (auto& a : lst)
+				a->Phase1();
+		}
+		BD_CORE_API llvm::Value* Generate();
+		BD_CORE_API std::unique_ptr<StatementAST> Copy();
+		std::vector<std::unique_ptr<VariableSingleDefAST>> lst;
+		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec) :lst(std::move(vec)) {}
+		BD_CORE_API VariableMultiDefAST(std::vector<std::unique_ptr<VariableSingleDefAST>>&& vec, SourcePos pos) : lst(std::move(vec)) {
+			Pos = pos;
+		}
+		BD_CORE_API void move(unique_ptr<VariableDefAST>&& current,
+			std::function<void(unique_ptr<VariableSingleDefAST>&&)> func)
+		{
+			for (auto&& var : lst)
+				func(std::move(var));
+		}
+
+		BD_CORE_API void print(int level) {
+			//VariableDefAST::print(level);
+			for (auto& a : lst)
+				a->print(level);
+		}
+	};
+
 }
-
-
 
 namespace std
 {
@@ -1498,12 +1551,22 @@ namespace std
 			return hash<uintptr_t>()(a.rawhash());
 		}
 	};
+
 	template <>
 	struct hash<reference_wrapper<Birdee::PrototypeAST>>
 	{
 		std::size_t operator()(const reference_wrapper<Birdee::PrototypeAST> a) const
 		{
 			return a.get().rawhash();
+		}
+	};
+
+	template <>
+	struct hash<Birdee::str_view>
+	{
+		std::size_t operator()(const Birdee::str_view& a) const
+		{
+			return a.hash();
 		}
 	};
 }

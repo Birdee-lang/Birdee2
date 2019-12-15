@@ -62,11 +62,13 @@ namespace Birdee
 		{ tok_float, "float" },
 		{ tok_double, "double" },
 		{ tok_boolean, "boolean" },
+		{ tok_short, "short" },
 		{ tok_pointer,"pointer" },
 		};
 		return tok_names[tok];
 	}
-	
+	extern 	void AddFunctionToClassExtension(FunctionAST* func, 
+		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap);
 }
 
 inline int DoWarn(const string& str)
@@ -150,9 +152,14 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 		cu.init_scripts.push_back(func);
 	}},
 	{"enable_rtti", [](StatementAST* stmt,bool is_top_level) {
-		CompileAssert(isa<ClassAST>(stmt),"The init_script can only be applied on class definitions");
+		CompileAssert(isa<ClassAST>(stmt),"The enable_rtti can only be applied on class definitions");
 		ClassAST* cls = static_cast<ClassAST*>(stmt);
 		cls->needs_rtti = true;
+	}},
+	{"extension", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(isa<FunctionAST>(stmt) && is_top_level,"The extension annotation can only be applied on function definitions in the top level");
+		FunctionAST* f = static_cast<FunctionAST*>(stmt);
+		f->is_extension = true;
 	}},
 };
 
@@ -233,7 +240,7 @@ static void BasicBlockCheckUnknownToken(std::initializer_list<Token> expect)
 	throw CompileError(msg);
 }
 
-static std::unordered_set<Token> basic_types = { tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
+static std::unordered_set<Token> basic_types = { tok_short,tok_byte,tok_int,tok_long,tok_ulong,tok_uint,tok_float,tok_double,tok_boolean,tok_pointer };
 //parse basic type, may get the array type if there is a [ after GeneralIdentifierType (QualifiedIdentifierType/IdentifierType)
 std::unique_ptr<Type> ParseBasicType()
 {
@@ -591,10 +598,13 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	}
 	case tok_not:
+	case tok_minus:
+	case tok_mul:
 	{
+		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		firstexpr = ParsePrimaryExpression();
-		push_expr(make_unique<UnaryExprAST>(tok_not, std::move(firstexpr), tokenizer.GetSourcePos()));
+		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
 		break;
 	}
 	case tok_new:
@@ -653,10 +663,18 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		tokenizer.GetNextToken();
 		break;
 	default:
-		if (basic_types.find(tokenizer.CurTok) != basic_types.end())
+		if (tokenizer.CurTok == tok_closure || tokenizer.CurTok == tok_functype)
 		{
+			bool is_closure = tokenizer.CurTok == tok_closure;
+			tokenizer.GetNextToken(); //eat function
+			auto expr = make_unique<BasicTypeExprAST>();
+			expr->Pos = tokenizer.GetSourcePos();
+			expr->type = make_unique<PrototypeType>(ParseFunctionPrototype(nullptr, false, nullptr, is_closure, false, false));
+			firstexpr = std::move(expr);
+		}
+		else if (basic_types.find(tokenizer.CurTok) != basic_types.end()) {
 			CompileAssert(anno.empty(), "Annotations cannot be applied on types");
-			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok,tokenizer.GetSourcePos());
+			firstexpr = make_unique<BasicTypeExprAST>(tokenizer.CurTok, tokenizer.GetSourcePos());
 			tokenizer.GetNextToken();
 		}
 		else
@@ -795,6 +813,7 @@ BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 }
 
 unique_ptr<TryBlockAST> ParseTry();
+unique_ptr<DeferBlockAST> ParseDefer();
 std::unique_ptr<ForBlockAST> ParseFor();
 std::unique_ptr<WhileBlockAST> ParseWhile();
 
@@ -904,6 +923,11 @@ void ParseBasicBlock(ASTBasicBlock& body, Token optional_tok, Token delimiter=to
 			push_expr(std::move(ParseTry()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
 			break;
+		case tok_defer:
+			tokenizer.GetNextToken(); //eat defer
+			push_expr(std::move(ParseDefer()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after defer-block");
+			break;
 		case tok_throw:
 		{
 			auto pos = tokenizer.GetSourcePos();
@@ -926,7 +950,7 @@ done:
 unique_ptr<TryBlockAST> ParseTry()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
-	CompileAssert(tok_new, "Expecting a newline after try");
+	CompileAssert(tok_newline, "Expecting a newline after try");
 	ASTBasicBlock bb;
 	ParseBasicBlock(bb, /*optional_tok*/tok_error, /*delimiter*/tok_catch, /*allow_end*/false);
 	vector<ASTBasicBlock> catches;
@@ -942,6 +966,15 @@ unique_ptr<TryBlockAST> ParseTry()
 		ParseBasicBlock(catches.back(), /*optional_tok*/tok_try, /*delimiter*/tok_catch,/*allow_end*/true);
 	}
 	return make_unique<TryBlockAST>(std::move(bb), std::move(catch_vars), std::move(catches), pos);
+}
+
+unique_ptr<DeferBlockAST> ParseDefer()
+{
+	SourcePos pos = tokenizer.GetSourcePos();
+	CompileAssert(tok_newline, "Expecting a newline after defer");
+	ASTBasicBlock bb;
+	ParseBasicBlock(bb, /*optional_tok*/tok_defer);
+	return make_unique<DeferBlockAST>(std::move(bb), pos);
 }
 
 std::unique_ptr<WhileBlockAST> ParseWhile()
@@ -1215,7 +1248,7 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
 		CompileAssert(!cls->is_struct, "The \'virtual\' annotation can only be applied on class functions");
-		CompileAssert(!cls->isTemplate(), "The \'virtual\' annotation cannot be applied on class templates");
+		CompileAssert(!cls->funcs[index].decl->isTemplate(), "The \'virtual\' annotation cannot be applied on function templates");
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
@@ -1719,7 +1752,12 @@ void DoImportPackageAll(const vector<string>& package)
 	for (auto& itr : mod->funcmap)
 	{
 		if (itr.second.second)
-			InsertName(cu.imported_funcmap, itr.first, itr.second.first.get());
+		{
+			auto func = itr.second.first.get();
+			InsertName(cu.imported_funcmap, itr.first, func);
+			if (func->is_extension)
+				AddFunctionToClassExtension(func, cu.class_extend_funcmap);
+		}
 	}
 	for (auto& itr : mod->functypemap)
 	{
@@ -1729,22 +1767,28 @@ void DoImportPackageAll(const vector<string>& package)
 }
 
 template<typename T,typename NodeT>
-bool FindAndInsertName(NodeT& node,T& namemap, const string& name)
+auto FindAndInsertName(NodeT& node,T& namemap, const string& name) -> decltype(namemap.cbegin()->second.first.get())
 {
 	auto dim = namemap.find(name);
 	if (dim != namemap.end() && dim->second.second)
 	{
-		InsertName(node,dim->first, dim->second.first.get());
-		return true;
+		auto ret = dim->second.first.get();
+		InsertName(node,dim->first, ret);
+		return ret;
 	}
-	return false;
+	return nullptr;
 }
 
 BD_CORE_API void DoImportName(const vector<string>& package, const string& name)
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(cu.imported_dimmap, mod->dimmap, name)) return;
-	if (FindAndInsertName(cu.imported_funcmap, mod->funcmap, name)) return;
+	if (auto func = FindAndInsertName(cu.imported_funcmap, mod->funcmap, name))
+	{
+		if (func->is_extension)
+			AddFunctionToClassExtension(func, cu.class_extend_funcmap);
+		return;
+	}
 	if (FindAndInsertName(cu.imported_classmap, mod->classmap, name)) return;
 	if (FindAndInsertName(cu.imported_functypemap, mod->functypemap, name)) return;
 	throw CompileError("Cannot find name " + name + " from module " + GetModuleNameByArray(package));
@@ -1764,7 +1808,12 @@ void DoImportNameInImportedModule(ImportedModule* to_mod,const vector<string>& p
 {
 	auto mod = DoImportPackage(package);
 	if (FindAndInsertName(to_mod->imported_dimmap, mod->dimmap, name)) return;
-	if (FindAndInsertName(to_mod->imported_funcmap, mod->funcmap, name)) return;
+	if (auto func = FindAndInsertName(to_mod->imported_funcmap, mod->funcmap, name))
+	{
+		if (func->is_extension)
+			AddFunctionToClassExtension(func, to_mod->class_extend_funcmap);
+		return;
+	}
 	if (FindAndInsertName(to_mod->imported_classmap, mod->classmap, name)) return;
 	if (FindAndInsertName(to_mod->imported_functypemap, mod->functypemap, name)) return;
 	throw CompileError("Cannot find name " + name + "from module " + GetModuleNameByArray(package));
@@ -1786,7 +1835,12 @@ void DoImportPackageAllInImportedModule(ImportedModule* to_mod, const vector<str
 	for (auto& itr : mod->funcmap)
 	{
 		if (itr.second.second)
-			InsertName(to_mod->imported_funcmap, itr.first, itr.second.first.get());
+		{
+			auto func = itr.second.first.get();
+			InsertName(to_mod->imported_funcmap, itr.first, func);
+			if (func->is_extension)
+				AddFunctionToClassExtension(func, to_mod->class_extend_funcmap);
+		}
 	}
 	for (auto& itr : mod->functypemap)
 	{
@@ -1914,6 +1968,11 @@ BD_CORE_API unique_ptr<StatementAST> ParseStatement(bool is_top_level)
 		tokenizer.GetNextToken(); //eat try
 		ret = ParseTry();
 		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
+		break;
+	case tok_defer:
+		tokenizer.GetNextToken(); //eat defer
+		ret = ParseDefer();
+		CompileExpect({ tok_newline,tok_eof }, "Expected a new line after defer-block");
 		break;
 	case tok_throw:
 	{
@@ -2083,6 +2142,11 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 			tokenizer.GetNextToken(); //eat try
 			push_expr(std::move(ParseTry()));
 			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after try-block");
+			break;
+		case tok_defer:
+			tokenizer.GetNextToken(); //eat defer
+			push_expr(std::move(ParseDefer()));
+			CompileExpect({ tok_newline,tok_eof }, "Expected a new line after defer-block");
 			break;
 		case tok_throw:
 		{

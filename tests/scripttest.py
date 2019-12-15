@@ -43,6 +43,45 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_generate_ok('''
+function aaa()
+	defer
+		println("SSSS")
+	end
+end
+''')
+
+assert_generate_fail('''
+function aaa()
+	try
+	catch e as runtime_exception
+		println("HAHA")
+	end
+end
+''')
+
+assert_fail('''
+struct A
+	public b as int
+end
+func fff() as A 
+	dim v as A
+	return v
+end
+fff().b=1
+''')
+
+assert_ok('''
+struct A
+	public b as int
+end
+func fff() as A 
+	dim v as A
+	return v
+end
+dim v = fff().b
+''')
+
+assert_generate_ok('''
 class meme
 	private func say()=>println("hi")
 end
@@ -473,13 +512,13 @@ end
 add2(1,"2")''')
 
 ddd="'''"
-assert_ok(f'''
+assert_ok('''
 dim a = {ddd}asd
 
 
 \n\a
 {ddd}, b as int
-print(a)''')
+print(a)'''.format(ddd=ddd))
 
 
 #tests for python script scopes

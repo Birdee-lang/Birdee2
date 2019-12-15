@@ -226,6 +226,8 @@ public:
 	BasicBlock top_level_bb;
 	//the sub-scopes of top-level code, they are not global
 	vector<BasicBlock> top_level_scopes;
+	//extension functions need an extra PrototypeAST in member ast, to remove the first parameter
+	unordered_map<FunctionAST*, PrototypeAST*> extension_proto_cache;
 
 	//the scope dicts for python. May be null it script is not current executed
 	//One PyScope object represents a Birdee module. scope_dicts field represents the nested scopes of the module.
@@ -286,6 +288,22 @@ public:
 	inline bool IsCurrentClass(ClassAST* cls)
 	{
 		return class_stack.size() > 0 && class_stack.back() == cls;
+	}
+
+	PrototypeAST* GetExtensionFunctionPrototype(FunctionAST* f)
+	{
+		auto itr = extension_proto_cache.find(f);
+		if (itr != extension_proto_cache.end())
+			return itr->second;
+		auto ptr = f->Proto->Copy();
+		auto& args = f->Proto->resolved_args;
+		assert(args.size() && IsResolvedTypeClass(args.front()->resolved_type));
+		ptr->cls = args.front()->resolved_type.class_ast;
+		ptr->is_closure = true;
+		ptr->resolved_args.erase(ptr->resolved_args.begin()); // remove the first one
+		auto ret = ptr.get();
+		cu.generated_functy.emplace_back(std::move(ptr));
+		return ret;
 	}
 
 	FieldDef* FindFieldInClass(const string& name)
@@ -467,18 +485,18 @@ public:
 		class_stack.pop_back();
 	}
 
-	bool isInTemplateOfOtherModuleAndDoImport()
+	ImportedModule* GetAndInportCurrentTemplateModule()
 	{
-		bool ret = false;
+		ImportedModule* ret = nullptr;
 		if (!template_stack.empty() && template_stack.back().imported_mod)
 		{
-			ret = true;
-			template_stack.back().imported_mod->HandleImport();
+			ret = template_stack.back().imported_mod;
+			ret->HandleImport();
 		}
 		if (!template_class_stack.empty() && template_class_stack.back().imported_mod)
 		{
-			ret = true;
-			template_class_stack.back().imported_mod->HandleImport();
+			ret = template_class_stack.back().imported_mod;
+			ret->HandleImport();
 		}
 		return ret;
 	}
@@ -532,7 +550,7 @@ public:
 					//"v" is defined in function "*itr2"
 					//first export v from *itr2
 					auto capture_idx = itr2->func->CaptureVariable(v);
-					unique_ptr<VariableSingleDefAST> var = unique_ptr_cast<VariableSingleDefAST>(v->Copy());
+					unique_ptr<VariableSingleDefAST> var = v->CopyNoInitializer();
 					
 					//then create a variable to import the variable
 					var->capture_import_type = v->capture_export_type;
@@ -583,7 +601,7 @@ public:
 			// return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
 		}
 
-		bool isInOtherModule = isInTemplateOfOtherModuleAndDoImport();
+		bool isInOtherModule = GetAndInportCurrentTemplateModule();
 		if (isInOtherModule)
 		{//if in template of another module, search global vars from the module
 			auto ret = GetGlobalFromImportedTemplate(name);
@@ -865,6 +883,8 @@ unique_ptr<ExprAST> FixTypeForAssignment2(ResolvedType& target, unique_ptr<ExprA
 		return make_unique<CastNumberExpr<tok_double, typeto>>(std::move(val),pos);
 	case tok_byte:
 		return make_unique<CastNumberExpr<tok_byte, typeto>>(std::move(val), pos);
+	case tok_short:
+		return make_unique<CastNumberExpr<tok_short, typeto>>(std::move(val), pos);
 	}
 	ThrowCastError(target, val->resolved_type, pos);
 	return nullptr;
@@ -963,6 +983,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 			return fix_type(tok_double);
 		case tok_byte:
 			return fix_type(tok_byte);
+		case tok_short:
+			return fix_type(tok_short);
 		}
 	}
 #undef fix_type
@@ -971,7 +993,8 @@ unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAS
 }
 
 static unordered_map<Token, int> promotion_map = {
-{ tok_byte,-1 },
+{ tok_byte,-2 },
+{ tok_short,-1 },
 { tok_int,0 },
 {tok_uint,1},
 {tok_long,2},
@@ -1172,12 +1195,14 @@ namespace Birdee
 			},
 				[&this_template_args, &template_arg](ScriptAST* ex) {
 				ex->Phase1();
-				if (ex->stmt) // if the user called set_ast(), use ScriptAST as an expression
+				if (ex->stmt.size()) // if the user called set_ast(), use ScriptAST as an expression
 				{
+					CompileAssert(ex->stmt.size() == 1, ex->Pos,
+						"You should call set_ast once in the script, because it is in a template argument");
 					//if ex->resolved_type.isResolved(), then it's an expression. Otherwise, it's an general statement 
 					CompileAssert(ex->resolved_type.isResolved(), ex->Pos,
 						"The returned AST of this script must be an expression, because it is in a template argument");
-					ParseRawOneTemplateArg(unique_ptr_cast<ExprAST>(std::move(ex->stmt)), this_template_args); //recursively parse the expression
+					ParseRawOneTemplateArg(unique_ptr_cast<ExprAST>(std::move(ex->stmt.front())), this_template_args); //recursively parse the expression
 				}
 				else
 				{
@@ -1399,7 +1424,7 @@ namespace Birdee
 				//e.g. T = int[], then T[] should be int[][]
 				return;
 			}
-			scope_mgr.isInTemplateOfOtherModuleAndDoImport();
+			scope_mgr.GetAndInportCurrentTemplateModule();
 			//if we are in a template and it is imported from another modules
 			auto find_in_template_env = [&pos](ResolvedType& ths, const ScopeManager::TemplateEnv& env, const string& str)
 			{
@@ -1645,6 +1670,19 @@ namespace Birdee
 		}
 		return true;
 	}
+	bool PrototypeAST::operator<(const PrototypeAST & that) const
+	{
+		if ((int)is_closure > (int)that.is_closure)
+			return false;
+		else if ((int)is_closure < (int)that.is_closure)
+			return true;
+		
+		if (!(resolved_type == that.resolved_type))
+		{
+			return resolved_type < that.resolved_type;
+		}
+		return resolved_args < that.resolved_args;
+	}
 	std::size_t PrototypeAST::rawhash() const
 	{
 		const PrototypeAST* proto = this;
@@ -1679,7 +1717,7 @@ namespace Birdee
 		if (type == tok_package)
 			return import_node < that.import_node;
 		if (type == tok_func)
-			return proto_ast < that.proto_ast;
+			return *proto_ast < *that.proto_ast;
 		return false;		
 	}
 	bool Birdee::Type::operator<(const Type & that)
@@ -1969,6 +2007,7 @@ namespace Birdee
     
 		if (isTemplateInstance())
 		{//if is template instance, set member template func's mod
+			assert(template_source_class);
 			if (template_source_class->template_param->mod)
 			{
 				for (auto& funcdef : funcs)
@@ -2208,6 +2247,40 @@ namespace Birdee
 		return ret;
 	}
 
+	void AddFunctionToClassExtension(FunctionAST* func, unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap)
+	{
+		auto Proto = func->Proto.get();
+		auto& Pos = func->Pos;
+		assert(!Proto->cls);
+		assert(!Proto->is_closure);
+		CompileAssert(Proto->resolved_args.size()
+			&& IsResolvedTypeClass(Proto->resolved_args.front()->resolved_type),
+			Pos, string("The type of the class extension function's first parameter should be a class"));
+		auto& funcname = Proto->GetName();
+		auto pos = funcname.find('.'); // skip all char before the first .
+		if (pos == string::npos)
+			pos = 0;
+		pos = funcname.find('_', pos);
+		if (pos != string::npos)
+		{
+			pos += 1;
+			CompileAssert(pos < funcname.length(), Pos, string("Bad class extension function name. It must have at lest 1 character after \'_\'"));
+		}
+		else
+		{
+			pos = 0;
+		}
+		size_t len = funcname.length() - pos;
+		auto clsast = Proto->resolved_args.front()->resolved_type.class_ast;
+		std::pair<ClassAST*, str_view> k = std::make_pair(clsast, str_view{ &funcname, pos, len });
+		auto olditr = targetmap.find(k);
+		CompileAssert(olditr == targetmap.end(), Pos,
+			string("The extension name ") + k.second.to_string()
+			+ " for class " + clsast->GetUniqueName() + " has already been defined at " + olditr->second->GetName());
+		std::pair< std::pair<ClassAST*, str_view>, FunctionAST*> v = std::make_pair(k, func);
+		targetmap.insert(v);
+	}
+
 	void FunctionAST::Phase0()
 	{
 		FunctionAST* template_func = template_source_func;
@@ -2270,7 +2343,12 @@ If usage vararg name is "", match the closest vararg
 			}
 		}
 		CompileAssert(!is_vararg, Pos, string("Cannot resolve vararg parameter: \"") + vararg_name + "\"");
+		if (this->is_extension)
+		{
+			AddFunctionToClassExtension(this, cu.class_extend_funcmap);
+		}
 	}
+
 	void FunctionTemplateInstanceExprAST::Phase1()
 	{
 		Phase1(false);
@@ -2433,7 +2511,7 @@ If usage vararg name is "", match the closest vararg
 
 	ResolvedType ResolveClassMember(ExprAST* obj, const string& member, const SourcePos& Pos,
 		/*out parameters*/ int& casade_parents,
-		MemberExprAST::MemberType& kind, MemberFunctionDef*& thsfunc, FieldDef*& thsfield)
+		MemberExprAST::MemberType& kind, MemberFunctionDef*& thsfunc, FieldDef*& thsfield, FunctionAST*& thsextension)
 	{
 		ClassAST* cur_cls = obj->resolved_type.class_ast;
 		while (cur_cls) {
@@ -2457,6 +2535,22 @@ If usage vararg name is "", match the closest vararg
 				CompileAssert(thsfunc->access == access_public || scope_mgr.IsCurrentClass(cur_cls), // if is private and we are not in the class
 					Pos, string("Accessing a private member") + member + " outside of a class");
 				return thsfunc->decl->resolved_type;
+			}
+			unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>* extension_map;
+			if (auto mod = scope_mgr.GetAndInportCurrentTemplateModule())
+				extension_map = &mod->class_extend_funcmap;
+			else
+				extension_map = &cu.class_extend_funcmap;
+			auto extended = extension_map->find(std::make_pair(cur_cls, str_view{ &member, 0, member.length() }));
+			if (extended != extension_map->end())
+			{
+				kind = MemberExprAST::member_imported_function;
+				thsextension = extended->second;
+				// now generate a new prototype ast for the member expr
+				ResolvedType rty;
+				rty.type = tok_func;
+				rty.proto_ast = scope_mgr.GetExtensionFunctionPrototype(thsextension);
+				return rty;
 			}
 			casade_parents++;
 			cur_cls = cur_cls->parent_class;
@@ -2501,18 +2595,55 @@ If usage vararg name is "", match the closest vararg
 		}
 		return std::make_pair(-1, nullptr);
 	}
+	static void RunPhase0OnClass(ClassAST* classast)
+	{
+		if (classast->done_phase < 1)
+		{
+			assert(!classast->isTemplateInstance());
+			scope_mgr.SetEmptyClassTemplateEnv();
+			scope_mgr.SetEmptyTemplateEnv(ScopeManager::PyScope(nullptr));
+			classast->Phase0();
+			scope_mgr.RestoreTemplateEnv();
+			scope_mgr.RestoreClassTemplateEnv();
+		}
+	}
 
-	static unique_ptr<MemberExprAST> ResolveAndCreateMemberExpr(unique_ptr<ExprAST>&& obj, const string& name, SourcePos& Pos)
+	// if the member function is defined within the scope of the class
+	inline bool IsInternalMemberFunction(MemberExprAST::MemberType kind)
+	{
+		return kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function;
+	}
+
+	// if the memberexpr is a function
+	inline bool IsMemberAFunction(MemberExprAST::MemberType kind)
+	{
+		return IsInternalMemberFunction(kind) || kind == MemberExprAST::member_imported_function;
+	}
+
+	static unique_ptr<MemberExprAST> ResolveAndCreateMemberFunctionExpr(unique_ptr<ExprAST>&& obj, const string& name, SourcePos& Pos)
 	{
 		auto classast = obj->resolved_type.class_ast;
+		RunPhase0OnClass(classast);
 		int cascade_parents = 0;
 		MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
 		MemberFunctionDef* outfunc = nullptr;
 		FieldDef* outfield = nullptr;
-		auto rty = ResolveClassMember(obj.get(), name, Pos, cascade_parents, kind, outfunc, outfield);
-		CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
-			Pos, string("Cannot find public method") + name + " in class " + classast->GetUniqueName() + " or it is a field or a function.");
-		auto memberexpr = make_unique<MemberExprAST>(std::move(obj), outfunc, Pos);
+		FunctionAST* outextension = nullptr;
+		auto rty = ResolveClassMember(obj.get(), name, Pos, cascade_parents, kind, outfunc, outfield, outextension);
+		CompileAssert(IsMemberAFunction(kind),
+			Pos, string("Cannot find public method") + name + " in class " + classast->GetUniqueName() + " or it is a field.");
+		unique_ptr<MemberExprAST> memberexpr;
+		if (IsInternalMemberFunction(kind))
+		{
+			memberexpr = make_unique<MemberExprAST>(std::move(obj), outfunc, Pos);
+		}
+		else
+		{
+			memberexpr = make_unique<MemberExprAST>(std::move(obj), name);
+			memberexpr->import_func = outextension;
+			memberexpr->Pos = Pos;
+			memberexpr->resolved_type = rty;
+		}
 		memberexpr->kind = kind;
 		memberexpr->casade_parents = cascade_parents;
 		return std::move(memberexpr);
@@ -2576,7 +2707,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		if (Expr->resolved_type.index_level==0 && Expr->resolved_type.type == tok_class)
 		{
-			auto memberexpr = ResolveAndCreateMemberExpr(std::move(Expr), "__getitem__", Pos);
+			auto memberexpr = ResolveAndCreateMemberFunctionExpr(std::move(Expr), "__getitem__", Pos);
 			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(Index));
 			instance = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 			instance->Pos = Pos;
@@ -2821,16 +2952,17 @@ If usage vararg name is "", match the closest vararg
 			MemberExprAST::MemberType kind= MemberExprAST::MemberType::member_error;
 			MemberFunctionDef* outfunc = nullptr;
 			FieldDef* outfield = nullptr;
+			FunctionAST* outextension = nullptr;
 			if (!method.empty())
 			{
-				auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield);
-				CompileAssert(kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function,
+				auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield, outextension);
+				CompileAssert(IsInternalMemberFunction(kind),
 					Pos, string("Cannot find public method ") + method + " in class " + cls->GetUniqueName() + " or it is a field or a function.");
 				//note: we ignore the @virtual flag here, since we know exactly the class of which we "new" an object.
 				func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
 			} else { // no specifically calling __init__, complier tries to find one
-				auto rty = ResolveClassMember(this, "__init__", Pos, cascade_parents, kind, outfunc, outfield);
-				if (kind == MemberExprAST::member_function || kind == MemberExprAST::member_virtual_function)
+				auto rty = ResolveClassMember(this, "__init__", Pos, cascade_parents, kind, outfunc, outfield, outextension);
+				if (IsInternalMemberFunction(kind))
 					func = FixFunctionForNew(outfunc, args, resolved_type.class_ast, Pos);
 				else
 					CompileAssert(args.size() == 0, Pos, string("Cannot find the method __init__ in class ") + cls->GetUniqueName());
@@ -2984,7 +3116,7 @@ If usage vararg name is "", match the closest vararg
 		}
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
 		this->kind = MemberType::member_error;
-		resolved_type = ResolveClassMember(Obj.get(),this->member, Pos, this->casade_parents, this->kind, this->func, this->field);
+		resolved_type = ResolveClassMember(Obj.get(),this->member, Pos, this->casade_parents, this->kind, this->func, this->field, this->import_func);
 		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member);
 	}
 	string TemplateArgument::GetString() const
@@ -3085,24 +3217,26 @@ If usage vararg name is "", match the closest vararg
 				return;
 			DeduceTemplateArgFromArg(proto->RetType.get(), rty.proto_ast->resolved_type, name2type, Pos);
 			auto args = proto->Args.get();
-			auto param_size = rty.proto_ast->resolved_args.size();
-			if (isa<VariableMultiDefAST>(args))
-			{
-				auto& lst = static_cast<VariableMultiDefAST*>(args)->lst;
-				for (int i = 0; i < lst.size(); i++)
+			if (args) {
+				auto param_size = rty.proto_ast->resolved_args.size();
+				if (isa<VariableMultiDefAST>(args))
 				{
-					if (i >= param_size)
-						return;
-					DeduceTemplateArgFromArg(lst[i]->type.get(), rty.proto_ast->resolved_args[i]->resolved_type, name2type, Pos);
+					auto& lst = static_cast<VariableMultiDefAST*>(args)->lst;
+					for (int i = 0; i < lst.size(); i++)
+					{
+						if (i >= param_size)
+							return;
+						DeduceTemplateArgFromArg(lst[i]->type.get(), rty.proto_ast->resolved_args[i]->resolved_type, name2type, Pos);
+					}
 				}
-			}
-			else
-			{
-				assert(isa<VariableSingleDefAST>(args));
-				if (param_size == 0)
-					return;
-				DeduceTemplateArgFromArg(static_cast<VariableSingleDefAST*>(args)->type.get(),
-					rty.proto_ast->resolved_args[0]->resolved_type, name2type, Pos);
+				else
+				{
+					assert(isa<VariableSingleDefAST>(args));
+					if (param_size == 0)
+						return;
+					DeduceTemplateArgFromArg(static_cast<VariableSingleDefAST*>(args)->type.get(),
+						rty.proto_ast->resolved_args[0]->resolved_type, name2type, Pos);
+				}
 			}
 		}
 	}
@@ -3144,6 +3278,8 @@ If usage vararg name is "", match the closest vararg
 		}
 		catch (TemplateArgumentNumberError& e)
 		{
+			if (!e.src_template)
+				throw e;
 			func = e.src_template;
 			assert(func->isTemplate());
 			CompileAssert(func->is_vararg || e.args->size() <= func->template_param->params.size(), Pos,
@@ -3350,7 +3486,7 @@ If usage vararg name is "", match the closest vararg
 			{
 				if (indexexpr->isOverloaded()) //if indexexpr's Expr is a class object, generate "__setitem__"
 				{
-					auto memberexpr = ResolveAndCreateMemberExpr(std::move(indexexpr->Expr), "__setitem__", Pos);
+					auto memberexpr = ResolveAndCreateMemberFunctionExpr(std::move(indexexpr->Expr), "__setitem__", Pos);
 					vector<unique_ptr<ExprAST>> args; 
 					args.emplace_back(std::move(indexexpr->Index));
 					args.emplace_back(std::move(RHS));
@@ -3374,6 +3510,7 @@ If usage vararg name is "", match the closest vararg
 				else
 					throw CompileError(Pos, "The left vaule of the assignment is not an variable");
 			}
+			CompileAssert(LHS->GetLValue(true), Pos, "The left side of = must be an LValue");
 			RHS->Phase1();
 			RHS = FixTypeForAssignment(LHS->resolved_type, std::move(RHS), Pos);
 			resolved_type.type = tok_void;
@@ -3385,7 +3522,7 @@ If usage vararg name is "", match the closest vararg
 		//it is not called here because we may put RHS as a parameter in a function
 
 		auto gen_call_to_operator_func = [&LHS,&RHS,&resolved_type,&Pos,&is_overloaded](const string& name) {
-			auto memberexpr = ResolveAndCreateMemberExpr(std::move(LHS), name, Pos);
+			auto memberexpr = ResolveAndCreateMemberFunctionExpr(std::move(LHS), name, Pos);
 			vector<unique_ptr<ExprAST>> args; args.emplace_back(std::move(RHS));
 			LHS = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 			LHS->Pos = Pos;
@@ -3483,43 +3620,75 @@ If usage vararg name is "", match the closest vararg
 	void UnaryExprAST::Phase1()
 	{
 		auto& arg = this->arg;
-		if (Op == tok_not)
-		{
+		auto& Pos = this->Pos;
+		auto& resolved_type = this->resolved_type;
+		auto& is_overloaded = this->is_overloaded;
+		auto TryCreateOverloadedCall = [&](const char* funcname) -> bool {
 			arg->Phase1();
 			if (arg->resolved_type.type == tok_class && arg->resolved_type.index_level == 0) //if is class object, check for operator overload
 			{
-				auto memberexpr = ResolveAndCreateMemberExpr(std::move(arg), "__not__", Pos);
+				auto memberexpr = ResolveAndCreateMemberFunctionExpr(std::move(arg), funcname, Pos);
 				vector<unique_ptr<ExprAST>> args;
 				arg = make_unique<CallExprAST>(std::move(memberexpr), std::move(args));
 				arg->Pos = Pos;
 				arg->Phase1();
 				resolved_type = arg->resolved_type;
+				is_overloaded = true;
+				return true;
 			}
-			else
+			return false;
+		};
+		switch (Op)
+		{
+		case tok_not:
+		{
+			if (!TryCreateOverloadedCall("__not__"))
 			{
 				resolved_type.type = tok_boolean;
 				arg = FixTypeForAssignment(resolved_type, std::move(arg), Pos);
 			}
+			break;
 		}
-		else if (Op == tok_pointer_of)
+		case tok_mul:
+		{
+			if (!TryCreateOverloadedCall("__deref__"))
+				throw CompileError(Pos, "The unary operator \"*\" can only be applied on objects");
+			break;
+		}
+		case tok_minus:
+		{
+			if (!TryCreateOverloadedCall("__neg__"))
+			{
+				CompileAssert(arg->resolved_type.isNumber(), Pos, "The unary operator \"-\" can only be applied on objects or numbers");
+				resolved_type = arg->resolved_type;
+			}
+			break;
+		}
+		case tok_pointer_of:
 		{
 			arg->Phase1();
 			CompileAssert(arg->resolved_type.isReference(), Pos, "The expression in pointerof should be a reference type");
 			resolved_type.type = tok_pointer;
+			break;
 		}
-		else if (Op == tok_address_of)
+		case tok_address_of:
 		{
 			arg->Phase1();
 			CompileAssert(arg->GetLValue(true), Pos, "The expression in addressof should be a LValue");
 			resolved_type.type = tok_pointer;
+			break;
 		}
-		else if (Op == tok_typeof)
+		case tok_typeof:
 		{
 			arg->Phase1();
 			CompileAssert(arg->resolved_type.type == tok_class
 				&& arg->resolved_type.class_ast->needs_rtti && !arg->resolved_type.class_ast->is_struct,
 				Pos, "typeof must be appiled on class references with runtime type info");
 			resolved_type = ResolvedType(GetTypeInfoClass());
+			break;
+		}
+		default:
+			assert(0);
 		}
 	}
 
@@ -3564,10 +3733,19 @@ If usage vararg name is "", match the closest vararg
 
 	llvm::Value * Birdee::ScriptAST::GetLValue(bool checkHas)
 	{
-		CompileAssert(instance_of<ExprAST>(stmt.get()), Pos, "Getting LValue from statement is illegal");
-		auto expr = static_cast<ExprAST*>(stmt.get());
+		CompileAssert(stmt.size(), Pos, "Cannot get LValue from empty script");
+		CompileAssert(instance_of<ExprAST>(stmt.front().get()), Pos, "Getting LValue from statement is illegal");
+		auto expr = static_cast<ExprAST*>(stmt.front().get());
 		assert(expr->resolved_type.isResolved());
 		return expr->GetLValue(checkHas);
+	}
+
+	DeferBlockAST::DeferBlockAST(ASTBasicBlock&& defer_block, SourcePos pos) : defer_block(std::move(defer_block)) {
+		Pos = pos;
+	}
+	void DeferBlockAST::Phase1()
+	{
+		defer_block.Phase1();
 	}
 
 	TryBlockAST::TryBlockAST(ASTBasicBlock&& try_block,

@@ -1,0 +1,151 @@
+import system.io.net:*
+import concurrent.threading:*
+import functional.option:*
+import concurrent.syncdef:*
+import concurrent.sync:*
+
+{@from bdassert import *@}
+
+function check_buffer(buf as byte[], exp_size as int)
+	{@bdassert("exp_size == buf.length()")@}
+	for dim i = 0 till exp_size
+		{@bdassert("buf[i] == i")@}
+	end
+end
+
+function make_buffer() as byte[]
+	dim ret = new byte * 100
+	for dim i =0  till 100
+		ret[i] = i 
+	end
+	return ret
+end
+
+function send_msg_test(port as int)
+	dim sock = connect_to("127.0.0.1", port)
+	for dim i=1 to 10
+		dim b = make_buffer()
+		dim c = new byte * 100
+		sock.send(b, 0, 100)
+		sock.recv(c, 0, 100)
+		check_buffer(c, 100)
+	end
+	sock.close()
+end
+
+function threading_server()
+	dim server = new server_bind(10086)
+	dim sok = server.accept()
+	#new thread(func(s as socket)
+	dim buf = new byte * 100
+	while true
+		dim len = sok.recv(buf, 0, 100)
+		if len == 0 then
+			sok.close()
+			break
+		end
+		sok.send(buf, 0, len)
+	end
+	#end, sok)
+	server.close()
+end
+
+println("threading sync server")
+dim t1 = new thread(threading_server)
+sleep(1000)
+send_msg_test(10086)
+t1.join()
+println("threading sync server ok")
+
+function threading_server_with_poll()
+	dim server = new server_bind(10087)
+	dim sok = server.accept_async().await().get()
+	#println("ACCEPT")
+	dim buf = new byte * 100
+	while true
+		dim len = sok.recv_async(buf, 0, 100).await().get()
+		#println("RECV")
+		if len == 0 then
+			sok.close()
+			break
+		end
+		sok.send_async(buf, 0, len).await()
+	end
+	server.close()
+end
+
+println("threading async server")
+dim t2 = new thread(threading_server_with_poll)
+sleep(1000)
+send_msg_test(10087)
+t2.join()
+println("threading async server ok")
+
+dim needs_await = true
+function async_server()
+	dim server = new server_bind(10088)
+	dim poll = create_poller()
+
+	dim accept_conn = poll.add(null)
+
+	dim accept_callback as closure (sock as option[socket]) as option[int]
+	accept_callback = func (sock as option[socket]) as option[int]
+		println("ACCEPT")
+		dim conn_handler = new connection_handler(sock.get(), poll)
+		dim conn = poll.add(conn_handler.recv())
+		conn_handler.set_conn(conn)
+		poll.replace(accept_conn, server.accept_async().and_then(accept_callback))
+		return some(0)
+	end
+	accept_conn.fut = server.accept_async().and_then(accept_callback)
+
+	while needs_await
+		poll.await(0-1)
+	end
+	server.close()
+end
+
+
+class connection_handler
+
+	private s as socket
+	private buf as byte[]
+	private conn as awaitable_wrapper
+	private poll as poller
+
+	public function recv_callback(sz as option[int]) as option[int]
+		#println("RECV")
+		dim len = sz.get()
+		if len != 0 then
+			s.send_async(buf, 0, len).await().get()
+			poll.replace(conn, this.recv())
+		else
+			s.close()
+			poll.remove(conn)
+			conn.fut.close()
+			needs_await = false
+		end
+		return sz
+	end
+
+	public function set_conn(_conn as awaitable_wrapper)
+		conn = _conn
+	end
+
+	public function __init__(_s as socket, _poll as poller)
+		s = _s
+		poll = _poll
+		buf = new byte * 100
+	end
+
+	public function recv() as awaitable => s.recv_async(buf,0,100).and_then(this.recv_callback)
+end
+
+# async_server()
+println("async server")
+dim t3 = new thread(async_server)
+sleep(1000)
+send_msg_test(10088)
+t3.join()
+println("async server ok")
+

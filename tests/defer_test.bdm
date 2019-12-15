@@ -1,0 +1,271 @@
+{@from bdassert import bdassert@}
+
+@enable_rtti
+class someclass
+end
+
+@enable_rtti
+class my_exception
+end
+
+dim state = 0
+func add()=> state = state + 1
+
+function try_caught()
+	try
+		defer
+			{@bdassert("state==1")@}
+			add()
+		end
+		throw new my_exception
+		add()
+	catch e as my_exception
+		{@bdassert("state==0")@}
+		add()
+	end
+end
+try_caught()
+{@bdassert("state==2")@}
+state=0
+
+function try_uncaught()
+	dim f = func ()
+		try
+			defer
+				{@bdassert("state==1")@}
+				add()
+			end
+			{@bdassert("state==0")@}
+			add()
+			throw new my_exception
+			add()
+		catch e as someclass
+			{@bdassert("false")@}
+		end
+	end
+	try
+		f()
+	catch e as my_exception
+		{@bdassert("state==2")@}
+		add()
+	end
+end
+try_uncaught()
+{@bdassert("state==3")@}
+state=0
+
+function notry()
+	dim f = func ()
+		defer
+			{@bdassert("state==1")@}
+			add()
+		end
+		{@bdassert("state==0")@}
+		add()
+		throw new my_exception
+	end
+	try
+		f()
+	catch e as my_exception
+		{@bdassert("state==2")@}
+		add()
+	end
+end
+declare function getchar() as int
+#println("Hello")
+#getchar()
+notry()
+{@bdassert("state==3")@}
+state=0
+
+function nothrow()
+	defer
+		{@bdassert("state==1")@}
+		add()
+	end
+	{@bdassert("state==0")@}
+	add()
+end
+nothrow()
+{@bdassert("state==2")@}
+state=0
+
+function notry_multi()
+	dim f = func ()
+		defer
+			{@bdassert("state==2")@}
+			add()
+		end
+		add()
+		defer
+			{@bdassert("state==3")@}
+			add()
+		end
+		{@bdassert("state==1")@}
+		add()
+		throw new my_exception
+		defer
+			{@bdassert("false")@}
+		end
+	end
+	try
+		f()
+	catch e as my_exception
+		{@bdassert("state==4")@}
+		add()
+	end
+end
+notry_multi()
+{@bdassert("state==5")@}
+state=0
+
+
+function caught_multi()
+	try
+		defer
+			{@bdassert("state==2")@}
+			add()
+		end
+		defer
+			{@bdassert("state==3")@}
+			add()
+		end
+		{@bdassert("state==0")@}
+		add()
+		throw new my_exception
+		defer
+			{@bdassert("false")@}
+		end
+	catch e as my_exception
+		{@bdassert("state==1")@}
+		add()
+	end
+end
+caught_multi()
+{@bdassert("state==4")@}
+state=0
+
+
+function defer_return()
+	{@bdassert("state==0")@}
+	add()
+	defer
+		{@bdassert("state==4")@}
+		add()
+	end
+	if true then
+		{@bdassert("state==1")@}
+		add()
+		defer
+			{@bdassert("state==3")@}
+			add()
+		end
+		{@bdassert("state==2")@}
+		add()
+		return
+	end
+	{@bdassert("false")@}
+end
+defer_return()
+{@bdassert("state==5")@}
+state=0
+
+
+function defer_return_val() as int
+	{@bdassert("state==0")@}
+	add()
+	defer
+		{@bdassert("state==4")@}
+		add()
+	end
+	if true then
+		{@bdassert("state==1")@}
+		add()
+		defer
+			{@bdassert("state==3")@}
+			add()
+		end
+		{@bdassert("state==2")@}
+		add()
+		if true then
+			return 23
+		end
+	end
+	println("CONT")
+	return 32
+end
+{@bdassert("defer_return_val()==23")@}
+{@bdassert("state==5")@}
+state=0
+
+function try_defer_return()
+	try
+		{@bdassert("state==0")@}
+		add()
+		defer
+			{@bdassert("state==4")@}
+			add()
+		end
+		if true then
+			{@bdassert("state==1")@}
+			add()
+			defer
+				{@bdassert("state==3")@}
+				add()
+			end
+			{@bdassert("state==2")@}
+			add()
+			return
+		end
+		{@bdassert("false")@}
+	catch e as my_exception
+
+	end
+end
+try_defer_return()
+{@bdassert("state==5")@}
+state=0
+
+function scoped_try_catch()
+	try
+		{@bdassert("state==0")@}
+		add()
+		if true then
+			throw new my_exception
+		end
+		{@bdassert("false")@}
+	catch e as my_exception
+		{@bdassert("state==1")@}
+		add()
+	end
+end
+scoped_try_catch()
+{@bdassert("state==2")@}
+state=0
+
+function defer_throw()
+	dim f = func ()
+		try
+			defer
+				{@bdassert("state==1")@}
+				add()
+				throw new my_exception
+			end
+			throw new my_exception
+		catch e as my_exception
+			{@bdassert("state==0")@}
+			add()
+		end
+	end
+	try
+		f()
+	catch e as my_exception
+		{@bdassert("state==2")@}
+		add()
+	end
+end
+defer_throw()
+{@bdassert("state==3")@}
+state=0
+
+println("Defer test DONE")

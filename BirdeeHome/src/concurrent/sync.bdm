@@ -2,6 +2,7 @@ package concurrent
 
 import {@"system.specific.win32.concurrent" if get_os_name()=="windows" else "system.specific.unistd.concurrent"@}:*
 import concurrent.syncdef:*
+import unsafe:ptr_cast
 
 class mutex
 	private storage as mutex_t
@@ -20,6 +21,47 @@ class mutex
 	public function __del__()
 		storage.del()
 	end
+
+	public function get_native() as pointer => addressof(storage)
+end
+
+class condition_variable
+	private storage as cond_t
+	public function __init__()
+		storage.init()
+	end
+
+	public function await(mut as mutex, milli as int) as boolean => storage.await(mut.get_native(), milli)
+	public function await_cond(mut as mutex,cond as closure() as boolean)
+		while !cond()
+			storage.await(mut.get_native(), -1)
+		end
+	end
+
+	public function notify_all()
+		storage.notify_all()
+	end
+
+	public function notify()
+		storage.notify()
+	end
+
+	public function __del__()
+		storage.del()
+	end
 end
 
 function create_future[T]() as future[T] => new future_impl[T]()
+
+class poller : _poller
+
+end
+
+function create_poller() as poller => new poller
+
+function await_multi[T](futures as future[T][], timeout as int) as future[T]
+	dim ret = _await_multiple_awaitables(ptr_cast[awaitable[]](futures), 0, futures.length(), timeout)
+	dim retf = ptr_cast[future[T]](ret)
+	retf.do_then()
+	return retf
+end

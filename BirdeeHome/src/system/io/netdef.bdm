@@ -1,0 +1,15 @@
+package system.io
+
+{@
+from bdconst import *
+@}
+
+class socket_exception  : runtime_exception
+	public error_code as int
+
+	public func __init__(msg as string, _error_code as int)
+		super.__init__(msg)
+		error_code = _error_code
+	end
+	@virtual public func get_message() as string => msg+ ", error code: " + int2str(error_code)
+end

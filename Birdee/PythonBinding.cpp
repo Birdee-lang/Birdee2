@@ -35,6 +35,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.value("FUNC", tok_func)
 		.value("VOID", tok_void)
 		.value("BYTE", tok_byte)
+		.value("SHORT", tok_short)
 		.value("INT", tok_int)
 		.value("LONG", tok_long)
 		.value("ULONG", tok_ulong)
@@ -81,7 +82,10 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def("is_integer", &ResolvedType::isInteger);
 		
 	py::class_<StatementAST>(m, "StatementAST")
-		.def_readwrite("pos", &StatementAST::Pos);
+		.def_readwrite("pos", &StatementAST::Pos)
+		.def("copy", [](StatementAST& ths) {
+			return new UniquePtrStatementAST(ths.Copy());
+		});
 
 	py::class_<ExprAST,StatementAST>(m, "ExprAST")
 		.def_readwrite("resolved_type", &ExprAST::resolved_type)
@@ -123,7 +127,7 @@ void RegisiterClassForBinding2(py::module& m) {
 
 	py::class_<FunctionAST, ExprAST>(m, "FunctionAST")
 		.def_property_readonly("body", [](FunctionAST& ths) {
-			return &(ths.Body.body);
+			return GetRef(ths.Body.body);
 		})
 		.def_property_readonly("proto", [](FunctionAST& ths) {
 			return std::reference_wrapper<PrototypeAST>(*ths.Proto.get());
@@ -276,7 +280,7 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_static("new", [](UnaryOp op, UniquePtrStatementAST& arg) {
 			return new UniquePtrStatementAST(std::make_unique<UnaryExprAST>((Token)op, arg.move_expr(), tokenizer.GetSourcePos()));
 		})
-		.def_readwrite("func", &UnaryExprAST::func)
+		.def_readwrite("is_overloaded", &UnaryExprAST::is_overloaded)
 		.def_property("arg", [](UnaryExprAST& ths) {return GetRef(ths.arg); },
 			[](UnaryExprAST& ths, UniquePtrStatementAST& v) {ths.arg = v.move_expr(); })
 		.def_readwrite("op", (UnaryOp UnaryExprAST::*)&UnaryExprAST::Op)
@@ -389,6 +393,12 @@ void RegisiterClassForBinding2(py::module& m) {
 			for (auto& b : ths.catch_blocks)
 				for(auto& itm: b.body)
 					pyfunc(GetRef(itm));
+		});
+	py::class_<DeferBlockAST, StatementAST>(m, "DeferBlockAST")
+		.def_property_readonly("defer_block", [](DeferBlockAST& ths) {return GetRef(ths.defer_block.body); })
+		.def("run", [](DeferBlockAST& ths, py::object& pyfunc) {
+			for (auto& b : ths.defer_block.body)
+				pyfunc(GetRef(b));
 		});
 	py::class_<ThrowAST, StatementAST>(m, "ThrowAST")
 		.def_property("expr", [](ThrowAST& ths) {return GetRef(ths.expr); },

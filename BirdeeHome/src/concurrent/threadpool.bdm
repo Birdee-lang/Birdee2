@@ -1,0 +1,94 @@
+package concurrent
+
+import concurrent.sync:*
+import concurrent.syncdef:*
+import concurrent.threading:*
+import queue:*
+
+@init_script
+{@
+imports("concurrent.threading")
+from concurrent_0threading import expand_vararg
+imports("functional.closures")
+from functional_0closures import *
+from traits import *
+@}
+
+class threadpool
+	private threads as thread[]
+	private empty_cond as condition_variable
+	private full_cond as condition_variable
+	private q as queue[closure()]
+	private queue_max as uint
+	private lock as mutex
+	private stop as boolean
+
+	public function __init__(thread_num as uint, queue_len as uint)
+		threads =  new thread * thread_num
+		empty_cond = new condition_variable
+		full_cond = new condition_variable
+		q = new queue[closure()]
+		queue_max = queue_len
+		lock = new mutex
+		stop = false
+		for dim i=0 till thread_num
+			threads[i] = new thread(this.thread_proc)
+		end
+	end
+
+	public function enqueue(f as closure())
+		lock.acquire()
+		while q.size() > queue_max && !stop
+			full_cond.await(lock, -1)
+		end
+		q.push(f)
+		empty_cond.notify()
+		lock.release()
+		if stop then
+			throw new runtime_exception("Cannot submit a job after stop() is called")
+		end
+	end
+
+	public function submit[T, ...] (f as T, ...) as future[{@
+func=get_cur_func()
+check_templ_arg_is_functype(0)(func)
+RetT = return_type_of(func.proto.args[0])
+set_type(RetT)
+@}]
+		dim fut = create_future[{@set_type(RetT)@}]()
+		{@callexpr = "f({})".format(expand_vararg(func,1))@}
+		enqueue(func()
+			dim ret = {@set_ast(expr(callexpr))@}
+			fut.success(ret)
+			end)
+		return fut
+	end
+
+	private function thread_proc()
+		while true
+			lock.acquire()
+			while q.empty() && !stop
+				empty_cond.await(lock, -1)
+			end
+			if stop then
+				lock.release()
+				return
+			end
+			dim v = q.pop()
+			full_cond.notify()
+			lock.release()
+			v()
+		end
+	end
+
+	public function close()
+		lock.acquire()
+		stop = true
+		lock.release()
+		empty_cond.notify_all()
+		full_cond.notify_all()
+		for dim i=0 till threads.length()
+			threads[i].join()
+		end
+	end
+end

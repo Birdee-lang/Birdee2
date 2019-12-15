@@ -322,7 +322,7 @@ def link_msvc():
 
 def link_gcc():
 	linker_path='gcc'
-	cmdarr = [linker_path,'-o',link_target, "-Wl,--start-group"]
+	cmdarr = [linker_path,'-no-pie','-o',link_target, "-Wl,--start-group"]
 	runtime_lib_path = os.path.join(bd_home,"lib","libBirdeeRuntime.a")
 	cmdarr.append(runtime_lib_path)
 	for lpath in link_path:

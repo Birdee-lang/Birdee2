@@ -60,7 +60,7 @@ def tuple_add_fields(cls):
 		if arg.kind!=TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_TYPE:
 			raise RuntimeError("The {}-th template argument should be a type".format(idx))
 		ty = arg.resolved_type
-		class_body(cls, f'public v{idx} as {ty}\\n')
+		class_body(cls, 'public v{idx} as {ty}\\n'.format(idx=idx, ty=ty))
 		idx+=1
 @}
 
