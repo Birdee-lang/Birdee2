@@ -9,6 +9,7 @@ import vector:vector
 @private declare function atoi(s as pointer) as int
 @private declare function atoll(s as pointer) as long
 @private declare function atof(s as pointer) as double
+@private declare function strchr(s as pointer, ch as byte) as pointer
 
 @extension function string___mul__(v as string, n as uint) as string
 	dim len = v.length()
@@ -25,6 +26,22 @@ end
 
 @private func ptr_diff(p as pointer, a as pointer) as long
 	return unsafe.ptr_cast[long](p) - unsafe.ptr_cast[long](a)
+end
+
+@private
+func _findchar(raw as pointer, len as uint, ch as byte, start as uint) as int
+	dim ptr = ptr_add(raw, start)
+	dim f = strchr(ptr, ch)
+	if f != pointerof(null) then
+		dim idx = ptr_diff(f, ptr) + start
+		if idx >= len then
+			return -1
+		else
+			return idx
+		end
+	else
+		return -1
+	end
 end
 
 function check_index(str as string, idx as uint)
@@ -45,7 +62,11 @@ struct string_view
 	end
 
 	public func __deref__() as string
-		return new string:copy_bytes(str.get_bytes(), start, len)
+		if len>0 then
+			return new string:copy_bytes(str.get_bytes(), start, len)
+		else
+			return new string
+		end
 	end
 
 	public func __getitem__(idx as uint) as byte => str[idx + start]
@@ -61,7 +82,9 @@ struct string_view
 		return string1_view(str, start + _start, _len)
 	end
 
-	public function find(substr as string_view, _start as uint) as int => string_find_template(this, substr, start)
+	public function find_char(c as byte, _start as uint) as int => _findchar(get_raw(), len ,c,_start)
+
+	public function find(substr as string_view, _start as uint) as int => string_find_template(this, substr, _start)
 	public function split(substr as string_view) as string_view[] => string_split_template(this, substr)
 
 	public func __eq__(other as string_view) as boolean
@@ -90,6 +113,9 @@ function string1_view(str as string, start as uint, len as uint) as string_view
 	ret.__init__(str, start, len)
 	return ret
 end
+
+@extension
+function string_find_char(str as string, c as byte, _start as uint) as int => _findchar(str.get_raw(),str.length(), c,_start)
 
 @extension function string_viewall(v as string) as string_view => v.view(0, v.length())
 
