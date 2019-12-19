@@ -7,15 +7,14 @@ dim v = "012345678"
 try
     v.view(0, 10)
     {@bdassert("false")@}
-catch e as runtime_exception
-    {@bdassert("e.get_message()==\"Index out of index\"")@}
+catch e as invalid_index_exception
+    
 end
 
 try
     v.view(10,5)
     {@bdassert("false")@}
-catch e as runtime_exception
-    {@bdassert("e.get_message()==\"Index out of index\"")@}
+catch e as invalid_index_exception
 end
 
 {@bdassert('v.find("678",0)==6')@}

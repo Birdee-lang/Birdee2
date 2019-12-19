@@ -111,7 +111,7 @@ end
 function string1_view(str as string, start as uint, len as uint) as string_view
 	dim ret as string_view
 	if len > 0 && start + len > str.length() then
-		throw new runtime_exception("Index out of index")
+		throw new invalid_index_exception
 	end
 	ret.__init__(str, start, len)
 	return ret
