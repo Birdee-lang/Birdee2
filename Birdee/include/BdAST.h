@@ -81,7 +81,7 @@ namespace Birdee {
 		}
 	};
 
-	BD_CORE_API struct str_view
+	struct BD_CORE_API str_view
 	{
 		const std::string* str;
 		size_t starts;

@@ -343,7 +343,7 @@ static GlobalVariable* CreateTypeInfoWithVTableGlobal(ClassAST* cls)
 
 	string name;
 	MangleNameAndAppend(name, cls->GetUniqueName());
-	name += "0_typeinfo_vtable";
+	name += "0_typeinfo";
 	auto newv = new GlobalVariable(*module, GetOrCreateVTableType(cls->vtabledef.size()),
 		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
 		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
@@ -1464,7 +1464,7 @@ void Birdee::ClassAST::PreGenerate()
 	llvm_dtype = new_dty;
 	node.dty = is_struct ? llvm_dtype: DBuilder->createPointerType(llvm_dtype, 64);
 	
-	if (needs_rtti && !parent_class)
+	if (needs_rtti)
 	{
 		GetOrCreateTypeInfoGlobalRaw(this);
 	}
