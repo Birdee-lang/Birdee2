@@ -10,6 +10,7 @@ import vector:vector
 @private declare function atoll(s as pointer) as long
 @private declare function atof(s as pointer) as double
 @private declare function strchr(s as pointer, ch as byte) as pointer
+@private declare function isspace(ch as byte) as int
 
 @extension function string___mul__(v as string, n as uint) as string
 	dim len = v.length()
@@ -69,7 +70,12 @@ struct string_view
 		end
 	end
 
-	public func __getitem__(idx as uint) as byte => str[idx + start]
+	public func __getitem__(idx as uint) as byte
+		if idx >= len then
+			throw new runtime_exception("Index out of index")
+		end		
+		return str[idx + start]
+	end
 
 	public func length() as uint => len
 
@@ -99,9 +105,46 @@ struct string_view
 
 	public func __ne__(other as string_view) as boolean => !__eq__(other)
 
-	public function to_int() as int => atoi(get_raw())
-	public function to_long() as long => atoll(get_raw())
-	public function to_double() as double => atof(get_raw())
+	public function to_int() as int => atoi(__deref__().get_raw())
+	public function to_long() as long => atoll(__deref__().get_raw())
+	public function to_double() as double => atof(__deref__().get_raw())
+
+	public function trim_left() as string_view
+		dim beg as uint
+		for beg=0 till len
+			if isspace(str[start+beg])==0 then
+				break
+			end 
+		end
+		if beg == len then
+			return view(0,0)
+		end
+		return view(beg, len - beg)
+	end
+
+	public function trim_right() as string_view
+		dim ends as int = len - 1
+		while ends >=0
+			if isspace(str[start+ends])==0 then
+				break
+			end
+			ends=ends-1
+		end
+		if ends<0 then
+			return view(0,0)
+		end
+		return view(0, ends+1)
+	end
+
+	public function trim() as string_view => trim_left().trim_right()
+
+	public function __hash__() as uint
+		dim h as uint = 0
+		for dim i=0 till len
+			h=31*h + str[i + start]
+		end
+		return h
+	end
 end
 
 @extension
