@@ -42,6 +42,12 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+top_level("dim a=1")
+CallExprAST.new(expr("println"), [expr('"hello"')])
+process_top_level()
+generate()
+clear_compile_unit()
+
 assert_generate_ok('''
 function aaa()
 	defer

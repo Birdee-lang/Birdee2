@@ -13,8 +13,8 @@ for dim i=0 to 1000
 end
 outf.close()
 
-dim scanner = new string_scanner(new input_file("bin/file_text.log"))
-#dim scanner = new string_scanner(stdin)
+dim scanner = new file_input_stream(new input_file("bin/file_text.log"))
+#dim scanner = new file_input_stream(stdin)
 
 dim str as string = scanner.get_line()
 dim cnt=0

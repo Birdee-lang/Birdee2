@@ -184,6 +184,7 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](IdentifierExprAST& ths, UniquePtrStatementAST& v) {ths.impl = move_cast_or_throw<ResolvedIdentifierExprAST>(v.ptr); })
 		.def("run", [](IdentifierExprAST& ths, py::object& func) {func(GetRef(ths.impl)); });
 	py::class_< ResolvedFuncExprAST, ResolvedIdentifierExprAST>(m, "ResolvedFuncExprAST")
+		.def_static("new", [](FunctionAST& f) {return new UniquePtrStatementAST(make_unique<ResolvedFuncExprAST>(&f, tokenizer.GetSourcePos())); })
 		.def_readwrite("funcdef", &ResolvedFuncExprAST::def)
 		.def("run", [](ResolvedFuncExprAST& ths, py::object& func) { });
 	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST")
@@ -331,7 +332,15 @@ void RegisiterClassForBinding2(py::module& m) {
 	// 	.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of)
 	// 	.def("run", [](AddressOfExprAST& ths, py::object& func) {func(GetRef(ths.expr)); });
 
-	py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
+		py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
+			.def_static("new", [](UniquePtrStatementAST& callee, std::vector<UniquePtrStatementAST*> v) {
+				std::vector<std::unique_ptr<ExprAST>> args;
+				for (auto p : v)
+				{
+					args.push_back(p->move_expr());
+				}
+		 		return new UniquePtrStatementAST(std::make_unique<CallExprAST>(callee.move_expr(),std::move(args)));
+			})
 		.def_property("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); },
 			[](CallExprAST& ths, UniquePtrStatementAST& v) {ths.Callee = v.move_expr(); })
 		.def_property_readonly("args", [](CallExprAST& ths) {return GetRef(ths.Args); })
