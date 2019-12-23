@@ -2,6 +2,7 @@ package system.io
 
 import vector:vector
 import extensions.string:*
+import memory
 
 class abstract_input_stream
 	private buffer as byte[]
@@ -96,4 +97,83 @@ class input_stream[T]: abstract_input_stream
 	public function read_to_buffer(buf as byte[], buf_size as uint) as uint
 		return file.read(buf, 0, buf_size)
 	end
+end
+
+
+class byte_input_stream: abstract_input_stream
+	private bytes as byte[]
+	private pos as uint
+
+	public function __init__(f as byte[])
+		super.__init__(1024)
+		bytes = f
+		pos = 0
+	end
+
+	public function from_string(f as string)
+		__init__(f.get_bytes())
+	end
+
+	public function read_to_buffer(buf as byte[], buf_size as uint) as uint
+		dim to_copy as uint
+		if buf_size + pos > bytes.length() then
+			to_copy=bytes.length()-pos
+		else
+			to_copy=buf_size
+		end
+		memory.copy_array(buf, 0, bytes, pos, to_copy)
+		pos=pos+to_copy
+		return to_copy
+	end
+end
+
+class output_stream[T]
+	private file as T
+	private buffer as byte[]
+	private pos as uint
+	private buf_size as uint
+
+	public function __del__()
+		flush()
+	end
+
+	public function flush()
+		if pos != 0 then
+			file.write(buffer, 0, pos)
+			pos=0
+		end
+	end
+
+	public function close()
+		flush()
+		file.close()
+	end
+
+	public function write(v as string)
+		dim buf_cap = buf_size - pos
+		dim remaining = v.length()
+		dim copied = 0
+		while remaining > buf_cap
+			memory.copy_array(buffer, pos, v.get_bytes(), copied, buf_cap)
+			file.write(buffer, 0, buf_size)
+			pos = 0
+			copied = copied + buf_cap
+			remaining = remaining - buf_cap
+			buf_cap = buf_size
+		end
+		
+		if remaining > 0 then
+			memory.copy_array(buffer, pos, v.get_bytes(), copied, remaining)
+			pos = pos + remaining
+		end
+	end
+
+	public function __init__(f as T)
+		buf_size = 2048
+		buffer = new byte * buf_size
+		pos = 0
+		file = f
+	end
+	
+
 end

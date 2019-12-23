@@ -7,9 +7,10 @@ from system_0io_0filedef import *
 from bdassert import bdassert
 @}
 
-dim outf = new output_file("bin/file_text.log", {@CREATE_OVERWRITE()@})
+dim _outf = new output_file("bin/file_text.log", {@CREATE_OVERWRITE()@})
+dim outf = new file_output_stream(_outf)
 for dim i=0 to 1000
-	outf.writestr(int2str(i)+"\n")
+	outf.write(int2str(i)+"\n")
 end
 outf.close()
 

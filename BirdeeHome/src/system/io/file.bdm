@@ -3,7 +3,7 @@ package system.io
 import {@"system.specific.win32.file" if get_os_name()=="windows" else "system.specific.unistd.file"@}:*
 
 import system.io.filedef:file_open_exception
-import system.io.stream:input_stream
+import system.io.stream:*
 
 {@
 from system_0io_0filedef import *
@@ -72,5 +72,9 @@ class file : _file
 end
 
 class file_input_stream: input_stream[input_file]
+
+end
+
+class file_output_stream: output_stream[output_file]
 
 end
