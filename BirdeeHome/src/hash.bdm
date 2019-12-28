@@ -5,6 +5,29 @@ class hash_key_excption
 
 end
 
+@enable_rtti
+class size_overflow_excption
+
+end
+
+##<
+@private declare func log2(f as double) as double
+@private declare func ceil(f as double) as double
+@private declare func pow(base as double, exponent as double) as double
+>##
+
+# 4^n - 1
+@private function get_bucket_size(count as uint) as uint
+	dim cur as uint = 3
+	while count > cur
+		cur = 4 * (cur + 1) - 1
+		if cur >= 1073741823 then
+			return 1073741823
+		end
+	end
+	return cur
+end
+
 function int_hash(v as ulong) as uint
 	v = v ^ (v/32)
 	v = v ^ (v/1024*1024)
@@ -64,9 +87,28 @@ end
 
 class hash_map[K,V]
 	private buckets as hash_node[K,V][]
+	private allnodes as hash_node[K,V]
 	private buckets_num as uint
 	private lsize as uint
-	private allnodes as hash_node[K,V]
+	public max_load_factor as float
+
+	public function get_bucket_num() as uint => buckets_num
+
+	public function rehash(nelement as uint)
+		dim newz = get_bucket_size(nelement / max_load_factor)
+		if buckets_num == newz then
+			return
+		end
+		buckets_num = newz
+		buckets = new hash_node[K,V]*buckets_num
+		dim cur = allnodes.next
+		allnodes.next = null
+		while cur !== null
+			dim nxt = cur.next
+			insert_node(cur.hash_cache, cur)
+			cur = nxt
+		end
+	end
 
 	##
 	public function dbgprint()
@@ -98,8 +140,9 @@ class hash_map[K,V]
 
 	public function __init__()
 		lsize = 0
-		buckets_num = 10
-		buckets = new hash_node[K,V] * 10
+		buckets_num = 3
+		max_load_factor=1.0f
+		buckets = new hash_node[K,V] * 3
 		for dim i = 0 till buckets_num
 			buckets[i] = null
 		end
@@ -153,15 +196,11 @@ class hash_map[K,V]
 		return mk_hash_iterator[K,V](_find(t))
 	end
 
-	#insert a node in the hash map, without checking uniqueness
-	private function insert_unique(h as uint, k as K, v as V) as hash_node[K,V]
-		dim lst = buckets[h % buckets_num]
-		dim node = new hash_node[K,V]
-		node.k = k
-		node.v = v
-		node.hash_cache = h
+	#insert a node into a node list
+	private function insert_node(h as uint, node as hash_node[K,V])
 		#if is empty bucket, link the node to list head
 		#else, simply insert
+		dim lst = buckets[h % buckets_num]
 		if lst === null then
 			node.next = allnodes.next
 			allnodes.next = node
@@ -173,6 +212,18 @@ class hash_map[K,V]
 			node.next = lst.next
 			lst.next = node
 		end
+	end
+
+	#insert a node in the hash map, without checking uniqueness
+	private function insert_unique(h as uint, k as K, v as V) as hash_node[K,V]
+		if (lsize + 1) > buckets_num * max_load_factor then
+			rehash(lsize + 1)
+		end
+		dim node = new hash_node[K,V]
+		node.k = k
+		node.v = v
+		node.hash_cache = h
+		insert_node(h, node)
 		lsize = lsize + 1
 		return node
 	end
