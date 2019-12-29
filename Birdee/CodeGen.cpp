@@ -3015,7 +3015,7 @@ llvm::Value * Birdee::ClassAST::Generate()
 			itables.push_back(ConstantExpr::getPointerCast(
 				GetOrCreateTypeInfoGlobal(this, implements[i], this->if_vtabledef[i].size(), i), llvm::Type::getInt8PtrTy(context)));
 		}
-		// create a GV to hold interfaces rtti
+		// create a GV to hold array of implement itables
 		vector<llvm::Type*> itable_types{ llvm::Type::getInt32Ty(context),
 			ArrayType::get(llvm::Type::getInt8PtrTy(context), itables.size()) };
 		auto itable_array_ty = StructType::create(context, itable_types);
@@ -3051,22 +3051,22 @@ llvm::Value * Birdee::ClassAST::Generate()
 				});
 		}
 		tyinfo->setInitializer(val);
+	}
 
-		// initialize itable global variables
-		if (!is_abstract && if_vtabledef.size() > 0) {
-			for (int i = 0; i < if_vtabledef.size(); ++i) {
-				auto gv = GetOrCreateSingleITable(this, implements[i], if_vtabledef[i].size(), i);
-				vector<Constant*> table;
-				for (auto func : if_vtabledef[i]) {
-					auto llvm_func = func->GetLLVMFunc();
-					assert(llvm::isa<Function>(*llvm_func));
-					table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(llvm_func), builder.getInt8PtrTy()));
-				}
-				auto impl_val = ConstantStruct::get(GetOrCreateITableType(if_vtabledef[i].size()), {
-						ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(), if_vtabledef[i].size()), table)
-					});
-				gv->setInitializer(impl_val);
+	// initialize itable global variables
+	if (!is_abstract && if_vtabledef.size() > 0) {
+		for (int i = 0; i < if_vtabledef.size(); ++i) {
+			auto gv = GetOrCreateSingleITable(this, implements[i], if_vtabledef[i].size(), i);
+			vector<Constant*> table;
+			for (auto func : if_vtabledef[i]) {
+				auto llvm_func = func->GetLLVMFunc();
+				assert(llvm::isa<Function>(*llvm_func));
+				table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(llvm_func), builder.getInt8PtrTy()));
 			}
+			auto impl_val = ConstantStruct::get(GetOrCreateITableType(if_vtabledef[i].size()), {
+					ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(), if_vtabledef[i].size()), table)
+				});
+			gv->setInitializer(impl_val);
 		}
 	}
 

@@ -2997,14 +2997,10 @@ If usage vararg name is "", match the closest vararg
 	//fix-me: we can have compiler better performance here
 	static bool ResolveRTTIBitInClass(ClassAST* cls)
 	{
-		if (cls->parent_class) {
-			bool parent_needs_rtti = ResolveRTTIBitInClass(cls->parent_class);
-			if (!cls->needs_rtti) {
-				cls->needs_rtti = parent_needs_rtti;
-			}
-			else if (!parent_needs_rtti) {
-				throw CompileError("class " + cls->name + " needs rtti but its parent does not!");
-			}
+		if (!cls->needs_rtti && cls->parent_class)
+		{
+			//if !needs_rtti then it is either not resolved or the class really does not need rtti
+			cls->needs_rtti = ResolveRTTIBitInClass(cls->parent_class);
 		}
 		return cls->needs_rtti;
 	}
