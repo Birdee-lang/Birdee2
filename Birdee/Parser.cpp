@@ -1416,7 +1416,6 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface)
 	bool is_template = false;
 	if (tokenizer.CurTok == tok_left_index)
 	{
-		CompileAssert(!is_interface, "interfaces do not support template");
 		is_template = true;
 		if (!tokenizer.is_recording)
 		{
@@ -1453,7 +1452,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface)
 		}
 	}
 	
-	CompileExpect(tok_newline, "Expected an newline after class name");
+	CompileExpect(tok_newline, "Expected newline or inheritance keyword after class name");
 
 	while (true)
 	{

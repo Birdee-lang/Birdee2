@@ -367,7 +367,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 			BirdeeAssert(json_impls.is_array(), "Expected an JSON array");
 			for (auto& impl : json_impls)
 			{
-				ret->implements.push_back(ConvertIdToClass(impl["implement"].get<int>()));
+				ret->implements.push_back(ConvertIdToClass(impl.get<int>()));
 			}
 		}
 	}

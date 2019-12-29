@@ -26,11 +26,11 @@ interface itest2 : itest
 	public abstract func c(i as int) as string
 end
 
-interface itest3
-	public abstract func d(i as int) as string
+interface itest3[T1, T2]
+	public abstract func d(i as T1) as T2
 end
 
-class quail : bird impl itest
+class quail : bird implements itest
 	@virtual
 	public func say(a as string) as string
 		return "quail says " + a
@@ -49,7 +49,8 @@ class quail : bird impl itest
 	end
 end
 
-class sparrow impl itest2, itest3
+@enable_rtti
+class sparrow implements itest2, itest3[int, string]
 	public func a() as string
 		return "sparrow itest a"
 	end
@@ -73,7 +74,7 @@ dim b as bird = q
 dim it as itest = q
 dim it_s as itest = s
 dim it2_s as itest2 = s
-dim it3_s as itest3 = s
+dim it3_s as itest3[int, string] = s
 
 {@bdassert('b.say("1") == "quail says 1"')@}
 {@bdassert('b.speak("1") == "pure virtual quail speaks 1"')@}
@@ -129,7 +130,7 @@ try
 	s = dyn_cast[sparrow](bigs)
 	it_s = dyn_cast[itest](bigs)
 	it2_s = dyn_cast[itest2](bigs)
-	it3_s = dyn_cast[itest3](bigs)
+	it3_s = dyn_cast[itest3[int, string]](bigs)
 
 	{@bdassert('s.a() == "big sparrow itest a"')@}
 	{@bdassert('s.b(6) == "sparrow itest b 6"')@}
@@ -156,7 +157,7 @@ try
 	{@bdassert('bigs2.a() == "big sparrow itest a"')@}
 	{@bdassert('bigs2.b(9) == "sparrow itest b 9"')@}
 
-	it3_s = dyn_cast[itest3](it_s)
+	it3_s = dyn_cast[itest3[int, string]](it_s)
 	{@bdassert('it3_s !== null')@}
 	{@bdassert('it3_s.d(9) == "sparrow itest3 d 9"')@}
 

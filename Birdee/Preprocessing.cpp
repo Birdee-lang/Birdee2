@@ -1943,7 +1943,7 @@ namespace Birdee
 	}
 
 	void ClassAST::resolveVtable(map<ClassAST*, std::set<MemberFunctionDef*>> & lineage,
-														ClassAST * super, vector<FunctionAST*> & vtabledef)
+		ClassAST * super, vector<FunctionAST*> & vtabledef)
 	{
 		auto checkproto = [](FunctionAST* curfunc, FunctionAST* overriden) {
 			//make sure the overriden function has the same prototype
@@ -2147,25 +2147,25 @@ namespace Birdee
 		}
 
 		if (parent_class) {
-			for (auto & raw_func : parent_class->raw_abstract_funcs) {
-				raw_abstract_funcs.insert(raw_func);
+			for (auto & unimpl_func : parent_class->unimpl_abstract_funcs) {
+				unimpl_abstract_funcs.insert(unimpl_func);
 			}
 		}
 		if (!this->is_interface) {
 			for (int i = 0; i < self_implements.size(); ++i) {
-				for (auto & raw_func : self_implements[i]->raw_abstract_funcs) {
-					raw_abstract_funcs.insert(raw_func);
+				for (auto & unimpl_func : self_implements[i]->unimpl_abstract_funcs) {
+					unimpl_abstract_funcs.insert(unimpl_func);
 				}
 			}
 			// automatically mark class as abstract if there's unimplemented abstract function
 			for (auto& funcdef : this->funcs) 
 			{
 				string & name = funcdef.decl->Proto->Name;
-				if (raw_abstract_funcs.find(name) != raw_abstract_funcs.end()) {
-					raw_abstract_funcs.erase(name);
+				if (unimpl_abstract_funcs.find(name) != unimpl_abstract_funcs.end()) {
+					unimpl_abstract_funcs.erase(name);
 				}
 			}
-			if (raw_abstract_funcs.size() > 0) 
+			if (unimpl_abstract_funcs.size() > 0) 
 			{
 				this->is_abstract = true;
 			}
@@ -2173,13 +2173,13 @@ namespace Birdee
 			for (auto & funcdef : this->funcs) {
 				string & name = funcdef.decl->Proto->Name;
 				if (parent_class) {
-					// for interfaces, raw abstract funcs equals all member funcs
-					if (parent_class->raw_abstract_funcs.find(name)
-						!= parent_class->raw_abstract_funcs.end()) {
+					// for interfaces, unimpl abstract funcs equals all member funcs
+					if (parent_class->unimpl_abstract_funcs.find(name)
+						!= parent_class->unimpl_abstract_funcs.end()) {
 						throw CompileError("interfaces do not support overriden functions");
 					}
 				}
-				raw_abstract_funcs.insert(std::make_pair(name, &funcdef));
+				unimpl_abstract_funcs.insert(std::make_pair(name, &funcdef));
 			}
 		}
 
@@ -2997,19 +2997,14 @@ If usage vararg name is "", match the closest vararg
 	//fix-me: we can have compiler better performance here
 	static bool ResolveRTTIBitInClass(ClassAST* cls)
 	{
-		if (cls->implements.size() > 0)
-		{
-			cls->needs_rtti = true;
-			ClassAST * parent_cls = cls->parent_class;
-			while (parent_cls) {
-				parent_cls->needs_rtti = true;
-				parent_cls = parent_cls->parent_class;
+		if (cls->parent_class) {
+			bool parent_needs_rtti = ResolveRTTIBitInClass(cls->parent_class);
+			if (!cls->needs_rtti) {
+				cls->needs_rtti = parent_needs_rtti;
 			}
-		}
-		if (!cls->needs_rtti && cls->parent_class)
-		{
-			//if !needs_rtti then it is either not resolved or the class really does not need rtti
-			cls->needs_rtti = ResolveRTTIBitInClass(cls->parent_class);
+			else if (!parent_needs_rtti) {
+				throw CompileError("class " + cls->name + " needs rtti but its parent does not!");
+			}
 		}
 		return cls->needs_rtti;
 	}

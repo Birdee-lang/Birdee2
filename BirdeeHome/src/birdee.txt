@@ -93,13 +93,12 @@ end
 class type_info
 	private name as string
 	private parent as type_info
-	private impl_size as uint
-	private implements as type_info[]
+	private impls as type_info[]
 	private itables as pointer[]
 
 	public function get_name() as string => name
 	public function get_parent() as type_info => parent
-	public function get_implement_size() as uint => impl_size
+	public function get_implement_size() as uint => impls.length()
 
 	public function is_parent_of(child as type_info) as boolean
 		dim cur = child
@@ -113,8 +112,8 @@ class type_info
 	end
 
 	public function is_impl_of(interf as type_info) as boolean
-		for dim i=0 till impl_size
-			dim cur = implements[i]
+		for dim i=0 till impls.length()
+			dim cur = impls[i]
 			if interf.is_parent_of(cur) then
 				return true
 			end
@@ -123,8 +122,8 @@ class type_info
 	end
 
 	public function get_impl_itable(interf as type_info) as pointer
-		for dim i=0 till impl_size
-			dim cur = implements[i]
+		for dim i=0 till impls.length()
+			dim cur = impls[i]
 			if interf === cur then
 				return itables[i]
 			end

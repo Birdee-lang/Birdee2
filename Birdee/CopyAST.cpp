@@ -333,10 +333,18 @@ namespace Birdee
 			idx++;
 		}
 		clsdef->is_struct = is_struct;
+		clsdef->is_abstract = is_abstract;
+		clsdef->is_interface = is_interface;
 		clsdef->needs_rtti = needs_rtti;
 		if (parent_type) {
 			clsdef->parent_type = parent_type->Copy();
 			clsdef->parent_class = parent_class;
+		}
+		clsdef->self_implements = self_implements;
+		clsdef->implements = implements;
+		clsdef->unimpl_abstract_funcs = unimpl_abstract_funcs;
+		for (auto & impl_type : self_implement_types) {
+			clsdef->self_implement_types.push_back(impl_type->Copy());
 		}
 		clsdef->template_source_class = template_source_class;
 		assert(clsdef->template_instance_args==nullptr);

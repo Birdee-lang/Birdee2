@@ -365,9 +365,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	{
 		json json_impls = json::array();
 		for (auto & impl : cls.implements) {
-			json json_impl;
-			json_impl["implement"] = ConvertClassToIndex(impl);
-			json_impls.push_back(json_impl);
+			json_impls.push_back(ConvertClassToIndex(impl));
 		}
 		json_cls["implments"] = std::move(json_impls);
 	}

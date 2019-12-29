@@ -1274,7 +1274,7 @@ namespace Birdee {
 
 		// unimplemented abstract funcs (including ancestors' and interfaces'), 
 		// for abstract check & conflict check
-		std::unordered_map<std::string, MemberFunctionDef*> raw_abstract_funcs;
+		std::unordered_map<std::string, MemberFunctionDef*> unimpl_abstract_funcs;
 
 		unique_ptr< vector<TemplateArgument>> template_instance_args;
 		ClassAST* template_source_class = nullptr;
