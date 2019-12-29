@@ -43,7 +43,7 @@ static const uint64_t MY_EXCEPTION_CLASS = MKINT('M', 7) | MKINT('N', 6) | MKINT
 #endif
 
 extern "C" bool birdee_0type__info_0is__parent__of(BirdeeTypeInfo* parent, BirdeeTypeInfo* child);
-extern "C" BirdeeTypeInfo birdee_0runtime__exception0_typeinfo_vtable;
+extern "C" BirdeeTypeInfo birdee_0runtime__exception0_typeinfo;
 
 struct EmptyExceptionStruct
 {
@@ -122,7 +122,7 @@ extern "C" {
 	{
 		typedef BirdeeString* (*PTRGetMessage)(BirdeeRTTIObject*);
 		fprintf(stderr, "Uncaught exception found! %s\n", obj->type->name->arr->packed.cbuf);
-		if (birdee_0type__info_0is__parent__of(&birdee_0runtime__exception0_typeinfo_vtable, obj->type))
+		if (birdee_0type__info_0is__parent__of(&birdee_0runtime__exception0_typeinfo, obj->type))
 		{
 			PTRGetMessage func = (PTRGetMessage)obj->type->vtable[0];
 			BirdeeString* msg = func(obj);

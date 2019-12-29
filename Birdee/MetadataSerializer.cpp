@@ -287,6 +287,7 @@ void BuildClassJson(json& arr)
 	int idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
+		arr.push_back(json()); //add placeholder
 		class_idx_map[itr.second.first] = idx++;
 	}
 	if (class_idx_map.size() > MAX_CLASS_DEF_COUNT)
@@ -294,10 +295,12 @@ void BuildClassJson(json& arr)
 		std::cerr << "Defined too many classes\n";
 		abort();
 	}
+	idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
-		arr.push_back(BuildSingleClassJson(*itr.second.first,false));
-		arr.back()["is_public"] = itr.second.second;
+		arr[idx] = BuildSingleClassJson(*itr.second.first,false);
+		arr[idx]["is_public"] = itr.second.second;
+		idx++;
 	}
 }
 

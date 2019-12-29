@@ -9,6 +9,8 @@ import vector:vector
 @private declare function atoi(s as pointer) as int
 @private declare function atoll(s as pointer) as long
 @private declare function atof(s as pointer) as double
+@private declare function strchr(s as pointer, ch as byte) as pointer
+@private declare function isspace(ch as byte) as int
 
 @extension function string___mul__(v as string, n as uint) as string
 	dim len = v.length()
@@ -27,9 +29,19 @@ end
 	return unsafe.ptr_cast[long](p) - unsafe.ptr_cast[long](a)
 end
 
-function check_index(str as string, idx as uint)
-	if idx > str.length() then
-			throw new runtime_exception("Index out of index")
+@private
+func _findchar(raw as pointer, len as uint, ch as byte, start as uint) as int
+	dim ptr = ptr_add(raw, start)
+	dim f = strchr(ptr, ch)
+	if f != pointerof(null) then
+		dim idx = ptr_diff(f, ptr) + start
+		if idx >= len then
+			return -1
+		else
+			return idx
+		end
+	else
+		return -1
 	end
 end
 
@@ -45,10 +57,19 @@ struct string_view
 	end
 
 	public func __deref__() as string
-		return new string:copy_bytes(str.get_bytes(), start, len)
+		if len>0 then
+			return new string:copy_bytes(str.get_bytes(), start, len)
+		else
+			return new string
+		end
 	end
 
-	public func __getitem__(idx as uint) as byte => str[idx + start]
+	public func __getitem__(idx as uint) as byte
+		if idx >= len then
+			throw new invalid_index_exception
+		end		
+		return str[idx + start]
+	end
 
 	public func length() as uint => len
 
@@ -56,12 +77,22 @@ struct string_view
 
 	public func view(_start as uint, _len as uint) as string_view
 		if _len > 0 && _start + _len > len then
-			throw new runtime_exception("Index out of index")
+			throw new invalid_index_exception
 		end
 		return string1_view(str, start + _start, _len)
 	end
 
-	public function find(substr as string_view, _start as uint) as int => string_find_template(this, substr, start)
+	public function find(substr as string_view, _start as uint) as int
+		if substr.is_at_end() then
+			#if substr is at the end of its containing string, we can use it
+			return string_find_template(this, substr, _start)
+		else
+			#if not, the substr is not null-terminated, must use slow implementaion
+			return strstr_slow(this, substr, _start)
+		end
+	end
+
+	public function find_char(c as byte, _start as uint) as int => _findchar(get_raw(), len ,c,_start)
 	public function split(substr as string_view) as string_view[] => string_split_template(this, substr)
 
 	public func __eq__(other as string_view) as boolean
@@ -76,29 +107,116 @@ struct string_view
 
 	public func __ne__(other as string_view) as boolean => !__eq__(other)
 
-	public function to_int() as int => atoi(get_raw())
-	public function to_long() as long => atoll(get_raw())
-	public function to_double() as double => atof(get_raw())
+	public function to_int() as int => atoi(__deref__().get_raw())
+	public function to_long() as long => atoll(__deref__().get_raw())
+	public function to_double() as double => atof(__deref__().get_raw())
+
+	public function trim_left() as string_view
+		dim beg as uint
+		for beg=0 till len
+			if isspace(str[start+beg])==0 then
+				break
+			end 
+		end
+		if beg == len then
+			return view(0,0)
+		end
+		return view(beg, len - beg)
+	end
+
+	public function trim_right() as string_view
+		dim ends as int = len - 1
+		while ends >=0
+			if isspace(str[start+ends])==0 then
+				break
+			end
+			ends=ends-1
+		end
+		if ends<0 then
+			return view(0,0)
+		end
+		return view(0, ends+1)
+	end
+
+	public function trim() as string_view => trim_left().trim_right()
+
+	public function __hash__() as uint
+		dim h as uint = 0
+		for dim i=0 till len
+			h=31*h + str[i + start]
+		end
+		return h
+	end
+
+	public function is_at_end() as boolean => start + len == str.length()
+
+	public function starts_with(substr as string_view) as boolean
+		if substr.length() > len then
+			return false
+		end
+		return view(0, substr.length()) == substr
+	end
+
+	public function ends_with(substr as string_view) as boolean
+		if substr.length() > len then
+			return false
+		end
+		return view(len-substr.length(), substr.length()) == substr
+	end
+
 end
 
 @extension
 function string1_view(str as string, start as uint, len as uint) as string_view
 	dim ret as string_view
 	if len > 0 && start + len > str.length() then
-		throw new runtime_exception("Index out of index")
+		throw new invalid_index_exception
 	end
 	ret.__init__(str, start, len)
 	return ret
 end
 
+@extension
+function string_find_char(str as string, c as byte, _start as uint) as int => _findchar(str.get_raw(),str.length(), c,_start)
+
 @extension function string_viewall(v as string) as string_view => v.view(0, v.length())
 
+@private
+function strstr_slow(haystack as string_view, needle as string_view, start as int) as int
+	if haystack.length() ==0 || needle.length() ==0 then
+		return -1
+	end
+	if start >= haystack.length() || start + needle.length() > haystack.length() then
+		return -1
+	end
+    dim needle_length = needle.length()
+	dim length = haystack.length() - start
+	dim ptr = unsafe.ptr_cast[ulong](haystack.get_raw()) + start
+    for dim i = 0 till length
+        if i + needle_length > length then
+            return -1
+        end
+        if strncmp(unsafe.ptr_cast[pointer](ptr), needle.get_raw(), needle_length) == 0 then
+            return i + start
+        end
+		ptr = ptr + 1
+    end
+    return -1
+end
+
+@private
 function string_find_template[T1, T](v as T1, substr as T, start as uint) as int
+	if v.length() ==0 || substr.length() ==0 then
+		return -1
+	end
+	if start >= v.length() || start + substr.length() > v.length() then
+		return -1
+	end
 	dim ptr = ptr_add(v.get_raw(), start)
 	dim f = strstr(ptr, substr.get_raw())
 	if f != pointerof(null) then
 		dim idx = ptr_diff(f, ptr) + start
-		if idx >= v.length() then
+		if idx + substr.length() > v.length() then
 			return -1
 		else
 			return idx
@@ -108,22 +226,47 @@ function string_find_template[T1, T](v as T1, substr as T, start as uint) as int
 	end
 end
 
-@extension function string_findview(v as string, substr as string_view, start as uint) as int => string_find_template(v, substr, start)
+@private
+function string_find_substr[T1, T](v as T1, substr as T, start as uint) as int
+{@
+T1=resolve_type("T1")
+T=resolve_type("T")
+if T1==resolve_type("string_view"):
+	set_ast(stmt("return v.find(substr, start)"))
+else:
+	if T==resolve_type("string_view"):
+		set_ast(stmt("return v.findview(substr, start)"))
+	else:
+		set_ast(stmt("return v.find(substr, start)"))
+@}
+end
+
+@extension function string_findview(v as string, substr as string_view, start as uint) as int
+	if substr.is_at_end() then
+		#if substr is at the end of its containing string, we can use it 
+		return string_find_template(v, substr, start)
+	else
+		#if not, the substr is not null-terminated, must use slow implementaion
+		return strstr_slow(v.viewall(), substr, start)
+	end
+end
+
 @extension function string_find(v as string, substr as string, start as uint) as int => string_find_template(v, substr, start)
 
+@private
 function string_split_template[T1, T](v as T1, substr as T) as string_view[]
 	dim buf = new vector[string_view](0)
 	dim len = substr.length()
-	dim idx = string_find_template(v, substr, 0)
+	dim idx = string_find_substr(v, substr, 0)
 	dim last = 0
-	while idx > 0
+	while idx >= 0
 		buf.push_back(v.view(last, idx - last))
 		last = idx + len
 		idx = last
 		if idx >= v.length() then
 			break
 		end
-		idx = string_find_template(v, substr, idx)
+		idx = string_find_substr(v, substr, idx)
 	end
 	buf.push_back(v.view(last, v.length() - last))
 	dim srcbuf =  buf.buffer()
@@ -140,3 +283,17 @@ end
 @extension function string_to_int(v as string) as int => atoi(v.get_raw())
 @extension function string_to_double(v as string) as double => atof(v.get_raw())
 @extension function string_to_long(v as string) as long => atoll(v.get_raw())
+
+@extension function string_starts_with(v as string, substr as string_view) as boolean
+	if substr.length() > v.length() then
+		return false
+	end
+	return v.view(0, substr.length()) == substr
+end
+
+@extension function string_ends_with(v as string, substr as string_view) as boolean
+	if substr.length() > v.length() then
+		return false
+	end
+	return v.view(v.length()-substr.length(), substr.length()) == substr
+end

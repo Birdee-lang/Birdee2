@@ -3,7 +3,7 @@ class vector[T]
 	private len as uint
 	private func check_index(idx as uint)
 		if idx>=len then
-			breakpoint()
+			throw new invalid_index_exception
 		end
 	end
 
