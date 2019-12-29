@@ -1,15 +1,21 @@
 import class_inherit_test:bird
 import class_inherit_test:quail
 import class_inherit_test:swallow
+import class_inherit_test:getchar
 
-declare function getchar() as int
+{@from bdassert import bdassert@}
 
-println("import test")
 dim a = new quail
 dim s = new swallow
 dim b as bird = a
 dim d as bird = s
-b.say("hello")
-d.say("hello2")
-d.speak("hello")
-println("import test ends")
+
+dim str as string
+str = b.say("hello")
+{@bdassert('str == "quail says hello"')@}
+str = d.say("hello2")
+{@bdassert('str == "bird says hello2"')@}
+str = d.speak("hello")
+{@bdassert('str == "pure virtual swallow speaks hello"')@}
+
+println("inherit with import test ok")

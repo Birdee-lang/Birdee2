@@ -14,7 +14,10 @@ do\
 	}\
 }while(0)\
 
+extern Birdee::ClassAST* GetTypeInfoType();
 extern llvm::Constant* GetOrCreateTypeInfoGlobal(Birdee::ClassAST* cls);
+extern llvm::Constant* GetOrCreateTypeInfoGlobal(
+	Birdee::ClassAST* cls, Birdee::ClassAST* interface, int table_size, int vtable_idx);
 namespace Birdee
 {
 	extern llvm::Type* GetLLVMTypeFromResolvedType(const ResolvedType& ty);
@@ -129,9 +132,10 @@ namespace Birdee
 		auto& targs = *func->template_instance_args;
 		auto v = args[0]->Generate();
 		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
-		auto srcty = GetLLVMTypeFromResolvedType(targs[1].type);
+		auto srcty = GetLLVMTypeFromResolvedType(targs[1].type);	
 		CompileAssert(GetLLVMTypeSizeInBit(ty) == GetLLVMTypeSizeInBit(srcty), func->Pos, 
 			string("Cannot bitcast from type ") + targs[1].type.GetString() + " to type " + targs[0].type.GetString() + ", because they have different sizes");
+
 		return builder.CreateBitOrPointerCast(v, ty);
 	}
 
@@ -142,7 +146,8 @@ namespace Birdee
 		CompileAssert(targs[0].kind == TemplateArgument::TEMPLATE_ARG_TYPE && targs[1].kind == TemplateArgument::TEMPLATE_ARG_TYPE,
 			func->Pos, "The 1st and 2nd template arguments for unsafe.static_cast should be a type");
 		CompileAssert(IsResolvedTypeClass(targs[0].type) && IsResolvedTypeClass(targs[1].type)
-			&& (targs[0].type.class_ast->HasParent(targs[1].type.class_ast) || targs[1].type.class_ast->HasParent(targs[0].type.class_ast)),
+			&& (targs[0].type.class_ast->HasParent(targs[1].type.class_ast) || targs[1].type.class_ast->HasParent(targs[0].type.class_ast) ||
+				targs[1].type.class_ast->HasImplement(targs[0].type.class_ast) || targs[0].type.class_ast->HasImplement(targs[1].type.class_ast)),
 			func->Pos,
 			string("Cannot static_cast from type ") + targs[1].type.GetString() + " to type " + targs[0].type.GetString());
 	}
@@ -155,7 +160,38 @@ namespace Birdee
 		auto& targs = *func->template_instance_args;
 		auto v = args[0]->Generate();
 		auto ty = GetLLVMTypeFromResolvedType(targs[0].type);
-		return builder.CreateBitOrPointerCast(v, ty);
+		ClassAST* from = targs[1].type.class_ast;
+		ClassAST* target = targs[0].type.class_ast;
+		if (target->HasParent(from) || from->HasParent(target)) {
+			return builder.CreateBitOrPointerCast(v, ty);
+		}
+		else if (from->HasImplement(target)) {
+			// upcast to interface
+			for (int i = 0; i < from->implements.size(); ++i)
+			{
+				ClassAST* curcls = from->implements[i];
+				while (curcls && curcls != target)
+				{
+					curcls = curcls->parent_class;
+				}
+				if (curcls)
+				{
+					auto ret_val = builder.CreateInsertValue(llvm::UndefValue::get(ty),
+						GetOrCreateTypeInfoGlobal(from, from->implements[i], from->if_vtabledef[i].size(), i), 0);
+					ret_val = builder.CreateInsertValue(ret_val,
+						builder.CreatePointerCast(v, target->llvm_type->getPointerTo()), 1);
+					return ret_val;
+				}
+			}
+		}
+		else if (target->HasImplement(from)) {
+			// downcast from interface
+			return builder.CreatePointerCast(
+				builder.CreateExtractValue(v, 1), target->llvm_type->getPointerTo());
+		}
+		// cannot reach here
+		assert(false);
+		return nullptr;
 	}
 
 
