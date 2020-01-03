@@ -1119,9 +1119,7 @@ namespace Birdee
 				[&this_template_args](IdentifierExprAST* ex) {
 				ImportTree* import_tree = nullptr;
 				auto ret = scope_mgr.ResolveNameNoThrow(ex->Name, ex->Pos, import_tree);
-				if (import_tree)
-					assert(0 && "Not implemented");
-				if (ret)
+				if (ret && !import_tree)
 				{
 					this_template_args.push_back(TemplateArgument(std::move(ret)));
 				}

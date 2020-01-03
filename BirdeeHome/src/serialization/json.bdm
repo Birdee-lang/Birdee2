@@ -1,0 +1,109 @@
+package serialization
+
+import unsafe
+import typedptr:get_field_ptr
+import string_buffer:string_buffer
+
+@init_script
+{@from bdutils import *
+from traits import *
+@}
+
+
+@init_script
+{@
+ty_str=resolve_type("birdee.string")
+ty_int=resolve_type("int")
+ty_double=resolve_type("double")
+ty_pointer=resolve_type("pointer")
+ty_bool=resolve_type("boolean")
+from bdutils import *
+from traits import *
+
+
+	
+def generate_field(idx, length, field):
+	set_stmt('serialize("{name}")'.format(name=field.decl.name))
+	set_stmt('s.write(":")')
+	global fty #make fty usable in taowa script
+	fty = field.decl.resolved_type
+	set_stmt('serialize(unsafe.ptr_load[{fty}](get_field_ptr["{name}", T](pointerof(obj))))'
+		.format(name=field.decl.name, fty = '{@set_type(fty)@'+'}'))
+	#set_stmt('serialize(obj.{name})'.format(name=field.decl.name))
+	if idx != length -1:
+		set_stmt('s.write(",")')
+
+@}
+
+class json_serializer[Stream]
+
+	private s as Stream
+
+	public function __init__(s as Stream)
+		this.s=s
+	end
+
+	public function serialize[T](v as T)
+{@
+T=get_func_type_templ_at(0)
+if is_boolean(T):
+	set_stmt("s.write(bool2str(v))")
+elif T == ty_str:
+	set_stmt('s.write("\\"")')
+	set_stmt("s.write(v)")
+	set_stmt('s.write("\\"")')
+elif is_integer(T):
+	set_stmt("s.write(int2str(v))")
+elif is_float_point(T):
+	set_stmt("s.write(double2str(v))")
+elif T.index_level>0:
+	set_stmt("serialize_array(v)")
+elif is_a_class(T):
+	set_stmt("serialize_object(v)")
+else:
+	raise RuntimeError("Cannot convert {} to string".format(str(T)))
+@}
+	end
+
+	public function serialize_array[T](obj as T[])
+		s.write("[")
+		for dim i=0 till obj.length()
+			serialize(obj[i])
+		end
+		s.write("]")
+	end
+
+	public function serialize_object[T](obj as T)
+		s.write("{")
+{@
+foreach_field(get_func_type_templ_at(0), generate_field)
+@}
+		s.write("}")
+	end
+
+end
+
+class AAAA
+	public a as int
+	public b as string
+	public c as BBB
+end
+
+class BBB
+	public c as int
+	public d as string
+	public func __init__()
+		c=12
+		d="jajajajaj"
+	end
+end
+
+dim t = new AAAA
+t.a=1
+t.b="aaaa"
+t.c=new BBB
+
+dim strbuf = new string_buffer
+dim ser = new json_serializer[string_buffer](strbuf)
+ser.serialize(t)
+println(strbuf.to_str())

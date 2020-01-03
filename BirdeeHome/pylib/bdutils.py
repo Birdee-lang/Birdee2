@@ -111,3 +111,16 @@ def func_templ_expr_at(idx, thefunc = None):
 	if not thefunc:
 		thefunc = get_cur_func()
 	set_ast(get_func_expr_templ_at(idx, thefunc))
+
+
+'''
+T should be a resolved type.
+callback should be (idx, length, field)
+'''
+def foreach_field(T, callback):
+	if not is_a_class(T) and not is_a_struct(T):
+		raise RuntimeError("T = {} should be a class or struct".format(T))
+	T=T.get_detail()
+	length=len(T.fields)
+	for idx, field in enumerate(T.fields):
+	    callback(idx, length, field)
