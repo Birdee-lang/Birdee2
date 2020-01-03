@@ -34,6 +34,8 @@ namespace Birdee
 		tok_end,
 		tok_class,
 		tok_struct,
+		tok_interface,
+		tok_implement,
 		tok_private,
 		tok_public,
 		tok_string_literal,

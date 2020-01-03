@@ -359,9 +359,18 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
+	json_cls["is_interface"] = cls.is_interface;
 	if (cls.parent_class)
 	{
 		json_cls["parent"] = ConvertClassToIndex(cls.parent_class);
+	}
+	if (cls.implements.size())
+	{
+		json json_impls = json::array();
+		for (auto & impl : cls.implements) {
+			json_impls.push_back(ConvertClassToIndex(impl));
+		}
+		json_cls["implments"] = std::move(json_impls);
 	}
 	if (cls.isTemplate())
 	{

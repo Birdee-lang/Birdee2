@@ -25,7 +25,7 @@ static int current_module_idx;
 
 extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
 extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
-extern void ParseClassInPlace(ClassAST* ret, bool is_struct);
+extern void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface);
 
 extern std::vector<std::string> Birdee::source_paths;
 extern void Birdee_Register_Module(const string& name, void* globals);
@@ -272,8 +272,8 @@ void BuildTemplateClassFromJson(const json& itr, ClassAST* cls, int module_idx, 
 {
 	Token first_tok;
 	auto var = StartParseTemplate(itr.get<string>(), first_tok, linenumber);
-	BirdeeAssert(tok_class == first_tok || tok_struct == first_tok, "The first token of template should be class/struct");
-	ParseClassInPlace(cls, tok_struct == first_tok);
+	BirdeeAssert(tok_class == first_tok || tok_struct == first_tok || tok_interface == first_tok, "The first token of template should be class/struct/interface");
+	ParseClassInPlace(cls, tok_struct == first_tok, tok_interface == first_tok);
 	BirdeeAssert(cls->template_param.get(), "cls->template_param");
 	cls->template_param->mod = &mod;
 	cls->template_param->source.set(itr.get<string>());
@@ -356,7 +356,22 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	}
 	ret->name = json_cls["name"].get<string>();
 	ret->package_name_idx = module_idx;
-	
+	{
+		auto itr = json_cls.find("is_interface");
+		if (itr != json_cls.end())
+			ret->is_interface = itr->get<bool>();
+
+		itr = json_cls.find("implements");
+		if (itr != json_cls.end()) {
+			const json& json_impls = *itr;
+			BirdeeAssert(json_impls.is_array(), "Expected an JSON array");
+			for (auto& impl : json_impls)
+			{
+				ret->implements.push_back(ConvertIdToClass(impl.get<int>()));
+			}
+		}
+	}
+
 	{
 		auto itr = json_cls.find("is_struct");
 		if(itr!=json_cls.end())

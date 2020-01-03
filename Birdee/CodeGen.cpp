@@ -268,6 +268,14 @@ struct GeneratorContext
 	unordered_map<ClassAST*, GlobalVariable*> rtti_map;
 	//a map from virtual function number to {rtti,vtable...} type map
 	unordered_map<int, StructType*> vtable_type_map;
+	unordered_map<int, StructType*> itable_single_type_map;
+
+	// a map for global variables of each impl virtual table in a cls
+	unordered_map<ClassAST*, 
+		unordered_map<ClassAST*, GlobalVariable*>> itable_single_gv_map;
+	// maps for struct type of all impls in a cls
+	unordered_map<ClassAST*, StructType*> itable_type_map;
+	unordered_map<ClassAST*, DIType*> itable_dtype_map;
 
 	//the wrappers for raw functions, useful for conversion from functype to closure
 	unordered_map<Function*, Function*> function_wrapper_cache;
@@ -314,7 +322,7 @@ BD_CORE_API int GetTypeSize(ResolvedType ty)
 	return GetLLVMTypeSizeInBit(GetLLVMTypeFromResolvedType(ty)) / 8;
 }
 
-static ClassAST* GetTypeInfoType()
+ClassAST* GetTypeInfoType()
 {
 	if (gen_context.cls_typeinfo)
 		return gen_context.cls_typeinfo;
@@ -333,14 +341,31 @@ static StructType* GetOrCreateVTableType(int vcnt)
 	}
 	else
 	{
-		ty = StructType::create({ GetTypeInfoType()->llvm_type , ArrayType::get(builder.getInt8PtrTy(),vcnt) });
+		ty = StructType::create({ GetTypeInfoType()->llvm_type, ArrayType::get(builder.getInt8PtrTy(),vcnt) });
 		gen_context.vtable_type_map[vcnt] = ty;
 	}
 	return ty;
 }
+
+static StructType* GetOrCreateITableType(int vcnt)
+{
+	assert(vcnt > 0);
+	auto itr = gen_context.itable_single_type_map.find(vcnt);
+	StructType* ty;
+	if (itr != gen_context.itable_single_type_map.end())
+	{
+		ty = itr->second;
+	}
+	else
+	{
+		ty = StructType::create({ ArrayType::get(builder.getInt8PtrTy(),vcnt) });
+		gen_context.itable_single_type_map[vcnt] = ty;
+	}
+	return ty;
+}
+
 static GlobalVariable* CreateTypeInfoWithVTableGlobal(ClassAST* cls)
 {
-
 	string name;
 	MangleNameAndAppend(name, cls->GetUniqueName());
 	name += "0_typeinfo";
@@ -383,6 +408,97 @@ Constant* GetOrCreateTypeInfoGlobal(ClassAST* cls)
 	if (cls->vtabledef.empty())
 		return ret;
 	return ConstantExpr::getPointerCast(ret, GetTypeInfoType()->llvm_type->getPointerTo());
+}
+
+GlobalVariable* GetOrCreateSingleITable(
+		ClassAST* cls, ClassAST* interface, int table_size, int vtable_idx)
+{
+	if (gen_context.itable_single_gv_map.count(cls) != 0 &&
+		gen_context.itable_single_gv_map[cls].count(interface) != 0) {
+		return gen_context.itable_single_gv_map[cls][interface];
+	}
+	string name;
+	MangleNameAndAppend(name, cls->GetUniqueName());
+	name += "0_typeinfo_vtable_" + std::to_string(vtable_idx);
+	GlobalVariable* newv;
+	assert(table_size > 0);
+	newv = new GlobalVariable(*module, GetOrCreateITableType(table_size),
+		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
+		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
+	gen_context.itable_single_gv_map[cls][interface] = newv;
+	return newv;
+}
+
+//Get or create itable global variable
+//automatically cast to rtti
+Constant* GetOrCreateTypeInfoGlobal(
+	ClassAST* cls, ClassAST* interface, int table_size, int vtable_idx)
+{
+	auto* ret = GetOrCreateSingleITable(cls, interface, table_size, vtable_idx);
+	return ConstantExpr::getPointerCast(ret, builder.getInt8PtrTy());
+}
+
+StructType* GetOrCreateITableType(ClassAST* cls)
+{
+	auto itr = gen_context.itable_type_map.find(cls);
+	StructType* ty;
+	if (itr != gen_context.itable_type_map.end())
+	{
+		ty = itr->second;
+	}
+	else
+	{
+		vector<llvm::Type*> vtable_types;
+		for (int i = 0; i < cls->if_vtabledef.size(); ++i) {
+			vtable_types.push_back(
+				GetOrCreateSingleITable(cls, cls->implements[i], 
+					cls->if_vtabledef[i].size(), vtable_types.size())->getType());
+		}
+		ty = StructType::create(vtable_types);
+		gen_context.itable_type_map[cls] = ty;
+	
+		SmallVector<Metadata *, 8> dtypes;
+		auto Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
+		for (auto & ty : vtable_types) {
+			dtypes.push_back(DBuilder->createPointerType(GetTypeInfoType()->llvm_dtype, 64));
+		}
+		auto dty = DBuilder->createStructType(dinfo.cu, ty->getName(), Unit, cls->Pos.line,
+			module->getDataLayout().getTypeAllocSizeInBits(ty),
+			module->getDataLayout().getPrefTypeAlignment(ty) * 8,
+			DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray(dtypes));
+		gen_context.itable_dtype_map[cls] = dty;
+	}
+		
+	return ty;
+}
+
+DIType* GetOrCreateITableDType(ClassAST* cls)
+{
+	auto itr = gen_context.itable_dtype_map.find(cls);
+	DIType* dty;
+	if (itr != gen_context.itable_dtype_map.end())
+	{
+		dty = itr->second;
+	}
+	else
+	{
+		GetOrCreateITableType(cls);
+		dty = gen_context.itable_dtype_map[cls];
+	}
+
+	return dty;
+}
+
+Constant* CreateITableConstant(ClassAST* cls)
+{
+	vector<llvm::Constant*> vtables;
+	for (int i = 0; i < cls->if_vtabledef.size(); ++i) {
+		vtables.push_back(
+			GetOrCreateSingleITable(
+				cls, cls->implements[i], cls->if_vtabledef[i].size(), vtables.size()));
+	}
+	auto newv = ConstantStruct::get(GetOrCreateITableType(cls), vtables);
+	return newv;
 }
 
 template<typename Derived>
@@ -450,7 +566,6 @@ MemberExprAST* GetMemberExprASTOfMemberFunc(ExprAST* Callee, FunctionAST*& outfu
 					outfunc = pfuncinst->instance;
 			}
 		}
-		
 	}
 	return obj;
 }
@@ -597,37 +712,59 @@ void GenerateType(const Birdee::ResolvedType& type, PDIType& dtype, llvm::Type* 
 		dtype = DBuilder->createBasicType("void", 0, dwarf::DW_ATE_address);
 		break;
 	case tok_class:
-		if (!type.class_ast->llvm_type)
 		{
-			string name;
-			MangleNameAndAppend(name, type.class_ast->GetUniqueName());
-			base = StructType::create(context, name);
-
 			DIFile *Unit;
-			if (type.class_ast->isTemplateInstance() && 
-				type.class_ast->template_source_class && 
+			if (type.class_ast->isTemplateInstance() &&
+				type.class_ast->template_source_class &&
 				//fix-me: template_source_class may be null for orphan template instances, the debug info may not be correct
 				type.class_ast->template_source_class->template_param->mod) //if is templ instance and is imported
 			{
 				auto mod = type.class_ast->template_source_class->template_param->mod;
 				Unit = DBuilder->createFile(mod->source_file, mod->source_dir);
-			}		
+			}
 			else
 			{
 				Unit = DBuilder->createFile(dinfo.cu->getFilename(), dinfo.cu->getDirectory());
 			}
-			dtype = DBuilder->createReplaceableCompositeType(llvm::dwarf::DW_TAG_structure_type, name, dinfo.cu ,Unit, type.class_ast->Pos.line);
-			type.class_ast->llvm_dtype = dtype;
-		}
-		else
-		{
-			base = type.class_ast->llvm_type;
-			dtype = type.class_ast->llvm_dtype;
-		}
-		if (!type.class_ast->is_struct)
-		{
-			base = base->getPointerTo();
-			dtype= DBuilder->createPointerType(dtype, 64);
+
+			if (!type.class_ast->llvm_type)
+			{
+				string name;
+				MangleNameAndAppend(name, type.class_ast->GetUniqueName());
+				base = StructType::create(context, name);
+
+				dtype = DBuilder->createReplaceableCompositeType(llvm::dwarf::DW_TAG_structure_type, name, dinfo.cu, Unit, type.class_ast->Pos.line);
+				type.class_ast->llvm_dtype = dtype;
+			}
+			else
+			{
+				base = type.class_ast->llvm_type;
+				dtype = type.class_ast->llvm_dtype;
+			}
+			ClassAST* cls = type.class_ast;
+			if (!cls->is_struct)
+			{
+				if (!cls->is_interface)
+				{
+					base = base->getPointerTo();
+					dtype = DBuilder->createPointerType(dtype, 64);
+				}
+				else
+				{
+					// use fat pointer for interfaces
+					string name;
+					MangleNameAndAppend(name, type.class_ast->GetUniqueName() + ".fat_ptr");
+
+					base = StructType::create(context, { llvm::Type::getInt8PtrTy(context), base->getPointerTo() });
+					dtype = DBuilder->createStructType(dinfo.cu, name, Unit, cls->Pos.line,
+						module->getDataLayout().getTypeAllocSizeInBits(base),
+						module->getDataLayout().getPrefTypeAlignment(base) * 8,
+						DINode::DIFlags::FlagZero, nullptr, DBuilder->getOrCreateArray({
+							DBuilder->createPointerType(DBuilder->createBasicType("pointer", 64, dwarf::DW_ATE_address), 64),
+							DBuilder->createPointerType(dtype, 64)
+						}));
+				}
+			}
 		}
 		break;
 	default:
@@ -1407,9 +1544,15 @@ void Birdee::ClassAST::PreGenerate()
 	if (parent_class)
 	{
 		auto& node2 = helper.GetTypeNode(ResolvedType(parent_class));
-		types.push_back(node2.llvm_ty->getPointerElementType());
+		if (parent_class->is_interface) {
+			types.push_back(node2.llvm_ty->getStructElementType(1)->getPointerElementType());
+		}
+		else {
+			types.push_back(node2.llvm_ty->getPointerElementType());
+		}
 		ty_nodes.push_back(&node2);
 	}
+
 	for (auto& field : fields)
 	{
 		if (field.decl->resolved_type.type == tok_class
@@ -1423,10 +1566,17 @@ void Birdee::ClassAST::PreGenerate()
 	}
 	auto& node = helper.GetTypeNode(ResolvedType(this));
 	auto ty =  node.llvm_ty;
-	if (!is_struct)
-		llvm_type = (llvm::StructType*)ty->getPointerElementType();
-	else
+	if (!is_struct) {
+		if (!is_interface) {
+			llvm_type = (llvm::StructType*)ty->getPointerElementType();
+		}
+		else {
+			llvm_type = (llvm::StructType*)ty->getStructElementType(1)->getPointerElementType();
+		}
+	} 
+	else {
 		llvm_type = (llvm::StructType*)ty;
+	}
 	llvm_type->setBody(types);
 
 	auto size = module->getDataLayout().getTypeAllocSizeInBits(llvm_type);
@@ -1467,6 +1617,11 @@ void Birdee::ClassAST::PreGenerate()
 	if (needs_rtti)
 	{
 		GetOrCreateTypeInfoGlobalRaw(this);
+	}
+	// no need to create itable gv for abstract class
+	if (!is_abstract && if_vtabledef.size() > 0)
+	{
+		GetOrCreateITableType(this);
 	}
 	//fix-me: now the debug info is not portable
 }
@@ -1769,9 +1924,9 @@ llvm::Value * Birdee::NewExprAST::Generate()
 	Value* ret = builder.CreateCall(GetMallocObj(), { builder.getInt32(sz), finalizer });
 	ret = builder.CreatePointerCast(ret, llvm_ele_ty->getPointerTo());
 
+	ClassAST* curcls = resolved_type.class_ast;
 	if (resolved_type.class_ast->needs_rtti)
 	{
-		ClassAST* curcls = resolved_type.class_ast;
 		std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
 		while (curcls->parent_class)
 		{
@@ -1903,14 +2058,37 @@ llvm::Value * Birdee::UpcastExprAST::Generate()
 	std::vector<Value*> gep = { builder.getInt32(0)};
 	auto val = expr->Generate();
 	assert(expr->resolved_type.type == tok_class && expr->resolved_type.index_level == 0);
-	auto curcls = expr->resolved_type.class_ast;
-	while (curcls != target)
+	auto cls = expr->resolved_type.class_ast;
+	auto curcls = cls;
+	while (curcls && curcls != target)
 	{
 		gep.push_back(builder.getInt32(0)); //get the parent pointer
 		curcls = curcls->parent_class;
-		assert(curcls);
+		// assert(curcls);
 	}
-	return builder.CreateGEP(val,gep);
+	if (curcls)
+		return builder.CreateGEP(val,gep);
+	// upcast to interface
+	for (int i = 0; i < cls->implements.size(); ++i)
+	{
+		curcls = cls->implements[i];
+		while (curcls && curcls != target)
+		{
+			curcls = curcls->parent_class;
+		}
+		if (curcls) 
+		{
+			auto ty = helper.GetTypeNode(resolved_type).llvm_ty;
+			auto ret_val = builder.CreateInsertValue(UndefValue::get(ty),
+				GetOrCreateTypeInfoGlobal(cls, cls->implements[i], cls->if_vtabledef[i].size(), i), 0);
+			ret_val = builder.CreateInsertValue(ret_val,
+				builder.CreatePointerCast(val, target->llvm_type->getPointerTo()), 1);
+			return ret_val;
+		}
+	}
+	// cannot reach here
+	assert(false);
+	return NULL;
 }
 
 llvm::Value * Birdee::ThisExprAST::Generate()
@@ -2523,13 +2701,25 @@ llvm::Value * Birdee::MemberExprAST::GenerateFunction()
 	else if (kind == member_virtual_function)
 	{
 		assert(Obj->resolved_type.type == tok_class);
-		//SomeClass* obj => RttiVtable** ppvtable
-		Value* v = builder.CreatePointerCast(llvm_obj,
-			GetOrCreateVTableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo()->getPointerTo());
-		//RttiVtable* pvtable = *ppvatable
-		v = builder.CreateLoad(v);
-		//char** pfunc = &(v[0].vtable[idx])
-		v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(func->virtual_idx) });
+		Value* v;
+		if (Obj->resolved_type.class_ast->is_interface)
+		{
+			//SomeInterface_fat_ptr obj =>{RttiVtable* pvtbale, SomeInterface* real_obj}
+			v = builder.CreatePointerCast(llvm_itable_obj,
+				GetOrCreateITableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo());
+			//char** pfunc = &(v[0].vtable[idx])
+			v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(0),builder.getInt32(func->virtual_idx) });
+		}
+		else
+		{
+			//SomeClass* obj => RttiVtable** ppvtable
+			v = builder.CreatePointerCast(llvm_obj,
+				GetOrCreateVTableType(Obj->resolved_type.class_ast->vtabledef.size())->getPointerTo()->getPointerTo());
+			//RttiVtable* pvtable = *ppvatable
+			v = builder.CreateLoad(v);
+			//char** pfunc = &(v[0].vtable[idx])
+			v = builder.CreateGEP(v, { builder.getInt32(0),builder.getInt32(1),builder.getInt32(func->virtual_idx) });
+		}
 		v = builder.CreateLoad(v);
 		//PFUNC func = (PFUNC)*pfunc
 		v = builder.CreatePointerCast(v, Obj->resolved_type.class_ast->vtabledef[func->virtual_idx]->GetLLVMFunc()->getType());
@@ -2568,14 +2758,23 @@ int Birdee::MemberExprAST::GenerateObj()
 		else if (Obj->resolved_type.index_level == 0 &&
 			Obj->resolved_type.type == tok_class && !Obj->resolved_type.class_ast->is_struct)
 		{
-			auto casade_llvm_obj = Obj->Generate();
+			llvm::Value* casade_llvm_obj = nullptr;
+			if (!Obj->resolved_type.class_ast->is_interface) {
+				casade_llvm_obj = Obj->Generate();
+			}
+			else {
+				auto if_llvm_obj = Obj->Generate();
+				llvm_itable_obj = builder.CreateExtractValue(if_llvm_obj, 0);
+				casade_llvm_obj = builder.CreateExtractValue(if_llvm_obj, 1);
+			}
 			ClassAST* curcls = Obj->resolved_type.class_ast;
 			llvm_obj = GenerateMemberParentGEP(casade_llvm_obj, curcls, casade_parents);
-			//if current class is a subclass, add 1 to offset,
-			//because field 0 is always the embeded parent class object
+			// notice: useless for interface below
+			// if current class is a subclass, add 1 to offset,
+			// because field 0 is always the embeded parent class object
 			if (curcls->parent_class)
 				field_offset++;
-			else if (curcls->needs_rtti) //if current class has no super class, then check if there is an embeded rtti pointer in the fields
+			else if (curcls->needs_rtti) // if current class has no super class, then check if there is an embeded rtti pointer in the fields
 				field_offset++;
 		}
 		else
@@ -2793,14 +2992,50 @@ llvm::Value * Birdee::ClassAST::Generate()
 			tyinfo->setDSOLocal(true);
 		}
 
+		ClassAST* type_info_cls = GetTypeInfoType();
 		GlobalVariable* vstr = GenerateStr(StringRefOrHolder(GetUniqueName()));
 		Constant* const_ptr_5 = ConstantExpr::getGetElementPtr(nullptr, vstr, { builder.getInt32(0) });
-		Constant* parent_rtti = parent_class ? GetOrCreateTypeInfoGlobal(parent_class) : Constant::getNullValue(GetTypeInfoType()->llvm_type->getPointerTo());
-		auto val = ConstantStruct::get(GetTypeInfoType()->llvm_type, {
+		Constant* parent_rtti = parent_class ? GetOrCreateTypeInfoGlobal(parent_class) : Constant::getNullValue(type_info_cls->llvm_type->getPointerTo());
+
+		vector<Constant*> interf_rttis;
+		for (auto & impl : implements) {
+			interf_rttis.push_back(GetOrCreateTypeInfoGlobal(impl));
+		}
+		// create a GV to hold interfaces rtti
+		vector<llvm::Type*> types{ llvm::Type::getInt32Ty(context),
+			ArrayType::get(type_info_cls->llvm_type->getPointerTo(), interf_rttis.size()) };
+		auto interf_array_ty = StructType::create(context, types);
+		auto interf_array_data = ConstantArray::get(ArrayType::get(type_info_cls->llvm_type->getPointerTo(), interf_rttis.size()), interf_rttis);
+		GlobalVariable* interf_gv = new GlobalVariable(*module, interf_array_ty, false, GlobalValue::PrivateLinkage,
+			ConstantStruct::get(interf_array_ty, { builder.getInt32(interf_rttis.size()), interf_array_data }));
+
+		// create a GV to hold implement itables
+		vector<Constant*> itables;
+		for (int i = 0; i < implements.size(); ++i) {
+			itables.push_back(ConstantExpr::getPointerCast(
+				GetOrCreateTypeInfoGlobal(this, implements[i], this->if_vtabledef[i].size(), i), llvm::Type::getInt8PtrTy(context)));
+		}
+		// create a GV to hold array of implement itables
+		vector<llvm::Type*> itable_types{ llvm::Type::getInt32Ty(context),
+			ArrayType::get(llvm::Type::getInt8PtrTy(context), itables.size()) };
+		auto itable_array_ty = StructType::create(context, itable_types);
+		auto itable_array_data = ConstantArray::get(ArrayType::get(llvm::Type::getInt8PtrTy(context), itables.size()), itables);
+		GlobalVariable* itables_gv = new GlobalVariable(*module, itable_array_ty, false, GlobalValue::PrivateLinkage,
+			ConstantStruct::get(itable_array_ty, { builder.getInt32(itables.size()), itable_array_data }));
+		
+		assert(type_info_cls->fields.size() >= 4 && "imcompatible type_info, please check your birdee lib version");
+		auto rtti_val = ConstantStruct::get(type_info_cls->llvm_type, {
 				const_ptr_5,
 				parent_rtti,
+				ConstantExpr::getPointerCast(interf_gv, 
+						// get resolve type of impl array (the 3th field)
+						helper.GetType(type_info_cls->fields[2].decl->resolved_type)),
+				ConstantExpr::getPointerCast(itables_gv,
+						// get resolve type of itable array (the 4th field)
+						helper.GetType(type_info_cls->fields[3].decl->resolved_type)),
 			});
 		//if the class has vtable, the rtti is wrapped in rtti-vtable struct
+		auto val = rtti_val;
 		if (vtabledef.size())
 		{
 			vector<Constant*> table;
@@ -2811,11 +3046,28 @@ llvm::Value * Birdee::ClassAST::Generate()
 				table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(llvm_func), builder.getInt8PtrTy()));
 			}
 			val = ConstantStruct::get(GetOrCreateVTableType(vtabledef.size()), {
-					val,
+					rtti_val,
 					ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(),vtabledef.size()),table)
 				});
 		}
 		tyinfo->setInitializer(val);
+	}
+
+	// initialize itable global variables
+	if (!is_abstract && if_vtabledef.size() > 0) {
+		for (int i = 0; i < if_vtabledef.size(); ++i) {
+			auto gv = GetOrCreateSingleITable(this, implements[i], if_vtabledef[i].size(), i);
+			vector<Constant*> table;
+			for (auto func : if_vtabledef[i]) {
+				auto llvm_func = func->GetLLVMFunc();
+				assert(llvm::isa<Function>(*llvm_func));
+				table.push_back(ConstantExpr::getPointerCast(static_cast<Function*>(llvm_func), builder.getInt8PtrTy()));
+			}
+			auto impl_val = ConstantStruct::get(GetOrCreateITableType(if_vtabledef[i].size()), {
+					ConstantArray::get(ArrayType::get(builder.getInt8PtrTy(), if_vtabledef[i].size()), table)
+				});
+			gv->setInitializer(impl_val);
+		}
 	}
 
 	for (auto& func : funcs)
@@ -3037,19 +3289,27 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		builder.CreateStore(rv, lv);
 		return nullptr;
 	}
-	if (LHS->resolved_type.isReference() || 
+	if (LHS->resolved_type.isReference() || RHS->resolved_type.isReference() ||
 		(LHS->resolved_type.index_level == 0 && LHS->resolved_type.type == tok_pointer
 		&& RHS->resolved_type.index_level == 0 && RHS->resolved_type.type == tok_pointer))
 	{
+		auto lv = LHS->Generate();
+		auto rv = RHS->Generate();
+		if (LHS->resolved_type.isReference() && LHS->resolved_type.class_ast && LHS->resolved_type.class_ast->is_interface) {
+			lv = builder.CreateExtractValue(lv, 1);
+		}
+		if (RHS->resolved_type.isReference() && RHS->resolved_type.class_ast && RHS->resolved_type.class_ast->is_interface) {
+			rv = builder.CreateExtractValue(rv, 1);
+		}
 		if (Op == tok_cmp_equal || Op == tok_equal)
 		{
-			return builder.CreateICmpEQ(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
-				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
+			return builder.CreateICmpEQ(builder.CreatePtrToInt(lv, builder.getInt64Ty()),
+				builder.CreatePtrToInt(rv, builder.getInt64Ty()));
 		}
 		if (Op == tok_cmp_ne || Op == tok_ne)
 		{
-			return builder.CreateICmpNE(builder.CreatePtrToInt(LHS->Generate(), builder.getInt64Ty()),
-				builder.CreatePtrToInt(RHS->Generate(), builder.getInt64Ty()));
+			return builder.CreateICmpNE(builder.CreatePtrToInt(lv, builder.getInt64Ty()),
+				builder.CreatePtrToInt(rv, builder.getInt64Ty()));
 		}
 	}
 	if (isLogicToken(Op) || (LHS->resolved_type.type==tok_boolean && LHS->resolved_type.index_level==0) ) //boolean
@@ -3093,7 +3353,14 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 	}
 	case tok_pointer_of:
 	{
-		return builder.CreateBitOrPointerCast(arg->Generate(), llvm::Type::getInt8PtrTy(context));
+		auto val = arg->Generate();
+		if (arg->resolved_type.type == tok_class 
+			&& arg->resolved_type.class_ast
+			&& arg->resolved_type.class_ast->is_interface)
+		{
+			val = builder.CreateExtractValue(val, 1);
+		}
+		return builder.CreateBitOrPointerCast(val, llvm::Type::getInt8PtrTy(context));
 	}
 	case tok_typeof:
 	{
@@ -3101,13 +3368,20 @@ llvm::Value * Birdee::UnaryExprAST::Generate()
 		assert(arg->resolved_type.type == tok_class);
 		auto curcls = arg->resolved_type.class_ast;
 
-		std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
-		while (curcls->parent_class)
-		{
-			gep.push_back(builder.getInt32(0)); //get the parent pointer
-			curcls = curcls->parent_class;
+		if (!curcls->is_interface) {
+			std::vector<Value*> gep = { builder.getInt32(0),builder.getInt32(0) };
+			while (curcls->parent_class)
+			{
+				gep.push_back(builder.getInt32(0)); //get the parent pointer
+				curcls = curcls->parent_class;
+			}
+			return builder.CreateLoad(builder.CreateGEP(val, gep));
 		}
-		return builder.CreateLoad(builder.CreateGEP(val, gep));
+		else {
+			val = builder.CreateExtractValue(val, 1);
+			val = builder.CreatePointerCast(val, GetTypeInfoType()->llvm_type->getPointerTo()->getPointerTo());
+			return builder.CreateLoad(val);
+		}
 	}
 	default:
 		assert(0 && "Bad type for unary expression");

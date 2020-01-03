@@ -80,6 +80,8 @@ namespace Birdee
 	{"end",tok_end},
 	{"class",tok_class},
 	{"struct",tok_struct},
+	{"interface",tok_interface},
+	{"implements",tok_implement},
 	{"typeof",tok_typeof},
 	{"private",tok_private},
 	{"public",tok_public},
