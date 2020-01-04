@@ -42,11 +42,15 @@ dim pretty_target = '''{
 		"f": null
 	}
 }'''
+
+
+dim t2=ser.to_str()==pretty_target
 {@bdassert("ser.to_str()==pretty_target")@}
 
 ser = new json_to_str_converter(false)
 ser.serialize(t)
 
 dim ugly_target = '''{"a":1,"b":"aaaa","c":{"c":12,"d":"jaja\n\rjajaj","e":[1,2,3,4],"f":null}}'''
+#println(bool2str(ser.to_str()==ugly_target))
 {@bdassert("ser.to_str()==ugly_target")@}
 println("JSON test done")

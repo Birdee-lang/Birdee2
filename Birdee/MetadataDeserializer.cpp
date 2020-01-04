@@ -19,6 +19,8 @@ using namespace Birdee;
 static std::vector<ClassAST*> idx_to_class;
 static std::vector<PrototypeAST*> idx_to_proto;
 static std::vector<ClassAST*> orphan_idx_to_class;
+//the orphan classes that needs to call PreGenerate on
+static std::vector<ClassAST*> orphan_class_to_generate;
 static std::vector<ClassAST*> to_run_phase0;
 static string current_package_name;
 static int current_module_idx;
@@ -488,6 +490,8 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 	string name = json_cls["name"].get<string>();
 	auto orphan = cu.orphan_class.find(name);
 	ClassAST* classdef;
+	//whether we need to call PreGenerate on this class?
+	bool needs_generate = true;
 	if (orphan != cu.orphan_class.end())
 	{//if already imported in orphan classes
 		classdef = orphan->second.get();
@@ -501,6 +505,7 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 		auto clsdef_itr = src_mod->classmap.find(cls_simple_name);
 		BirdeeAssert(clsdef_itr != src_mod->classmap.end(), "Cannot find the class in pre-imported module");
 		classdef = clsdef_itr->second.first.get();
+		needs_generate = false;
 	}
 	else
 	{
@@ -547,6 +552,10 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 					classdef->template_source_class = src;
 					src->template_param->AddImpl(vec, std::move(newclass));
 				}
+				else
+				{
+					needs_generate = false;
+				}
 			}
 			else
 			{//if the template itself is not imported, make it an orphan
@@ -564,6 +573,7 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 				auto itr = node->mod->classmap.find(name.substr(idx + 1));
 				BirdeeAssert(itr != node->mod->classmap.end(), "Module imported, but cannot find the class");
 				classdef = itr->second.first.get();
+				needs_generate = false;
 			}
 			else
 			{
@@ -575,6 +585,8 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 
 	}
 	orphan_idx_to_class[idx] = classdef;
+	if (needs_generate)
+		orphan_class_to_generate.push_back(classdef);
 }
 
 void PreBuildOrphanClassFromJson(const json& cls, 
@@ -814,6 +826,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	idx_to_class.clear();
 	to_run_phase0.clear();
 	orphan_idx_to_class.clear();
+	orphan_class_to_generate.clear();
 	source_paths.push_back(path);
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
@@ -852,7 +865,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 		cls.second.first->PreGenerateFuncs();
 		//cls.second->Generate();
 	}
-	for (auto cls : orphan_idx_to_class)
+	for (auto cls : orphan_class_to_generate)
 	{
 		cls->PreGenerate();
 		cls->PreGenerateFuncs();
