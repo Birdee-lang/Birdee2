@@ -105,13 +105,13 @@ int ConvertClassToIndex(ClassAST* class_ast)
 				defined_classes->push_back(json());
 				(*defined_classes)[retidx] = BuildSingleClassJson(*class_ast, false);
 				auto& the_class = (*defined_classes)[retidx];
-				the_class["source"] = ConvertClassToIndex(class_ast->template_source_class);
+				the_class["template_source"] = ConvertClassToIndex(class_ast->template_source_class);
 				auto args = json::array();
 				for (auto& arg : *class_ast->template_instance_args)
 				{
 					args.push_back(BuildTemplateArgumentJson(arg));
 				}
-				the_class["arguments"] = args;
+				the_class["template_arguments"] = args;
 				//class_ast->template_instance_args
 				return retidx;
 			}

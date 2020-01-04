@@ -1587,15 +1587,15 @@ namespace Birdee
 	{
 		preprocessing_state.current_phase = 1;
 		auto len = preprocessing_state.class_templ_inst_rollback.size();
-		for (size_t i = 0; i < len; i++)
-		{
-			// in phase0, the phase1 of template instances are not called. Call phase1 here with proper environment
-			Phase1OnlyForTemplateInstance(*preprocessing_state.class_templ_inst_rollback.at(i));
-		}
 		//scope_mgr.PushBasicBlock();
 		for (auto& stmt : toplevel)
 		{
 			stmt->Phase1();
+		}
+		for (size_t i = 0; i < len; i++)
+		{
+			// in phase0, the phase1 of template instances are not called. Call phase1 here with proper environment
+			Phase1OnlyForTemplateInstance(*preprocessing_state.class_templ_inst_rollback.at(i));
 		}
 		//scope_mgr.PopBasicBlock();
 	}

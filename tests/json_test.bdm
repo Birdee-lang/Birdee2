@@ -1,0 +1,52 @@
+import serialization.json.serializer:*
+
+{@from bdassert import bdassert@}
+class AAAA
+	public a as int
+	public b as string
+	public c as BBB
+end
+
+class BBB
+	public c as int
+	public d as string
+	private e as int[]
+	private f as string[]
+	public func __init__()
+		c=12
+		d="jaja\n\rjajaj"
+		e=[1,2,3,4]
+	end
+end
+
+dim t = new AAAA
+t.a=1
+t.b="aaaa"
+t.c=new BBB
+
+dim ser = new json_to_str_converter(true)
+ser.serialize(t)
+
+dim pretty_target = '''{
+	"a": 1,
+	"b": "aaaa",
+	"c": {
+		"c": 12,
+		"d": "jaja\n\rjajaj",
+		"e": [
+			1,
+			2,
+			3,
+			4
+		],
+		"f": null
+	}
+}'''
+{@bdassert("ser.to_str()==pretty_target")@}
+
+ser = new json_to_str_converter(false)
+ser.serialize(t)
+
+dim ugly_target = '''{"a":1,"b":"aaaa","c":{"c":12,"d":"jaja\n\rjajaj","e":[1,2,3,4],"f":null}}'''
+{@bdassert("ser.to_str()==ugly_target")@}
+println("JSON test done")

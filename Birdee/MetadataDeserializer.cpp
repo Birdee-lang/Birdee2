@@ -666,14 +666,14 @@ void BuildClassFromJson(const json& cls, ImportedModule& mod)
 		//fix-me: check if the imported type is the same as the existing type
 
 
-		auto srcitr = json_cls.find("source");
+		auto srcitr = json_cls.find("template_source");
 		if (srcitr != json_cls.end()) //if it's a class template instance
 		{
 			int src_idx = srcitr->get<int>();
 			BirdeeAssert(src_idx >= 0 && src_idx < idx_to_class.size(), "Template source index out of index");
 			ClassAST* src = idx_to_class[src_idx];
 			BirdeeAssert(src->isTemplate(), "The source must be a class template");
-			auto targs = BuildTemplateArgsFromJson(json_cls["arguments"]);
+			auto targs = BuildTemplateArgsFromJson(json_cls["template_arguments"]);
 			auto name_cls_itr = mod.classmap.find((*itr)->name);
 			assert(name_cls_itr != mod.classmap.end());
 			auto oldcls = src->template_param->Get(*targs);

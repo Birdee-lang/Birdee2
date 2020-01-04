@@ -149,6 +149,17 @@ class output_stream[T]
 		file.close()
 	end
 
+	public function write_char(v as byte)
+		if pos < buf_size then
+			buffer[pos] = v
+			pos = pos + 1
+		else
+			file.write(buffer, 0, pos)
+			buffer[0] = v
+			pos = 0
+		end
+	end
+
 	public function write(v as string)
 		dim buf_cap = buf_size - pos
 		dim remaining = v.length()
