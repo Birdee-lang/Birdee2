@@ -50,6 +50,8 @@ else:
 @}	
 	end
 
+	public func get_type() as type_info => typeof(v)
+
 	public func is_type[T]() as boolean
 {@
 T = get_func_type_templ_at(0)
