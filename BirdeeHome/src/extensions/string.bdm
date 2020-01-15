@@ -297,3 +297,9 @@ end
 	end
 	return v.view(v.length()-substr.length(), substr.length()) == substr
 end
+
+function char2str(c as byte) as string
+	dim t = new byte*1
+	t[0]=c
+	return new string:copy_bytes(t, 0, 1)
+end

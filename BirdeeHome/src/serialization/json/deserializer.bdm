@@ -1,0 +1,203 @@
+package serialization.json
+
+import system.io.stream:abstract_input_stream
+import system.io.stream:byte_input_stream
+import extensions.string:*
+import hash:hash_map
+import any:any
+import string_buffer:string_buffer
+import vector:vector
+
+@private declare function isspace(ch as byte) as int
+
+{@from bdutils import *
+c = set_char@}
+
+closure string_callback(str as string)
+closure void_callback()
+
+@enable_rtti
+class json_format_exception: runtime_exception
+	public func get_message() as string
+		return "JSON format exception @ " + int2str(line) + ", " + int2str(pos) + " : " + msg
+	end
+	public msg as string, line as uint, pos as uint
+	public func __init__(msg as string, line as uint, pos as uint)
+		this.msg=msg
+		this.line=line
+		this.pos=pos
+	end
+end
+
+struct json_deserializer
+	private stream as abstract_input_stream
+	private current as byte
+	public line as uint
+	public pos as uint
+
+	public func __init__(stream as abstract_input_stream)
+		this.stream=stream
+		current=0
+		line=1
+		pos=0
+		get_next_token()
+	end
+
+	private func get_next_token() as byte
+		if current == -1 then
+			return -1
+		end
+		dim c as byte
+		while true
+			c = stream.get_char()
+			pos = pos + 1
+			if c== {@c("\n")@} then
+				pos = 1
+				line = line + 1
+			end
+			if isspace(c) ==0 then
+				break
+			end
+		end
+		current = c
+		return c
+	end
+
+	public function parse_raw_json_string() as string
+		dim ret = new string_buffer
+		while current != {@c('"')@} && current != -1
+			if current != {@c('\\')@}  then
+				ret.write_char(current)
+			else
+				#bfnrt"\
+				current = stream.get_char()
+				if current == {@c('b')@} then
+					ret.write_char({@c('\b')@})
+				else if current == {@c('f')@} then
+					ret.write_char({@c('\f')@})				
+				else if current == {@c('n')@} then
+					ret.write_char({@c('\n')@})
+				else if current == {@c('r')@} then
+					ret.write_char({@c('\r')@})
+				else if current == {@c('t')@} then
+					ret.write_char({@c('\t')@})
+				else if current == {@c('\\')@} then
+					ret.write_char({@c('\\')@})
+				else if current == {@c('"')@} then
+					ret.write_char({@c('"')@})
+				else
+					throw new json_format_exception("Unknown escape character " + char2str(current), line, pos)
+				end
+			end
+			current = stream.get_char()
+		end
+		if current == -1 then
+			throw new json_format_exception("Unexpected end of string", line, pos)
+		end
+
+		get_next_token() # eat quote
+		return ret.to_str()
+	end
+
+
+	private func expect(c as byte)
+		if current != c then
+			throw new json_format_exception("Expectation of character not satisfied, expecting " + char2str(c) + ", got " + char2str(current), line, pos)
+		end
+	end
+
+	private func expect_and_eat(c as byte)
+		expect(c)
+		get_next_token()
+	end
+
+	public func parse_raw(on_number as string_callback, on_string as string_callback, on_key_value as string_callback, on_array as void_callback)
+		if current == {@c("{")@} then
+			while true
+				get_next_token()
+				expect({@c('"')@})
+				current = stream.get_char()
+				dim k = parse_raw_json_string()
+				expect_and_eat({@c(':')@})
+				on_key_value(k)
+				if current != {@c(",")@} then
+					break
+				end
+			end
+			expect_and_eat({@c('}')@})
+		else if current == {@c("[")@} then
+			while true
+				get_next_token()
+				on_array()
+				if current != {@c(",")@} then
+					break
+				end
+			end
+			expect_and_eat({@c(']')@})
+		else if current == {@c('"')@} then
+			current = stream.get_char()
+			on_string(parse_raw_json_string())
+		else
+			dim buf = new string_buffer
+			while current != {@c(",")@} && current != -1
+				buf.write_char(current)
+				current = stream.get_char()
+			end
+			dim ret = buf.to_str()
+			if ret.length() == 0 then
+				throw new json_format_exception("Empty number literal", line, pos)
+			end
+			on_number(ret)
+		end
+	end
+end
+
+class json_map_deserializer
+	private base as json_deserializer
+
+	public func __init__(stream as abstract_input_stream)
+		base.__init__(stream)
+	end
+
+	public func deserialize() as any
+		dim ret as any
+		dim map as hash_map[string, any]
+		dim arr as vector[any]
+		dim on_number = func(str as string) => ret.set(str.to_double())
+		dim on_string = func(str as string) => ret.set(str)
+		dim on_key_value = func(str as string)
+			if map===null then
+				map = new hash_map[string, any]
+				ret.set(map)
+			end
+			if map.has(str) then
+				throw new json_format_exception("The key " + str + " has already been in the map." ,base.line, base.pos)
+			end
+			map.insert(str, deserialize())
+		end
+		dim on_array = func()
+			if arr === null then
+				arr = new vector[any](0)
+				ret.set(arr)
+			end
+			arr.push_back(deserialize())
+		end
+		base.parse_raw(on_number, on_string, on_key_value, on_array)
+		return ret
+	end
+end
+
+##
+dim testjson = '''{
+	"123":1,
+	"345": "sda"
+}
+'''
+
+dim mystream = new byte_input_stream:from_string(testjson)
+dim myjson = new json_map_deserializer(mystream)
+dim mymap = myjson.deserialize().get[hash_map[string, any]]()
+println(double2str(mymap["123"].get[double]()))
+println(mymap["345"].get[string]())
+
+##
