@@ -159,6 +159,7 @@ class json_map_deserializer
 		base.__init__(stream)
 	end
 
+	@stack_capture
 	public func deserialize() as any
 		dim ret as any
 		dim map as hash_map[string, any]
