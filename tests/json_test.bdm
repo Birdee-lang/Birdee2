@@ -1,14 +1,23 @@
 import serialization.json.serializer:*
+import serialization.json.deserializer:*
+import system.io.stream:byte_input_stream
+import vector:vector
+import any:*
+import hash:*
 
 {@from bdassert import bdassert@}
+##<
 class AAAA
 	public a as int
 	public b as string
 	public c as BBB
 end
 
-class BBB
+class CCC
 	public c as int
+end
+
+class BBB: CCC
 	public d as string
 	private e as int[]
 	private f as string[]
@@ -43,8 +52,7 @@ dim pretty_target = '''{
 	}
 }'''
 
-
-dim t2=ser.to_str()==pretty_target
+println(ser.to_str())
 {@bdassert("ser.to_str()==pretty_target")@}
 
 ser = new json_to_str_converter(false)
@@ -53,4 +61,38 @@ ser.serialize(t)
 dim ugly_target = '''{"a":1,"b":"aaaa","c":{"c":12,"d":"jaja\n\rjajaj","e":[1,2,3,4],"f":null}}'''
 #println(bool2str(ser.to_str()==ugly_target))
 {@bdassert("ser.to_str()==ugly_target")@}
+>##
+
+
+#-------------------------------JSON to Map test ---------------------
+
+dim testjson = '''{
+	"AAAA":1,
+	"BBBB": "sda",
+	"CCCC":["123",2,{}],
+	"DDDD": null ,
+	"EEEE": {"a":2}
+}
+'''
+
+dim mystream = new byte_input_stream:from_string(testjson)
+dim myjson = new json_map_deserializer(mystream)
+dim mymap = myjson.deserialize().get[hash_map[string, any]]()
+{@bdassert('mymap["AAAA"].get[double]()==1')@}
+{@bdassert('mymap["BBBB"].get[string]()=="sda"')@}
+
+dim arr = mymap["CCCC"].get[vector[any]]()
+{@bdassert('arr[0].get[string]()=="123"')@}
+{@bdassert('arr[1].get[double]()==2')@}
+{@bdassert('arr[2].get[hash_map[string,any]]().size()==0')@}
+{@bdassert('arr.size()==3')@}
+{@bdassert('mymap["DDDD"].is_null()')@}
+dim mp= mymap["EEEE"].get[hash_map[string,any]]()
+{@bdassert('mp["a"].get[double]()==2')@}
+
+
+#----------------------------------------------------------------------
+
+
+
 println("JSON test done")

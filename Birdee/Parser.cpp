@@ -1255,7 +1255,6 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 	}},
 	{INTERNAL_ANNO_STACK_CAPTURE, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'stack_capture\' annotation can only be applied on member functions");
-		CompileAssert(!cls->funcs[index].decl->isTemplate(), "The \'virtual\' annotation cannot be applied on function templates");
 		cls->funcs[index].decl->capture_on_stack = true;
 	}}
 	/*

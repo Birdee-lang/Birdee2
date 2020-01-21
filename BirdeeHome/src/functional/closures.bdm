@@ -1,5 +1,7 @@
 package functional
 
+import unsafe
+
 struct closure_unpacked
 	public funcptr as pointer
 	public data as pointer

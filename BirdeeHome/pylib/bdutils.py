@@ -113,14 +113,25 @@ def func_templ_expr_at(idx, thefunc = None):
 	set_ast(get_func_expr_templ_at(idx, thefunc))
 
 
+def _foreach_field_impl(T: ClassAST, callback):
+	fld=[]
+	def get_all_fields(cur: ClassAST):
+		if cur.parent_class:
+			get_all_fields(cur.parent_class)
+		for f in cur.fields:
+			fld.append(f)
+	get_all_fields(T)
+	length=len(fld)
+	for idx, field in enumerate(fld):
+		callback(idx, length, field)
+
 '''
-T should be a resolved type.
+T should be a resolved type/ClassAST.
 callback should be (idx, length, field)
 '''
 def foreach_field(T, callback):
-	if not is_a_class(T) and not is_a_struct(T):
-		raise RuntimeError("T = {} should be a class or struct".format(T))
-	T=T.get_detail()
-	length=len(T.fields)
-	for idx, field in enumerate(T.fields):
-	    callback(idx, length, field)
+	if not isinstance(T, ClassAST):
+		if not is_a_class(T) and not is_a_struct(T):
+			raise RuntimeError("T = {} should be a class or struct".format(T))
+		T=T.get_detail()
+	_foreach_field_impl(T, callback)

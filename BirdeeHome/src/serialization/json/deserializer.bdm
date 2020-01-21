@@ -1,17 +1,22 @@
 package serialization.json
 
 import system.io.stream:abstract_input_stream
-import system.io.stream:byte_input_stream
 import extensions.string:*
 import hash:hash_map
 import any:any
 import string_buffer:string_buffer
 import vector:vector
+import unsafe
+import typedptr:get_field_ptr
+import memory
 
 @private declare function isspace(ch as byte) as int
 
 {@from bdutils import *
-c = set_char@}
+from traits import *
+c = set_char
+str_type=resolve_type("string")
+@}
 
 closure string_callback(str as string)
 closure void_callback()
@@ -106,6 +111,11 @@ struct json_deserializer
 		end
 	end
 
+	private func expect_and_forward(c as byte)
+		expect(c)
+		current = stream.get_char()
+	end
+
 	private func expect_and_eat(c as byte)
 		expect(c)
 		get_next_token()
@@ -115,13 +125,18 @@ struct json_deserializer
 		if current == {@c("{")@} then
 			while true
 				get_next_token()
-				expect({@c('"')@})
-				current = stream.get_char()
-				dim k = parse_raw_json_string()
-				expect_and_eat({@c(':')@})
-				on_key_value(k)
-				if current != {@c(",")@} then
+				if current == {@c("}")@} then
+					on_key_value(null)
 					break
+				else
+					expect({@c('"')@})
+					current = stream.get_char()
+					dim k = parse_raw_json_string()
+					expect_and_eat({@c(':')@})
+					on_key_value(k)
+					if current != {@c(",")@} then
+						break
+					end
 				end
 			end
 			expect_and_eat({@c('}')@})
@@ -139,18 +154,27 @@ struct json_deserializer
 			on_string(parse_raw_json_string())
 		else
 			dim buf = new string_buffer
-			while current != {@c(",")@} && current != -1
-				buf.write_char(current)
-				current = stream.get_char()
+			if current == {@c("n")@} then
+				current=stream.get_char()
+				expect_and_forward({@c("u")@})
+				expect_and_forward({@c("l")@})
+				expect_and_eat({@c("l")@})
+				# for null, do nothing
+			else
+				while current != {@c(",")@} && current != {@c("}")@} && current != -1
+					buf.write_char(current)
+					current = stream.get_char()
+				end
+				dim ret = buf.to_str()
+				if ret.length() == 0 then
+					throw new json_format_exception("Empty number literal", line, pos)
+				end
+				on_number(ret)
 			end
-			dim ret = buf.to_str()
-			if ret.length() == 0 then
-				throw new json_format_exception("Empty number literal", line, pos)
-			end
-			on_number(ret)
 		end
 	end
 end
+
 
 class json_map_deserializer
 	private base as json_deserializer
@@ -171,6 +195,9 @@ class json_map_deserializer
 				map = new hash_map[string, any]
 				ret.set(map)
 			end
+			if str===null then
+				return
+			end
 			if map.has(str) then
 				throw new json_format_exception("The key " + str + " has already been in the map." ,base.line, base.pos)
 			end
@@ -188,7 +215,7 @@ class json_map_deserializer
 	end
 end
 
-##
+##<
 dim testjson = '''{
 	"123":1,
 	"345": "sda"
@@ -199,6 +226,132 @@ dim mystream = new byte_input_stream:from_string(testjson)
 dim myjson = new json_map_deserializer(mystream)
 dim mymap = myjson.deserialize().get[hash_map[string, any]]()
 println(double2str(mymap["123"].get[double]()))
-println(mymap["345"].get[string]())
+println(mymap["345"].get[string]()) >##
 
-##
+class json_object_deserializer
+	private base as json_deserializer
+	public func __init__(stream as abstract_input_stream)
+		base.__init__(stream)
+	end
+
+	@stack_capture
+	private func deserialize_array[T](dummy as T[]) as T[]
+		dim buf as vector[T]
+		dim on_number = func(str as string)
+			throw new json_format_exception("Bad type for value: expecting an array" ,base.line, base.pos)
+		end
+		dim on_array = func()
+			if buf === null then
+				buf = new vector[T](0)
+			end
+			buf.push_back(deserialize[T]())
+		end
+
+		base.parse_raw(on_number, on_number, on_number, on_array)
+		dim ret = new T * buf.size()
+		memory.copy_array(ret, 0, buf.buffer(), 0, buf.size())
+		return ret
+	end
+
+	public func deserialize[T]() as T
+		dim ret as T
+		{@
+T=get_func_type_templ_at(0)
+if T.index_level>0:
+	set_stmt("return deserialize_array(ret)")
+else:
+	set_stmt("return deserialize_obj[T]()")
+@}
+	end
+
+	@stack_capture
+	private func deserialize_obj[T]() as T
+		dim ret as T
+		{@
+T=get_func_type_templ_at(0)
+assert(T.index_level==0)
+@}
+
+		dim on_number = func(str as string)
+			{@
+if is_float_point(T):
+	set_stmt("ret = str.to_double()")
+elif is_integer(T): #fix-me: check range?
+	set_stmt("ret = str.to_double()")
+else:
+	set_stmt('throw new json_format_exception("Bad type for value: met a number, expecting a {}" ,base.line, base.pos)'.format(T))
+@}
+		end
+
+		dim on_string = func(str as string)
+			{@
+if T == str_type:
+	set_stmt("ret = str")
+else:
+	set_stmt('throw new json_format_exception("Bad type for value, met a string, expecting a {}" ,base.line, base.pos)'.format(T))
+	@}
+		end
+
+		dim on_key_value = func(str as string)
+		{@
+if is_a_class(T):
+	set_stmt('''if ret === null then
+				ret = new T
+			end
+	''')
+	set_stmt("parse_kv(str, ret)")
+else:
+	set_stmt('throw new json_format_exception("Bad type for value, met an object, expecting a {}" ,base.line, base.pos)'.format(T))
+		@}
+		end
+
+		dim on_array = func()
+			{@set_stmt('throw new json_format_exception("Bad type for value, met an array, expecting a {}" ,base.line, base.pos)'.format(T))@}
+		end
+
+		base.parse_raw(on_number, on_string, on_key_value, on_array)
+		return ret
+	end
+
+	private func parse_kv[T](name as string, obj as T)
+		if name===null then
+			return
+		end
+{@
+def generate_field(idx, length, field):
+	global _deserializer_fty #make fty usable in taowa script
+	_deserializer_fty = field.decl.resolved_type
+	set_stmt('''if name == "{name}" then
+		unsafe.ptr_store[{fty}](get_field_ptr["{name}", T](pointerof(obj)), deserialize[{fty}]())
+		return
+	end
+	'''.format(name=field.decl.name, fty = '{@set_type(_deserializer_fty)@'+'}'))
+
+foreach_field(get_func_type_templ_at(0), generate_field)
+@}
+	throw new json_format_exception("Bad key name " + name,base.line, base.pos)
+	end
+
+end
+
+##<
+dim testjson = '''{
+	"B": null,
+	"C": ["1","2"],
+	"A":1
+}
+'''
+
+class AAA
+	public A as int
+	public B as string
+	public C as string[]
+end
+
+dim mystream = new byte_input_stream:from_string(testjson)
+dim myjson = new json_object_deserializer(mystream)
+dim mymap = myjson.deserialize[AAA]()
+println(bool2str(mymap.B===null))
+println(int2str(mymap.A))
+println(mymap.C[0])
+>##

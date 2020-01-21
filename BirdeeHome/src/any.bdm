@@ -51,6 +51,7 @@ else:
 	end
 
 	public func get_type() as type_info => typeof(v)
+	public func is_null() as boolean => v===null
 
 	public func is_type[T]() as boolean
 {@
