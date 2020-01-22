@@ -12,6 +12,7 @@ import memory
 
 @private declare function isspace(ch as byte) as int
 
+@init_script
 {@from bdutils import *
 from traits import *
 c = set_char
@@ -288,7 +289,7 @@ else:
 if T == str_type:
 	set_stmt("ret = str")
 else:
-	set_stmt('throw new json_format_exception("Bad type for value, met a string, expecting a {}" ,base.line, base.pos)'.format(T))
+	set_stmt('throw new json_format_exception("Bad type for value: met a string, expecting a {}" ,base.line, base.pos)'.format(T))
 	@}
 		end
 
@@ -301,12 +302,12 @@ if is_a_class(T):
 	''')
 	set_stmt("parse_kv(str, ret)")
 else:
-	set_stmt('throw new json_format_exception("Bad type for value, met an object, expecting a {}" ,base.line, base.pos)'.format(T))
+	set_stmt('throw new json_format_exception("Bad type for value: met an object, expecting a {}" ,base.line, base.pos)'.format(T))
 		@}
 		end
 
 		dim on_array = func()
-			{@set_stmt('throw new json_format_exception("Bad type for value, met an array, expecting a {}" ,base.line, base.pos)'.format(T))@}
+			{@set_stmt('throw new json_format_exception("Bad type for value: met an array, expecting a {}" ,base.line, base.pos)'.format(T))@}
 		end
 
 		base.parse_raw(on_number, on_string, on_key_value, on_array)

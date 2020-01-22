@@ -4,9 +4,9 @@ import system.io.stream:byte_input_stream
 import vector:vector
 import any:*
 import hash:*
+import extensions.string:*
 
 {@from bdassert import bdassert@}
-##<
 class AAAA
 	public a as int
 	public b as string
@@ -50,9 +50,9 @@ dim pretty_target = '''{
 		],
 		"f": null
 	}
-}'''
+}'''.replace("\r\n", "\n")
 
-println(ser.to_str())
+#println(ser.to_str())
 {@bdassert("ser.to_str()==pretty_target")@}
 
 ser = new json_to_str_converter(false)
@@ -61,8 +61,8 @@ ser.serialize(t)
 dim ugly_target = '''{"a":1,"b":"aaaa","c":{"c":12,"d":"jaja\n\rjajaj","e":[1,2,3,4],"f":null}}'''
 #println(bool2str(ser.to_str()==ugly_target))
 {@bdassert("ser.to_str()==ugly_target")@}
->##
 
+println("To JSON test done")
 
 #-------------------------------JSON to Map test ---------------------
 
@@ -93,6 +93,59 @@ dim mp= mymap["EEEE"].get[hash_map[string,any]]()
 
 #----------------------------------------------------------------------
 
+dim objtestjson = '''{
+	"D": {"name":"\\b\n\r\b"},
+	"B": null,
+	"C": ["1","2"],
+	"A":1,
+	"E":null
+}
+'''
 
+class OBJCCC
+	public name as string
+end
+
+class OBJBBB
+	public D as OBJCCC
+	public E as OBJCCC
+end
+
+class OBJAAA:OBJBBB
+	public A as int
+	public B as string
+	public C as string[]
+end
+
+dim mystream2 = new byte_input_stream:from_string(objtestjson)
+dim objjson = new json_object_deserializer(mystream2)
+dim myobj = objjson.deserialize[OBJAAA]()
+{@bdassert('myobj.A==1')@}
+{@bdassert('myobj.B===null')@}
+{@bdassert('myobj.C[0]=="1"')@}
+{@bdassert('myobj.C[1]=="2"')@}
+{@bdassert('myobj.C.length()==2')@}
+dim escapecheck = "\\b\n\r\b"
+{@bdassert('myobj.D.name==escapecheck')@}
+{@bdassert('myobj.E===null')@}
+
+func assert_fail[T](json as string, expstr as string)
+	try
+		dim mystream2 = new byte_input_stream:from_string(json)
+		dim objjson = new json_object_deserializer(mystream2)
+		objjson.deserialize[T]()
+		throw new runtime_exception("Should have exception here")
+	catch e as json_format_exception
+		println("Caught exception: " + e.get_message())
+		{@bdassert('e.get_message()==expstr')@}
+	end
+end
+
+assert_fail[string]("123","JSON format exception @ 1, 1 : Bad type for value: met a number, expecting a birdee.string")
+assert_fail[int]("\"123\"","JSON format exception @ 1, 2 : Bad type for value: met a string, expecting a int")
+assert_fail[int[]]("\"123\"","JSON format exception @ 1, 2 : Bad type for value: expecting an array")
+assert_fail[OBJAAA]("[]","JSON format exception @ 1, 2 : Bad type for value: met an array, expecting a json_test.OBJAAA")
+assert_fail[OBJAAA]("{\"AAAA\":1}","JSON format exception @ 1, 4 : Bad key name AAAA")
+assert_fail[OBJAAA]("{\"B\":\"1\":","JSON format exception @ 1, 5 : Expectation of character not satisfied, expecting }, got :")
 
 println("JSON test done")

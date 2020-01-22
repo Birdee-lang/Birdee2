@@ -57,9 +57,7 @@ class vector[T]
 		if len + length > buf.length() then
 			reserve_n(length)
 		end
-		for dim i as uint=0 till length
-			buf[i+len]= itms[i+start]
-		end
+		copy_array(buf, len, itms, start, length)
 		len = len + length
 	end
 

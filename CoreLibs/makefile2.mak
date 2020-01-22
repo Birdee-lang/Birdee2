@@ -9,7 +9,7 @@ $(BIRDEE_HOME)\blib\birdee.obj: $(BLIB_DIR) $(BIRDEE_HOME)\src\birdee.txt
 libs: $(BIRDEE_HOME)\blib\birdee.obj
 	python3 $(BIRDEE_HOME)/pylib/bbuild.py -i $(BIRDEE_HOME)/src -o $(BLIB_DIR) \
 		variant list hash tuple fmt vector queue stack unsafe concurrent.threading rtti system.io.stdio typedptr reflection concurrent.sync system.io.net \
-		functional.lazy extensions.string concurrent.threadpool system.time system.io.stream serialization.json.serializer
+		functional.lazy extensions.string concurrent.threadpool system.time system.io.stream serialization.json.serializer serialization.json.deserializer
 
 clean:
 	del $(BLIB_DIR)\*.obj
