@@ -117,6 +117,9 @@ jit->addNative("extensions_0string_0string__view_0ends__with",extensions_0string
 extern void extensions_0string_0_1main();
 jit->addNative("extensions_0string_0_1main",extensions_0string_0_1main);
 
+extern void hash_0get__bucket__size();
+jit->addNative("hash_0get__bucket__size",hash_0get__bucket__size);
+
 extern void hash_0int__hash();
 jit->addNative("hash_0int__hash",hash_0int__hash);
 
@@ -299,6 +302,15 @@ jit->addNative("system_0io_0stream_0abstract__input__stream_0next__token",system
 
 extern void system_0io_0stream_0abstract__input__stream_0get__line();
 jit->addNative("system_0io_0stream_0abstract__input__stream_0get__line",system_0io_0stream_0abstract__input__stream_0get__line);
+
+extern void system_0io_0stream_0byte__input__stream_0____init____();
+jit->addNative("system_0io_0stream_0byte__input__stream_0____init____",system_0io_0stream_0byte__input__stream_0____init____);
+
+extern void system_0io_0stream_0byte__input__stream_0from__string();
+jit->addNative("system_0io_0stream_0byte__input__stream_0from__string",system_0io_0stream_0byte__input__stream_0from__string);
+
+extern void system_0io_0stream_0byte__input__stream_0read__to__buffer();
+jit->addNative("system_0io_0stream_0byte__input__stream_0read__to__buffer",system_0io_0stream_0byte__input__stream_0read__to__buffer);
 
 extern void system_0io_0stream_0_1main();
 jit->addNative("system_0io_0stream_0_1main",system_0io_0stream_0_1main);
@@ -507,8 +519,17 @@ jit->addNative("birdee_0type__info_0get__name",birdee_0type__info_0get__name);
 extern void birdee_0type__info_0get__parent();
 jit->addNative("birdee_0type__info_0get__parent",birdee_0type__info_0get__parent);
 
+extern void birdee_0type__info_0get__implement__size();
+jit->addNative("birdee_0type__info_0get__implement__size",birdee_0type__info_0get__implement__size);
+
 extern void birdee_0type__info_0is__parent__of();
 jit->addNative("birdee_0type__info_0is__parent__of",birdee_0type__info_0is__parent__of);
+
+extern void birdee_0type__info_0is__impl__of();
+jit->addNative("birdee_0type__info_0is__impl__of",birdee_0type__info_0is__impl__of);
+
+extern void birdee_0type__info_0get__impl__itable();
+jit->addNative("birdee_0type__info_0get__impl__itable",birdee_0type__info_0get__impl__itable);
 
 extern void birdee_0invalid__index__exception_0____init____();
 jit->addNative("birdee_0invalid__index__exception_0____init____",birdee_0invalid__index__exception_0____init____);
