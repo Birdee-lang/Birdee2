@@ -323,6 +323,9 @@ void RegisiterClassForBinding2(py::module& m) {
 				func(GetRef(ths.instance));
 		});
 
+	py::class_< NullExprAST, ExprAST>(m, "NullExprAST")
+		.def("run", [](NullExprAST& ths, py::object& func) {
+		});
 	// py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
 	// 	.def_static("new", [](UniquePtrStatementAST& v, bool is_address_of) {
 	// 		return new UniquePtrStatementAST(std::make_unique<AddressOfExprAST>(v.move_expr(),is_address_of,tokenizer.GetSourcePos())); 

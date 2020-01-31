@@ -126,19 +126,26 @@ void Birdee::CompileUnit::Clear()
 	classmap.clear();
 	funcmap.clear();
 	dimmap.clear();
+	functypemap.clear();
 	symbol_prefix.clear();
 
 	imported_classmap.clear();
 	imported_funcmap.clear();
 	imported_dimmap.clear();
+	imported_functypemap.clear();
+	generated_functy.clear();
 
 	imported_class_templates.clear();
 	imported_func_templates.clear();
 	orphan_class.clear();
 
+	class_extend_funcmap.clear();
+	init_scripts.clear();
 	imported_module_names.clear();
-	imported_packages.map.clear();
-	imported_packages.mod = nullptr;
+	imports.clear();
+	imported_packages.~ImportTree();
+	new (&imported_packages) ImportTree;
+
 	ClearPreprocessingState();
 	AbortGenerate();
 	ClearParserState();

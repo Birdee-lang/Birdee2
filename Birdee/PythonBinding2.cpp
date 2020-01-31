@@ -581,7 +581,10 @@ void RegisiterClassForBinding(py::module& m)
 			auto ret = FindClassField(&cls, member);
 			return py::make_tuple(ret.first, GetRef(ret.second));
 		})
-		.def("run", [](ClassAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
+		.def("run", [](ClassAST& ths, py::object& func) {
+			for (auto& f : ths.fields) func(GetRef(f.decl));
+			for (auto& f : ths.funcs) func(GetRef(f.decl));
+		});//fix-me: what to run on ClassAST?
 //	unordered_map<reference_wrapper<const string>, int> fieldmap;
 //	unordered_map<reference_wrapper<const string>, int> funcmap;
 //	int package_name_idx = -1;
@@ -639,7 +642,12 @@ void RegisiterClassForBinding(py::module& m)
 		.def_static("new", [](const string& str, bool is_top_level) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str, is_top_level)); })
 		.def_property_readonly("stmt", [](ScriptAST& ths) {return GetRef(ths.stmt); })
 		.def_readwrite("script", &ScriptAST::script)
-		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.stmt)); });
+		.def("run", [](ScriptAST& ths, py::object& func) {
+			for (auto& s : ths.stmt)
+			{
+				func(GetRef(s.get()));
+			}
+		});
 
 	RegisterNumCastClass<tok_int, tok_float>(m);
 	RegisterNumCastClass<tok_long, tok_float>(m);

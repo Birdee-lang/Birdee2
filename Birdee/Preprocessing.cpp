@@ -589,6 +589,7 @@ public:
 		if (cls_field)
 		{
 			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
+			ret->Pos = pos;
 			ret->Phase1();
 			return ret;
 		}
@@ -596,6 +597,7 @@ public:
 		if (func_field)
 		{
 			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
+			ret->Pos = pos;
 			ret->Phase1();
 			return ret;
 			// return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);

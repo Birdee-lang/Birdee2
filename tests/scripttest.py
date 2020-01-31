@@ -1,4 +1,5 @@
 from birdeec import *
+import os
 
 def assert_fail(istr):
 	try:
@@ -41,6 +42,20 @@ def assert_generate_fail(istr):
 set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
+
+####Test complicated source & clearing
+srcpath=os.path.join(os.environ["BIRDEE_HOME"], "src", "serialization", "json", "deserializer.bdm")
+print("Test source path", srcpath)
+with open(srcpath) as f:
+	src=f.read()
+top_level(src)
+process_top_level()
+clear_compile_unit()
+
+top_level(src)
+process_top_level()
+clear_compile_unit()
+######done
 
 top_level("dim a=1")
 CallExprAST.new(expr("println"), [expr('"hello"')])
