@@ -216,6 +216,15 @@ jit->addNative("string__buffer_0string__buffer_0____init____",string__buffer_0st
 extern void string__buffer_0string__buffer_0append();
 jit->addNative("string__buffer_0string__buffer_0append",string__buffer_0string__buffer_0append);
 
+extern void string__buffer_0string__buffer_0write__char();
+jit->addNative("string__buffer_0string__buffer_0write__char",string__buffer_0string__buffer_0write__char);
+
+extern void string__buffer_0string__buffer_0reserve();
+jit->addNative("string__buffer_0string__buffer_0reserve",string__buffer_0string__buffer_0reserve);
+
+extern void string__buffer_0string__buffer_0write();
+jit->addNative("string__buffer_0string__buffer_0write",string__buffer_0string__buffer_0write);
+
 extern void string__buffer_0_1main();
 jit->addNative("string__buffer_0_1main",string__buffer_0_1main);
 

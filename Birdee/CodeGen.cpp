@@ -2627,8 +2627,16 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	if (memberexpr) //if it is a member expr AST of a member function
 	{
 		memberexpr->GenerateObj();
-		if(outfunc)
+		if (outfunc)
+		{
+			if (memberexpr->Obj && !memberexpr->llvm_obj)
+			{
+				//if there is a object reference and we only have a RValue of struct
+				memberexpr->llvm_obj = builder.CreateAlloca(memberexpr->Obj->resolved_type.class_ast->llvm_type); //alloca temp memory for the value
+				builder.CreateStore(memberexpr->Obj->Generate(), memberexpr->llvm_obj); //store the obj to the alloca
+			}
 			func = outfunc->GetLLVMFunc();
+		}
 		else
 			func = memberexpr->GenerateFunction();
 		obj = memberexpr->llvm_obj;

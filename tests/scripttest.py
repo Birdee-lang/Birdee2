@@ -49,6 +49,19 @@ generate()
 clear_compile_unit()
 
 assert_generate_ok('''
+struct AAA
+	public a as int
+	public func b[T]() as string
+	end
+end
+
+func c() as AAA
+end
+
+c().b[int]()
+''')
+
+assert_generate_ok('''
 function aaa()
 	defer
 		println("SSSS")

@@ -1,3 +1,5 @@
+import memory:copy_array
+
 class vector[T]
 	private buf as T[]
 	private len as uint
@@ -15,10 +17,15 @@ class vector[T]
 			newsize = newsize + n
 		end
 		dim newbuf = new T * newsize
-		for dim i=0 till len
-			newbuf[i]=buf[i]
-		end
+		copy_array(newbuf, 0, buf, 0, len)
 		buf=newbuf
+	end
+
+	public func reserve(n as uint)
+		dim newsize = buf.length()
+		if n > newsize then
+			reserve_n(n - newsize)
+		end 
 	end
 
 	public func __getitem__ (idx as uint) as T
@@ -50,9 +57,7 @@ class vector[T]
 		if len + length > buf.length() then
 			reserve_n(length)
 		end
-		for dim i as uint=0 till length
-			buf[i+len]= itms[i+start]
-		end
+		copy_array(buf, len, itms, start, length)
 		len = len + length
 	end
 

@@ -297,3 +297,26 @@ end
 	end
 	return v.view(v.length()-substr.length(), substr.length()) == substr
 end
+
+@extension function string_replace(v as string, substr as string, repl as string) as string
+	dim cur as int = 0
+	dim ret = new vector[byte](0)
+	ret.reserve(v.length())
+	while cur < v.length()
+		dim nxt = v.find(substr, cur)
+		if nxt==-1 then
+			ret.push_chunk(v.get_bytes(), cur, v.length() - cur)
+			break
+		end
+		ret.push_chunk(v.get_bytes(), cur, nxt - cur)
+		ret.push_chunk(repl.get_bytes(), 0, repl.length())
+		cur = nxt + substr.length()
+	end
+	return new string:copy_bytes(ret.buffer(), 0, ret.size())
+end
+
+function char2str(c as byte) as string
+	dim t = new byte*1
+	t[0]=c
+	return new string:copy_bytes(t, 0, 1)
+end

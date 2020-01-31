@@ -1243,7 +1243,7 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 //is_field: true for FieldDef, false for MemberFunctionDef
 //index: the index within fields/funcdef
 static const string INTERNAL_ANNO_VIRTUAL = "virtual";
-// static const string INTERNAL_ANNO_PURE_VIRTUAL = "pure_virtual";
+static const string INTERNAL_ANNO_STACK_CAPTURE = "stack_capture";
 static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, int index)>> interal_class_annontation_map = {
 	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
@@ -1252,6 +1252,10 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
+	}},
+	{INTERNAL_ANNO_STACK_CAPTURE, [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(!is_field,"The \'stack_capture\' annotation can only be applied on member functions");
+		cls->funcs[index].decl->capture_on_stack = true;
 	}}
 	/*
 	{INTERNAL_ANNO_PURE_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {

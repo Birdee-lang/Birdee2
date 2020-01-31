@@ -160,6 +160,10 @@ BIRDEE_BINDING_API string Birdee_RunScriptForString(const string& str, const Sou
 
 BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, void* locals)
 {
+	auto old_type = outtype;
+	auto old_scriptast = cur_script_ast;
+	auto old_expr = std::move(outexpr);
+
 	cur_script_ast = ths;
 	auto& env=InitPython();
 	try
@@ -198,9 +202,9 @@ BIRDEE_BINDING_API void Birdee_ScriptAST_Phase1(ScriptAST* ths, void* globals, v
 	{
 		ths->type_data = outtype;
 	}
-	outexpr.clear();
-	outtype = ResolvedType();
-	cur_script_ast = nullptr;
+	outexpr = std::move(old_expr);
+	outtype = old_type;
+	cur_script_ast = old_scriptast;
 }
 
 static UniquePtrStatementAST CompileExpr(char* cmd) {
@@ -318,6 +322,11 @@ static auto NewNumberExpr(Token tok, py::object& obj) {
 
 BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType* ths,SourcePos pos,void* globals, void* locals)
 {
+	auto old_type = outtype;
+	auto old_scriptast = cur_script_ast;
+	auto old_expr = std::move(outexpr);
+
+	cur_script_ast = nullptr;
 	auto& env = InitPython();
 	try
 	{
@@ -333,8 +342,10 @@ BIRDEE_BINDING_API void Birdee_ScriptType_Resolve(ResolvedType* out, ScriptType*
 		throw CompileError(pos, "The returned type is invalid");
 	}
 	*out = outtype;
-	outtype.type = tok_error;
-	outexpr.clear();
+
+	cur_script_ast = old_scriptast;
+	outtype = old_type;
+	outexpr = std::move(old_expr);
 }
 
 BIRDEE_BINDING_API void Birdee_RunAnnotationsOn(std::vector<std::string>& anno,StatementAST* impl,SourcePos pos, void* globals)

@@ -23,6 +23,11 @@ try
 catch e as invalid_index_exception
 end
 
+{@bdassert('"AA123AA22AA".replace("AA","BB")=="BB123BB22BB"')@}
+{@bdassert('"AA123AA22AA".replace("CC","BB")=="AA123AA22AA"')@}
+{@bdassert('"AAAAA".replace("AA","BB")=="BBBBA"')@}
+{@bdassert('"AA123".replace("AA","1234")=="1234123"')@}
+
 {@bdassert('v.find("678",0)==6')@}
 {@bdassert('v.find("6789",0)==-1')@}
 
