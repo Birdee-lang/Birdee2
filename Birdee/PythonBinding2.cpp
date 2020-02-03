@@ -400,6 +400,49 @@ static void CompileClassBody(ClassAST* cls, const char* src)
 	PopClass();
 }
 
+static py::dict GetClassesDict(bool isImported)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	if (isImported)
+	{
+		for (auto& itr : cu.imported_classmap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second));
+		}
+	}
+	else
+	{
+		for (auto& itr : cu.classmap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second.first));
+		}
+	}
+
+	return std::move(dict);
+}
+
+static py::dict GetFunctypesDict(bool isImported)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	if (isImported)
+	{
+		for (auto& itr : cu.imported_functypemap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second));
+		}
+	}
+	else
+	{
+		for (auto& itr : cu.functypemap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second.first));
+		}
+	}
+	return std::move(dict);
+}
+
 namespace Birdee
 {
 	BD_CORE_API extern string GetTokenString(Token tok);
@@ -461,6 +504,9 @@ void RegisiterClassForBinding(py::module& m)
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
 	m.def("size_of", GetTypeSize);
+	m.def("get_classes", GetClassesDict);
+	m.def("get_functypes", GetFunctypesDict);
+
 	py::class_ < CompileError>(m, "CompileError")
 		.def_property_readonly("linenumber", [](CompileError& ths) {return ths.pos.line; })
 		.def_property_readonly("pos", [](CompileError& ths) {return ths.pos.pos; })
