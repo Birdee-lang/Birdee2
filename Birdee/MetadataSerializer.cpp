@@ -268,6 +268,8 @@ json BuildFunctionJson(FunctionAST* func)
 	{
 		ret["is_extension"] = true;
 	}
+	ret["line"] = func->Pos.line;
+	ret["pos"] = func->Pos.pos;
 	ret["return"] = ConvertTypeToIndex(func->Proto->resolved_type);
 	return ret;
 }
@@ -310,7 +312,10 @@ json BuildGlobalVaribleJson()
 	for (auto itr : cu.dimmap)
 	{
 		arr.push_back(BuildVariableJson(itr.second.first));
-		arr.back()["is_public"] = itr.second.second;
+		auto& t = arr.back();
+		t["is_public"] = itr.second.second;
+		t["line"] = itr.second.first->Pos.line;
+		t["pos"] = itr.second.first->Pos.pos;
 	}
 	return arr;
 }
@@ -356,7 +361,6 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 		// redirect to the class definition in another module
 		return json_cls;
 	}
-
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
 	json_cls["is_interface"] = cls.is_interface;
@@ -382,6 +386,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	}
 	else
 	{
+		json_cls["line"] = cls.Pos.line;
+		json_cls["pos"] = cls.Pos.pos;
 		json json_fields = json::array();
 		for (auto& field : cls.fields)
 		{
@@ -462,7 +468,10 @@ void BuildExportedPrototypes()
 	for (auto& itr : cu.functypemap)
 	{
 		exported_functype[idx]=BuildPrototypeJson(itr.second.first.get());
-		exported_functype[idx]["is_public"] = itr.second.second;
+		auto& t = exported_functype[idx];
+		t["is_public"] = itr.second.second;
+		t["line"] = itr.second.first->pos.line;
+		t["pos"] = itr.second.first->pos.pos;
 		idx++;
 	}
 }

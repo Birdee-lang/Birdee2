@@ -58,6 +58,16 @@ static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
 	return SwitchTokenizer(std::move(toknzr));
 }
 
+template<typename T>
+T ReadJSONWithDefault(const json& j, const char* name, T defaults)
+{
+	auto itr = j.find(name);
+	if (itr != j.end())
+		return itr->get<T>();
+	else
+		return defaults;
+}
+
 ClassAST* ConvertIdToClass(int idtype)
 {
 	BirdeeAssert(idtype < MAX_CLASS_COUNT, "Bad type id for class");
@@ -169,6 +179,7 @@ void BuildGlobalVaribleFromJson(const json& globals, ImportedModule& mod)
 	for (auto& itr : globals)
 	{
 		auto var = BuildVariableFromJson(itr);
+		var->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(itr, "line", 1), ReadJSONWithDefault(itr, "pos", 1));
 		var->PreGenerateExternForGlobal(current_package_name);
 		auto& name = var->name;
 		mod.dimmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
@@ -201,6 +212,7 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 		if (itr != func.end())
 			ret->is_extension = itr->get<bool>();
 	}
+	ret->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(func, "line", 1), ReadJSONWithDefault(func, "pos", 1));
 	ret->resolved_type.type = tok_func;
 	ret->resolved_type.proto_ast = protoptr;
 	return std::move(ret);
@@ -458,14 +470,17 @@ void PreBuildClassFromJson(const json& cls, const string& module_name, ImportedM
 			string name = itr->get<string>();
 			auto orphan = cu.orphan_class.find(module_name + '.' + name);
 			unique_ptr<ClassAST> classdef;
+			int src_line = ReadJSONWithDefault(json_cls, "line", 0);
+			int src_pos = ReadJSONWithDefault(json_cls, "pos", 0);
 			if (orphan != cu.orphan_class.end())
 			{
 				classdef = std::move(orphan->second);
 				cu.orphan_class.erase(orphan);
+				classdef->Pos = SourcePos(source_paths.size() - 1, src_line, src_pos);
 			}
 			else
 			{
-				classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
+				classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, src_line, src_pos)); //add placeholder
 			}
 			idx_to_class.push_back(classdef.get());
 			mod.classmap[name] = std::make_pair(std::move(classdef), IsSymbolGlobal(json_cls));
@@ -614,6 +629,7 @@ void PreBuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
 		bool is_closure = func["is_closure"].get<bool>();
 		auto proto = make_unique<PrototypeAST>("", vector<unique_ptr<VariableSingleDefAST>>(),
 			ResolvedType(), (ClassAST*)nullptr, current_module_idx, is_closure);
+		proto->pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(func, "line", 1), ReadJSONWithDefault(func, "pos", 1));
 		auto protoptr = proto.get();
 		if (name.size() != 0) //if it is a named prototype
 			mod.functypemap[name] = std::make_pair(std::move(proto), IsSymbolGlobal(func));
@@ -827,7 +843,15 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	to_run_phase0.clear();
 	orphan_idx_to_class.clear();
 	orphan_class_to_generate.clear();
-	source_paths.push_back(path);
+	string srcpath;
+	{
+		auto itr = json.find("SourceFile");
+		if (itr != json.end())
+			srcpath = itr->at(0).get<string>() + "/" + itr->at(1).get<string>();
+		else
+			srcpath = path;
+	}
+	source_paths.push_back(srcpath);
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");

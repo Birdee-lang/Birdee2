@@ -115,6 +115,11 @@ namespace Birdee
 	{
 		return r.type == tok_class && r.index_level == 0 && !r.class_ast->is_struct;
 	}
+
+	BD_CORE_API string GetSourcePathByIdx(int source_idx)
+	{
+		return source_idx == -1 ? cu.directory + "/" + cu.filename : source_paths[source_idx];
+	}
 }
 
 extern void ClearPreprocessingState();
@@ -309,7 +314,7 @@ int Birdee::Tokenizer::GetChar()
 string Birdee::SourcePos::ToString() const
 {
 	std::stringstream buf;
-	buf << "File: " << (source_idx == -1 ? cu.directory+"/"+cu.filename : source_paths[source_idx]) << " Line: " << line << " Pos: " << pos;
+	buf << "File: " << GetSourcePathByIdx(source_idx) << " Line: " << line << " Pos: " << pos;
 	return buf.str();
 }
 
