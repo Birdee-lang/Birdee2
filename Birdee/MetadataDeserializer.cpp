@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "Tokenizer.h"
+#include "CompileError.h"
 
 using std::unordered_map;
 template<class K, class V, class dummy_compare, class A>
@@ -734,9 +735,22 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 
 extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
-string GetModuleFile(const vector<string>& package, std::ifstream& f)
+typedef string(*ModuleResolveFunc)(const vector<string>& package, unique_ptr<std::istream>& f);
+static ModuleResolveFunc module_resolver = nullptr;
+BD_CORE_API void SetModuleResolver(ModuleResolveFunc f)
+{
+	module_resolver = f;
+}
+
+static string GetModuleFile(const vector<string>& package, unique_ptr<std::istream>& f)
 {
 	string ret;
+	if (module_resolver)
+	{
+		ret = module_resolver(package, f);
+		if (!ret.empty())
+			return ret;
+	}
 	string libpath;
 	for (auto& s : package)
 	{
@@ -748,9 +762,12 @@ string GetModuleFile(const vector<string>& package, std::ifstream& f)
 	for (auto& spath : cu.search_path)
 	{
 		ret = spath + libpath;
-		f = std::ifstream(ret, std::ios::in);
-		if (f)
+		auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+		if (*of)
+		{
+			f = std::move(of);
 			return ret;
+		}
 	}
 	
 	string cur_dir_path = cu.directory + "/";
@@ -760,15 +777,21 @@ string GetModuleFile(const vector<string>& package, std::ifstream& f)
 		for (int i = 0; i < dot_cnt - 1; i++)
 			cur_dir_path += "../";
 		ret = cur_dir_path + libpath;
-		f = std::ifstream(ret, std::ios::in);
-		if (f)
+		auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+		if (*of)
+		{
+			f = std::move(of);
 			return ret;
+		}
 	}
 
 	ret = cu.homepath + "blib" + libpath;
-	f = std::ifstream(ret, std::ios::in);
-	if (f)
+	auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+	if (*of)
+	{
+		f = std::move(of);
 		return ret;
+	}
 	return "";
 
 }
@@ -824,12 +847,12 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 {
 	json json;
 	
-	std::ifstream in; 
-	string path = GetModuleFile(package, in);
-	if (!in)
+	unique_ptr<std::istream> ptrin; 
+	string path = GetModuleFile(package, ptrin);
+	auto& in = *ptrin;
+	if (!ptrin || !in)
 	{
-		std::cerr << "Cannot find module " << GetModuleNameByArray(package) << '\n';
-		std::exit(2);
+		throw CompileError(string("Cannot find module ") + GetModuleNameByArray(package));
 	}
 	in >> json;
 	int tmp_current_module_idx = cu.imported_module_names.size() - 1;

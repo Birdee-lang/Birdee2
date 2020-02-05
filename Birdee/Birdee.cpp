@@ -17,21 +17,11 @@ extern string GetModuleNameByArray(const vector<string>& package, const char* de
 //GetCurrentDir copied from http://www.codebind.com/cpp-tutorial/c-get-current-directory-linuxwindows/
 #include <stdio.h>  /* defines FILENAME_MAX */
 // #define WINDOWS  /* uncomment this line to use it for windows.*/ 
-#ifdef _WIN32
-#include <direct.h>
-#define GetCurrentDir _getcwd
-#else
-#include <unistd.h>
-#define GetCurrentDir getcwd
-#endif
 
-std::string GetCurrentWorkingDir(void) {
-	char buff[FILENAME_MAX];
-	GetCurrentDir(buff, FILENAME_MAX);
-	std::string current_working_dir(buff);
-	return current_working_dir;
+namespace Birdee
+{
+	extern BD_CORE_API void SetSourceFilePath(const string& source);
 }
-
 
 #ifdef _WIN32
 extern int RunGenerativeScript();
@@ -191,20 +181,7 @@ void ParseParameters(int argc, char** argv)
 			goto fail;
 		}
 		//cut the source path into filename & dir path
-		size_t found;
-		found = source.find_last_of("/\\");
-		if (found == string::npos)
-		{
-			cu.directory = GetCurrentWorkingDir();
-			cu.filename = source;
-		}
-		else
-		{
-			cu.directory = source.substr(0, found);
-			if (cu.directory[0] == '.')
-				cu.directory = GetCurrentWorkingDir() + "/" + cu.directory;
-			cu.filename = source.substr(found + 1);
-		}
+		SetSourceFilePath(source);
 		if (!cu.is_script_mode)
 		{
 			auto f = std::make_unique<FileStream>(source.c_str());
@@ -216,7 +193,7 @@ void ParseParameters(int argc, char** argv)
 			Birdee::source_paths.push_back(source);
 			tokenizer = Tokenizer(std::move(f), 0);
 		}
-		found = target.find_last_of('.');
+		auto found = target.find_last_of('.');
 		if (found != string::npos)
 		{
 			cu.targetmetapath = target.substr(0, found) + ".bmm";

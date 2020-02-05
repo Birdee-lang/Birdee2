@@ -57,6 +57,8 @@ process_top_level()
 clear_compile_unit()
 ######done
 
+assert_fail("import a.b.c")
+
 top_level("dim a=1")
 CallExprAST.new(expr("println"), [expr('"hello"')])
 process_top_level()

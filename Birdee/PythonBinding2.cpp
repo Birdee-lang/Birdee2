@@ -32,6 +32,7 @@ namespace Birdee
 {
 	extern void ClearPyHandles();
 	BD_CORE_API extern std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member);
+	BD_CORE_API void SetSourceFilePath(const string& source);
 }
 
 struct BirdeePyContext
@@ -473,6 +474,11 @@ PYBIND11_MAKE_OPAQUE(std::vector<FieldDef>);
 PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
 
 extern void RegisiterClassForBinding2(py::module& m);
+BD_CORE_API void SeralizeMetadata(std::ostream& out, bool is_empty);
+typedef string(*ModuleResolveFunc)(const vector<std::string>& package, unique_ptr<std::istream>& f);
+extern BD_CORE_API void SetModuleResolver(ModuleResolveFunc f);
+
+static py::function module_resolver;
 
 void RegisiterClassForBinding(py::module& m)
 {
@@ -483,6 +489,34 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 		m.def("generate", []() {cu.Generate(); });
 		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
+		m.def("get_metadata_json", []() {
+			std::stringstream buf;
+			SeralizeMetadata(buf, false);
+			return buf.str();
+		});
+		m.def("set_module_resolver", [](py::function f) {
+			module_resolver = f;
+			SetModuleResolver([](const vector<std::string>& package, unique_ptr<std::istream>& f) -> string {
+				auto result = module_resolver(package);
+				if (result.is_none())
+					return string();
+				auto ret = py::cast<py::tuple>(result);
+				auto modname = py::cast<py::str>(ret[0]).operator std::string();
+				auto data = py::cast<py::str>(ret[1]).operator std::string();
+				auto of = std::make_unique<std::stringstream>();
+				of->str(std::move(data));
+				f = std::move(of);
+				return std::move(modname);
+			});
+		});
+		m.def("set_source_file_path", [](string n) {
+			SetSourceFilePath(n);
+		});
+		m.def("get_module_name", []() {
+			auto ret = cu.symbol_prefix;
+			ret.pop_back(); //delete .
+			return ret;
+		});
 		cu.InitForGenerate();
 	}
 	m.def("imports", CompileImports);

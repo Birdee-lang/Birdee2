@@ -7,6 +7,22 @@ using namespace Birdee;
 CompileError CompileError::last_error;
 TokenizerError TokenizerError::last_error(0, 0, "");
 
+#ifdef _WIN32
+#include <direct.h>
+#define GetCurrentDir _getcwd
+#else
+#include <unistd.h>
+#define GetCurrentDir getcwd
+#endif
+
+static std::string GetCurrentWorkingDir(void) {
+	char buff[FILENAME_MAX];
+	GetCurrentDir(buff, FILENAME_MAX);
+	std::string current_working_dir(buff);
+	return current_working_dir;
+}
+
+
 namespace Birdee
 {
 	BD_CORE_API std::vector<std::string> source_paths;
@@ -120,6 +136,24 @@ namespace Birdee
 	{
 		return source_idx == -1 ? cu.directory + "/" + cu.filename : source_paths[source_idx];
 	}
+
+	BD_CORE_API void SetSourceFilePath(const string& source)
+	{
+		size_t found;
+		found = source.find_last_of("/\\");
+		if (found == string::npos)
+		{
+			cu.directory = GetCurrentWorkingDir();
+			cu.filename = source;
+		}
+		else
+		{
+			cu.directory = source.substr(0, found);
+			if (cu.directory[0] == '.')
+				cu.directory = GetCurrentWorkingDir() + "/" + cu.directory;
+			cu.filename = source.substr(found + 1);
+		}
+	}
 }
 
 extern void ClearPreprocessingState();
@@ -155,7 +189,6 @@ void Birdee::CompileUnit::Clear()
 	AbortGenerate();
 	ClearParserState();
 }
-
 
 BD_CORE_API Tokenizer tokenizer(nullptr, 0);
 
