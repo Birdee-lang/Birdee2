@@ -16,6 +16,7 @@ extern BD_CORE_API Tokenizer tokenizer;
 namespace Birdee
 {
 	extern BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r);
+	extern BD_CORE_API string GetSourcePathByIdx(int source_idx);
 }
 
 void RegisiterClassForBinding2(py::module& m) {
@@ -50,6 +51,9 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("source_idx", &SourcePos::source_idx)
 		.def_readwrite("line", &SourcePos::line)
 		.def_readwrite("pos", &SourcePos::pos)
+		.def_property_readonly("source_path", [](SourcePos& pos) {
+			return GetSourcePathByIdx(pos.source_idx);
+		})
 		.def("__str__", &SourcePos::ToString);
 	py::class_<ResolvedType>(m, "ResolvedType")
 		.def(py::init<>())
@@ -190,6 +194,9 @@ void RegisiterClassForBinding2(py::module& m) {
 	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST")
 		.def_static("new", []() {return new UniquePtrStatementAST(make_unique<ThisExprAST>()); })
 		.def("run", [](ThisExprAST& ths, py::object& func) {});
+	py::class_< SuperExprAST, ExprAST>(m, "SuperExprAST")
+		.def_static("new", [](ClassAST& cls, SourcePos pos) {return new UniquePtrStatementAST(make_unique<SuperExprAST>(&cls, pos)); })
+		.def("run", [](SuperExprAST& ths, py::object& func) {});
 	py::class_< BoolLiteralExprAST, ExprAST>(m, "BoolLiteralExprAST")
 		.def_static("new", [](bool b) {return new UniquePtrStatementAST(make_unique<BoolLiteralExprAST>(b)); })
 		.def_readwrite("value", &BoolLiteralExprAST::v)
@@ -323,6 +330,9 @@ void RegisiterClassForBinding2(py::module& m) {
 				func(GetRef(ths.instance));
 		});
 
+	py::class_< NullExprAST, ExprAST>(m, "NullExprAST")
+		.def("run", [](NullExprAST& ths, py::object& func) {
+		});
 	// py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
 	// 	.def_static("new", [](UniquePtrStatementAST& v, bool is_address_of) {
 	// 		return new UniquePtrStatementAST(std::make_unique<AddressOfExprAST>(v.move_expr(),is_address_of,tokenizer.GetSourcePos())); 

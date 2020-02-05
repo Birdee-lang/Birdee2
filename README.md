@@ -1,4 +1,7 @@
 # Birdee2
+
+![C/C++ CI](https://github.com/Birdee-lang/Birdee2/workflows/C/C++%20CI/badge.svg)
+
 Birdee Language compiler and runtime. Birdee language aims to help construct robust program with minimal efforts and C/C++-level performance. With the help of LLVM, Birdee programs will be compiled into quality native object files (\*.o or \*.obj), which is compatible with native C/C++ linker and compilers (GCC, clang and MSVC). With Birdee, you can have
 
  * performance ensured by LLVM

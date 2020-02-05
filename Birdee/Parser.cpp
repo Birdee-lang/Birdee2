@@ -694,12 +694,15 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		case tok_left_bracket:
 			tokenizer.GetNextToken();//eat (
 			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), ParseArguments());
+			firstexpr->Pos = pos;
 			return true;
 		case tok_dot:
 			tokenizer.GetNextToken();//eat .
+			pos = tokenizer.GetSourcePos();
 			member = tokenizer.IdentifierStr;
 			CompileExpect(tok_identifier, "Expected an identifier after .");
 			firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
+			firstexpr->Pos = pos;
 			return true;
 		default:
 			return false;

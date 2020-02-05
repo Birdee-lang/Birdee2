@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "Tokenizer.h"
+#include "CompileError.h"
 
 using std::unordered_map;
 template<class K, class V, class dummy_compare, class A>
@@ -56,6 +57,16 @@ static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
 	first_tok = toknzr.CurTok;
 	toknzr.GetNextToken();
 	return SwitchTokenizer(std::move(toknzr));
+}
+
+template<typename T>
+T ReadJSONWithDefault(const json& j, const char* name, T defaults)
+{
+	auto itr = j.find(name);
+	if (itr != j.end())
+		return itr->get<T>();
+	else
+		return defaults;
 }
 
 ClassAST* ConvertIdToClass(int idtype)
@@ -169,6 +180,7 @@ void BuildGlobalVaribleFromJson(const json& globals, ImportedModule& mod)
 	for (auto& itr : globals)
 	{
 		auto var = BuildVariableFromJson(itr);
+		var->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(itr, "line", 1), ReadJSONWithDefault(itr, "pos", 1));
 		var->PreGenerateExternForGlobal(current_package_name);
 		auto& name = var->name;
 		mod.dimmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
@@ -201,6 +213,7 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 		if (itr != func.end())
 			ret->is_extension = itr->get<bool>();
 	}
+	ret->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(func, "line", 1), ReadJSONWithDefault(func, "pos", 1));
 	ret->resolved_type.type = tok_func;
 	ret->resolved_type.proto_ast = protoptr;
 	return std::move(ret);
@@ -458,14 +471,17 @@ void PreBuildClassFromJson(const json& cls, const string& module_name, ImportedM
 			string name = itr->get<string>();
 			auto orphan = cu.orphan_class.find(module_name + '.' + name);
 			unique_ptr<ClassAST> classdef;
+			int src_line = ReadJSONWithDefault(json_cls, "line", 0);
+			int src_pos = ReadJSONWithDefault(json_cls, "pos", 0);
 			if (orphan != cu.orphan_class.end())
 			{
 				classdef = std::move(orphan->second);
 				cu.orphan_class.erase(orphan);
+				classdef->Pos = SourcePos(source_paths.size() - 1, src_line, src_pos);
 			}
 			else
 			{
-				classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
+				classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, src_line, src_pos)); //add placeholder
 			}
 			idx_to_class.push_back(classdef.get());
 			mod.classmap[name] = std::make_pair(std::move(classdef), IsSymbolGlobal(json_cls));
@@ -614,6 +630,7 @@ void PreBuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
 		bool is_closure = func["is_closure"].get<bool>();
 		auto proto = make_unique<PrototypeAST>("", vector<unique_ptr<VariableSingleDefAST>>(),
 			ResolvedType(), (ClassAST*)nullptr, current_module_idx, is_closure);
+		proto->pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(func, "line", 1), ReadJSONWithDefault(func, "pos", 1));
 		auto protoptr = proto.get();
 		if (name.size() != 0) //if it is a named prototype
 			mod.functypemap[name] = std::make_pair(std::move(proto), IsSymbolGlobal(func));
@@ -718,9 +735,22 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 
 extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
-string GetModuleFile(const vector<string>& package, std::ifstream& f)
+typedef string(*ModuleResolveFunc)(const vector<string>& package, unique_ptr<std::istream>& f);
+static ModuleResolveFunc module_resolver = nullptr;
+BD_CORE_API void SetModuleResolver(ModuleResolveFunc f)
+{
+	module_resolver = f;
+}
+
+static string GetModuleFile(const vector<string>& package, unique_ptr<std::istream>& f)
 {
 	string ret;
+	if (module_resolver)
+	{
+		ret = module_resolver(package, f);
+		if (!ret.empty())
+			return ret;
+	}
 	string libpath;
 	for (auto& s : package)
 	{
@@ -732,9 +762,12 @@ string GetModuleFile(const vector<string>& package, std::ifstream& f)
 	for (auto& spath : cu.search_path)
 	{
 		ret = spath + libpath;
-		f = std::ifstream(ret, std::ios::in);
-		if (f)
+		auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+		if (*of)
+		{
+			f = std::move(of);
 			return ret;
+		}
 	}
 	
 	string cur_dir_path = cu.directory + "/";
@@ -744,15 +777,21 @@ string GetModuleFile(const vector<string>& package, std::ifstream& f)
 		for (int i = 0; i < dot_cnt - 1; i++)
 			cur_dir_path += "../";
 		ret = cur_dir_path + libpath;
-		f = std::ifstream(ret, std::ios::in);
-		if (f)
+		auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+		if (*of)
+		{
+			f = std::move(of);
 			return ret;
+		}
 	}
 
 	ret = cu.homepath + "blib" + libpath;
-	f = std::ifstream(ret, std::ios::in);
-	if (f)
+	auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+	if (*of)
+	{
+		f = std::move(of);
 		return ret;
+	}
 	return "";
 
 }
@@ -808,12 +847,12 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 {
 	json json;
 	
-	std::ifstream in; 
-	string path = GetModuleFile(package, in);
-	if (!in)
+	unique_ptr<std::istream> ptrin; 
+	string path = GetModuleFile(package, ptrin);
+	auto& in = *ptrin;
+	if (!ptrin || !in)
 	{
-		std::cerr << "Cannot find module " << GetModuleNameByArray(package) << '\n';
-		std::exit(2);
+		throw CompileError(string("Cannot find module ") + GetModuleNameByArray(package));
 	}
 	in >> json;
 	int tmp_current_module_idx = cu.imported_module_names.size() - 1;
@@ -827,7 +866,15 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	to_run_phase0.clear();
 	orphan_idx_to_class.clear();
 	orphan_class_to_generate.clear();
-	source_paths.push_back(path);
+	string srcpath;
+	{
+		auto itr = json.find("SourceFile");
+		if (itr != json.end())
+			srcpath = itr->at(0).get<string>() + "/" + itr->at(1).get<string>();
+		else
+			srcpath = path;
+	}
+	source_paths.push_back(srcpath);
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");

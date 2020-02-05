@@ -32,6 +32,7 @@ namespace Birdee
 {
 	extern void ClearPyHandles();
 	BD_CORE_API extern std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member);
+	BD_CORE_API void SetSourceFilePath(const string& source);
 }
 
 struct BirdeePyContext
@@ -400,6 +401,49 @@ static void CompileClassBody(ClassAST* cls, const char* src)
 	PopClass();
 }
 
+static py::dict GetClassesDict(bool isImported)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	if (isImported)
+	{
+		for (auto& itr : cu.imported_classmap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second));
+		}
+	}
+	else
+	{
+		for (auto& itr : cu.classmap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second.first));
+		}
+	}
+
+	return std::move(dict);
+}
+
+static py::dict GetFunctypesDict(bool isImported)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	if (isImported)
+	{
+		for (auto& itr : cu.imported_functypemap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second));
+		}
+	}
+	else
+	{
+		for (auto& itr : cu.functypemap)
+		{
+			setfunc(itr.first.get(), GetRef(itr.second.first));
+		}
+	}
+	return std::move(dict);
+}
+
 namespace Birdee
 {
 	BD_CORE_API extern string GetTokenString(Token tok);
@@ -430,6 +474,11 @@ PYBIND11_MAKE_OPAQUE(std::vector<FieldDef>);
 PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
 
 extern void RegisiterClassForBinding2(py::module& m);
+BD_CORE_API void SeralizeMetadata(std::ostream& out, bool is_empty);
+typedef string(*ModuleResolveFunc)(const vector<std::string>& package, unique_ptr<std::istream>& f);
+extern BD_CORE_API void SetModuleResolver(ModuleResolveFunc f);
+
+static py::function module_resolver;
 
 void RegisiterClassForBinding(py::module& m)
 {
@@ -440,6 +489,34 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("process_top_level", []() {cu.Phase0(); cu.Phase1(); });
 		m.def("generate", []() {cu.Generate(); });
 		m.def("set_print_ir", [](bool printir) {cu.options->is_print_ir = printir; });
+		m.def("get_metadata_json", []() {
+			std::stringstream buf;
+			SeralizeMetadata(buf, false);
+			return buf.str();
+		});
+		m.def("set_module_resolver", [](py::function f) {
+			module_resolver = f;
+			SetModuleResolver([](const vector<std::string>& package, unique_ptr<std::istream>& f) -> string {
+				auto result = module_resolver(package);
+				if (result.is_none())
+					return string();
+				auto ret = py::cast<py::tuple>(result);
+				auto modname = py::cast<py::str>(ret[0]).operator std::string();
+				auto data = py::cast<py::str>(ret[1]).operator std::string();
+				auto of = std::make_unique<std::stringstream>();
+				of->str(std::move(data));
+				f = std::move(of);
+				return std::move(modname);
+			});
+		});
+		m.def("set_source_file_path", [](string n) {
+			SetSourceFilePath(n);
+		});
+		m.def("get_module_name", []() {
+			auto ret = cu.symbol_prefix;
+			ret.pop_back(); //delete .
+			return ret;
+		});
 		cu.InitForGenerate();
 	}
 	m.def("imports", CompileImports);
@@ -461,6 +538,9 @@ void RegisiterClassForBinding(py::module& m)
 	m.def("class_body", CompileClassBody);
 	m.def("resolve_type", ResolveType);
 	m.def("size_of", GetTypeSize);
+	m.def("get_classes", GetClassesDict);
+	m.def("get_functypes", GetFunctypesDict);
+
 	py::class_ < CompileError>(m, "CompileError")
 		.def_property_readonly("linenumber", [](CompileError& ths) {return ths.pos.line; })
 		.def_property_readonly("pos", [](CompileError& ths) {return ths.pos.pos; })
@@ -581,7 +661,10 @@ void RegisiterClassForBinding(py::module& m)
 			auto ret = FindClassField(&cls, member);
 			return py::make_tuple(ret.first, GetRef(ret.second));
 		})
-		.def("run", [](ClassAST& ths, py::object& func) {});//fix-me: what to run on ClassAST?
+		.def("run", [](ClassAST& ths, py::object& func) {
+			for (auto& f : ths.fields) func(GetRef(f.decl));
+			for (auto& f : ths.funcs) func(GetRef(f.decl));
+		});//fix-me: what to run on ClassAST?
 //	unordered_map<reference_wrapper<const string>, int> fieldmap;
 //	unordered_map<reference_wrapper<const string>, int> funcmap;
 //	int package_name_idx = -1;
@@ -639,7 +722,12 @@ void RegisiterClassForBinding(py::module& m)
 		.def_static("new", [](const string& str, bool is_top_level) { return new UniquePtrStatementAST(std::make_unique<ScriptAST>(str, is_top_level)); })
 		.def_property_readonly("stmt", [](ScriptAST& ths) {return GetRef(ths.stmt); })
 		.def_readwrite("script", &ScriptAST::script)
-		.def("run", [](ScriptAST& ths, py::object& func) {func(GetRef(ths.stmt)); });
+		.def("run", [](ScriptAST& ths, py::object& func) {
+			for (auto& s : ths.stmt)
+			{
+				func(GetRef(s.get()));
+			}
+		});
 
 	RegisterNumCastClass<tok_int, tok_float>(m);
 	RegisterNumCastClass<tok_long, tok_float>(m);

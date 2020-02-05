@@ -89,7 +89,7 @@ If you have downloaded pre-compiled LLVM,
 
 First download LLVM dynamic library and headers for Windows built by me.
 
- * LLVM-shared-build [Github](https://github.com/Menooker/Birdee2/releases/tag/llvm6-v2) [GoogleDrive](https://drive.google.com/open?id=1RZkrTojyoNqL_9IUNxLn_-aLQsV9ySjc)
+ * LLVM-shared-build [Github](https://github.com/Birdee-lang/Birdee2/releases/tag/llvm6.0-2020-02-04)
  * Headers for Windows x64 (The same as in the above section) [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
 
 Then,
