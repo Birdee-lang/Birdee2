@@ -475,7 +475,7 @@ PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
 
 extern void RegisiterClassForBinding2(py::module& m);
 BD_CORE_API void SeralizeMetadata(std::ostream& out, bool is_empty);
-typedef string(*ModuleResolveFunc)(const vector<std::string>& package, unique_ptr<std::istream>& f);
+typedef string(*ModuleResolveFunc)(const vector<std::string>& package, unique_ptr<std::istream>& f, bool second_chance);
 extern BD_CORE_API void SetModuleResolver(ModuleResolveFunc f);
 
 static py::function module_resolver;
@@ -496,8 +496,8 @@ void RegisiterClassForBinding(py::module& m)
 		});
 		m.def("set_module_resolver", [](py::function f) {
 			module_resolver = f;
-			SetModuleResolver([](const vector<std::string>& package, unique_ptr<std::istream>& f) -> string {
-				auto result = module_resolver(package);
+			SetModuleResolver([](const vector<std::string>& package, unique_ptr<std::istream>& f, bool second_chance) -> string {
+				auto result = module_resolver(package, second_chance);
 				if (result.is_none())
 					return string();
 				auto ret = py::cast<py::tuple>(result);
