@@ -151,7 +151,7 @@ BIRDEE_BINDING_API string Birdee_RunScriptForString(const string& str, const Sou
 	auto& env = InitPython();
 	try
 	{
-		return py::eval(str.c_str()).cast<string>();
+		return py::eval(str.c_str(), InitPython().orig_scope).cast<string>();
 	}
 	catch (py::error_already_set& e)
 	{
