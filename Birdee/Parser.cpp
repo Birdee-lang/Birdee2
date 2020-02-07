@@ -134,6 +134,7 @@ BD_CORE_API Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
 
 /////////////////////////////////////////////////////////////////////////////////////
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown();
+std::unique_ptr<ExprAST> ParseExpressionUnknownImpl();
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
@@ -402,7 +403,7 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 	}
 	for (;;)
 	{
-		ret.push_back(ParseExpressionUnknown());
+		ret.push_back(ParseExpressionUnknownImpl());
 		if (tokenizer.CurTok == tok_right_bracket)
 		{
 			tokenizer.GetNextToken();
@@ -432,14 +433,14 @@ std::unique_ptr<NewExprAST> ParseNew()
 		if (tokenizer.GetNextToken() != tok_left_bracket) //new int*6
 		{
 			type->index_level++;
-			expr.push_back(ParseExpressionUnknown());
+			expr.push_back(ParseExpressionUnknownImpl());
 		}
 		else //if tok_left_bracket -> new int*(2,4)
 		{
 			do {
 				tokenizer.GetNextToken(); //eat ( or ,
 				type->index_level++;
-				expr.push_back(ParseExpressionUnknown());
+				expr.push_back(ParseExpressionUnknownImpl());
 			} while (tokenizer.CurTok==tok_comma);
 			CompileExpect(tok_right_bracket, "Expected )");
 		}
@@ -519,7 +520,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 		);
 		return std::move(expr);
 	}
-	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for array index or template");
+	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknownImpl(), "Expected an expression for array index or template");
 	if (tokenizer.CurTok == tok_right_index)
 	{
 		tokenizer.GetNextToken();
@@ -530,11 +531,20 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 	while (tokenizer.CurTok == tok_comma)
 	{
 		tokenizer.GetNextToken();
-		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
+		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknownImpl(), "Expected an expression for template"));
 	}
 	CompileExpect(tok_right_index, "Expected  \']\'");
 	return make_unique<FunctionTemplateInstanceExprAST>(std::move(expr), std::move(template_args), Pos);
 }
+
+class MetAutoCompletionException
+{
+public:
+	std::unique_ptr<AutoCompleteExprAST> ptr;
+	MetAutoCompletionException(std::unique_ptr<AutoCompleteExprAST>&& p) {
+		ptr = std::move(p);
+	}
+};
 
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
 {
@@ -566,7 +576,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof/addressof/pointerof");
-		firstexpr = ParseExpressionUnknown();
+		firstexpr = ParseExpressionUnknownImpl();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		// push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
@@ -580,7 +590,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		while (tokenizer.CurTok != tok_right_index)
 		{
 			CompileAssert(tokenizer.CurTok != tok_eof, "Unexpected end of file. Unmatched \'[\'.");
-			values.push_back(ParseExpressionUnknown());
+			values.push_back(ParseExpressionUnknownImpl());
 			if (tokenizer.CurTok != tok_comma)
 			{
 				CompileAssert(tokenizer.CurTok == tok_right_index, "Expecting \']\' for array initializer");
@@ -646,7 +656,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	case tok_left_bracket:
 		tokenizer.GetNextToken();
-		push_expr(ParseExpressionUnknown());
+		push_expr(ParseExpressionUnknownImpl());
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		break;
 	case tok_func:
@@ -699,11 +709,23 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		case tok_dot:
 			tokenizer.GetNextToken();//eat .
 			pos = tokenizer.GetSourcePos();
-			member = tokenizer.IdentifierStr;
-			CompileExpect(tok_identifier, "Expected an identifier after .");
-			firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
-			firstexpr->Pos = pos;
-			return true;
+			if (tokenizer.CurTok == tok_identifier)
+			{
+				member = tokenizer.IdentifierStr;
+				tokenizer.GetNextToken();
+				firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
+				firstexpr->Pos = pos;
+				return true;
+			}
+			else
+			{
+				// or it is source code for auto-complete
+				CompileExpect(tok_colon, "Expected an identifier after .");
+				auto expr = make_unique<AutoCompleteExprAST>(std::move(firstexpr));
+				throw MetAutoCompletionException(std::move(expr));
+				return false; //should not have other . () [] after auto-complete
+			}
+
 		default:
 			return false;
 		}
@@ -807,10 +829,35 @@ std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
 
 /*
 Parse an expression when we don't know what kind of it is. Maybe an identifier? A function def?
+This function is for "top-level" expressions (in BasicBlock, top-level, ParseStatement...). It handles
+MetAutoCompletionException and will skip to the next line to avoid parser errors. For sub-expressions
+that are not top-level in a basic block or etc., use ParseExpressionUnknownImpl instead
 */
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 {
+	try 
+	{
+		return ParseExpressionUnknownImpl();
+	}
+	catch (MetAutoCompletionException& e)
+	{
+		//we have met an auto-completion token, skip to the next line
+		//to avoid parser error. e.g.:
+		// somefunc(obj.
+		//we can avoid the complaint of expecting ")" here
+		while (tokenizer.CurTok != tok_newline 
+			&& tokenizer.CurTok != tok_eof
+			&& tokenizer.CurTok != tok_then)
+			tokenizer.GetNextToken();
+		return std::move(e.ptr);
+	}
+}
 
+/*
+Add functions that ParseExpressionUnknownImpl may call should call ParseExpressionUnknownImpl instead of ParseExpressionUnknown
+*/
+std::unique_ptr<ExprAST> ParseExpressionUnknownImpl()
+{
 	return ParseBinOpRHS(0,
 		CompileExpectNotNull(ParsePrimaryExpression(), "Expected an expression"));
 }

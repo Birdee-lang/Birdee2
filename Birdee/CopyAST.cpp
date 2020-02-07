@@ -36,6 +36,11 @@ namespace Birdee
 		return SetPos(make_unique<StringLiteralAST>(*this),Pos);
 	}
 
+	ptrStatementAST AutoCompleteExprAST::Copy()
+	{
+		return make_unique<AutoCompleteExprAST>(unique_ptr_cast<ExprAST>(impl->Copy()));
+	}
+
 	std::unique_ptr<StatementAST> IdentifierExprAST::Copy()
 	{
 		auto that = make_unique<IdentifierExprAST>(Name);

@@ -1328,6 +1328,15 @@ namespace Birdee {
 		}
 	};
 
+	class BD_CORE_API AutoCompleteExprAST : public ExprAST {
+	public:
+		unique_ptr<ExprAST> impl;
+		void Phase1() override;
+		llvm::Value* Generate() override;
+		void print(int level) override;
+		unique_ptr<StatementAST> Copy() override;
+		AutoCompleteExprAST(unique_ptr<ExprAST>&& impl);
+	};
 
 	/// MemberExprAST - Expression class for function calls.
 	class BD_CORE_API MemberExprAST : public ResolvedIdentifierExprAST {

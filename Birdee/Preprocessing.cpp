@@ -725,6 +725,7 @@ struct PreprocessingState
 	ClassAST* array_cls = nullptr;
 	ClassAST* string_cls = nullptr;
 	int current_phase = 0;
+	ExprAST* auto_compl_ast = nullptr;
 
 	std::vector<unique_ptr<TemplateInstanceArgs<ClassTemplateInstMap>>> class_templ_inst_rollback;
 	std::vector<unique_ptr<TemplateInstanceArgs<FuncTemplateInstMap>>> func_templ_inst_rollback;
@@ -3804,4 +3805,30 @@ If usage vararg name is "", match the closest vararg
 			scope_mgr.PopBasicBlock();
 		}
 	}
+
+	AutoCompleteExprAST::AutoCompleteExprAST(unique_ptr<ExprAST>&& impl): impl(std::move(impl))
+	{
+		Pos = this->impl->Pos;
+	}
+
+	void AutoCompleteExprAST::print(int level)
+	{
+		ExprAST::print(level);
+		std::cout << "AutoCompleteExprAST\n";
+		impl->print(level + 1);
+	}
+
+	BD_CORE_API ExprAST* GetAutoCompletionAST()
+	{
+		return preprocessing_state.auto_compl_ast;
+	}
+
+	void AutoCompleteExprAST::Phase1()
+	{
+		impl->Phase1();
+		resolved_type = impl->resolved_type;
+		preprocessing_state.auto_compl_ast = impl.get();
+		throw CompileError(Pos, "Met AutoCompleteExprAST");
+	}
+
 }

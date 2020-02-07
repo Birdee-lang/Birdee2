@@ -135,3 +135,27 @@ def foreach_field(T, callback):
 			raise RuntimeError("T = {} should be a class or struct".format(T))
 		T=T.get_detail()
 	_foreach_field_impl(T, callback)
+
+
+def _foreach_memberfunc_impl(T: ClassAST, callback):
+	fld=[]
+	def get_all_funcs(cur: ClassAST):
+		if cur.parent_class:
+			get_all_funcs(cur.parent_class)
+		for f in cur.funcs:
+			fld.append(f)
+	get_all_funcs(T)
+	length=len(fld)
+	for idx, field in enumerate(fld):
+		callback(idx, length, field)
+
+'''
+T should be a resolved type/ClassAST.
+callback should be (idx, length, field)
+'''
+def foreach_method(T, callback):
+	if not isinstance(T, ClassAST):
+		if not is_a_class(T) and not is_a_struct(T):
+			raise RuntimeError("T = {} should be a class or struct".format(T))
+		T=T.get_detail()
+	_foreach_memberfunc_impl(T, callback)

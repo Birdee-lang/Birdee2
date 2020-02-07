@@ -32,7 +32,8 @@ namespace Birdee
 {
 	extern void ClearPyHandles();
 	BD_CORE_API extern std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member);
-	BD_CORE_API void SetSourceFilePath(const string& source);
+	BD_CORE_API void SetSourceFilePath(const string& source); 
+	BD_CORE_API ExprAST* GetAutoCompletionAST();
 }
 
 struct BirdeePyContext
@@ -512,13 +513,16 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("set_source_file_path", [](string n) {
 			SetSourceFilePath(n);
 		});
-		m.def("get_module_name", []() {
-			auto ret = cu.symbol_prefix;
-			ret.pop_back(); //delete .
-			return ret;
+		m.def("get_auto_completion_ast", []() {
+			return GetRef(GetAutoCompletionAST());
 		});
 		cu.InitForGenerate();
 	}
+	m.def("get_module_name", []() {
+		auto ret = cu.symbol_prefix;
+		ret.pop_back(); //delete .
+		return ret;
+	});
 	m.def("imports", CompileImports);
 	m.def("get_os_name", []()->std::string {
 #ifdef _WIN32

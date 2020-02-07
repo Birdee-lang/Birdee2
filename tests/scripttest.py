@@ -43,6 +43,20 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+###Auto-complete Test
+try:
+	top_level('''
+	dim p as string
+	println(p.:)
+	''')
+	process_top_level()
+except CompileException:
+	pass
+assert(get_auto_completion_ast()!=None)
+clear_compile_unit()
+assert(get_auto_completion_ast()==None)
+#####
+
 ####Test complicated source & clearing
 srcpath=os.path.join(os.environ["BIRDEE_HOME"], "src", "serialization", "json", "deserializer.bdm")
 print("Test source path", srcpath)

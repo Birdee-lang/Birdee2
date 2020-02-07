@@ -3765,4 +3765,7 @@ llvm::Value* Birdee::ThrowAST::Generate()
 	return nullptr;
 }
 
-
+llvm::Value * Birdee::AutoCompleteExprAST::Generate()
+{
+	throw CompileError(Pos, "Met AutoCompleteExprAST");
+}
