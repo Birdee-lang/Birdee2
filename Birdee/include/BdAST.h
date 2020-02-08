@@ -1228,8 +1228,8 @@ namespace Birdee {
 
 	class BD_CORE_API NewExprAST : public ExprAST {
 		std::unique_ptr<Type> ty;
-		string method;
 	public:
+		string method;
 		vector<std::unique_ptr<ExprAST>> args;
 		FunctionAST* func = nullptr;
 		std::unique_ptr<StatementAST> Copy();
@@ -1328,14 +1328,19 @@ namespace Birdee {
 		}
 	};
 
-	class BD_CORE_API AutoCompleteExprAST : public ExprAST {
+	class BD_CORE_API AutoCompletionExprAST : public ExprAST {
 	public:
+		enum CompletionKind
+		{
+			DOT,
+			NEW
+		}kind;
 		unique_ptr<ExprAST> impl;
 		void Phase1() override;
 		llvm::Value* Generate() override;
 		void print(int level) override;
 		unique_ptr<StatementAST> Copy() override;
-		AutoCompleteExprAST(unique_ptr<ExprAST>&& impl);
+		AutoCompletionExprAST(unique_ptr<ExprAST>&& impl, CompletionKind kind);
 	};
 
 	/// MemberExprAST - Expression class for function calls.

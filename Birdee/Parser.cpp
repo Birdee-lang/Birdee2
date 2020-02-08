@@ -421,6 +421,15 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 
 }
 
+class MetAutoCompletionException
+{
+public:
+	std::unique_ptr<AutoCompletionExprAST> ptr;
+	MetAutoCompletionException(std::unique_ptr<AutoCompletionExprAST>&& p) {
+		ptr = std::move(p);
+	}
+};
+
 std::unique_ptr<NewExprAST> ParseNew()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
@@ -450,6 +459,14 @@ std::unique_ptr<NewExprAST> ParseNew()
 		if (tokenizer.CurTok == tok_colon)
 		{
 			tokenizer.GetNextToken(); //eat :
+			if (tokenizer.CurTok == tok_colon) // auto-complete
+			{
+				auto auto_comp = make_unique<AutoCompletionExprAST>(
+					make_unique<NewExprAST>(std::move(type), std::move(expr), ":", pos),
+					AutoCompletionExprAST::NEW
+					);
+				throw MetAutoCompletionException(std::move(auto_comp));
+			}
 			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier after :");
 			method = tokenizer.IdentifierStr;
 			tokenizer.GetNextToken();
@@ -536,15 +553,6 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 	CompileExpect(tok_right_index, "Expected  \']\'");
 	return make_unique<FunctionTemplateInstanceExprAST>(std::move(expr), std::move(template_args), Pos);
 }
-
-class MetAutoCompletionException
-{
-public:
-	std::unique_ptr<AutoCompleteExprAST> ptr;
-	MetAutoCompletionException(std::unique_ptr<AutoCompleteExprAST>&& p) {
-		ptr = std::move(p);
-	}
-};
 
 std::unique_ptr<ExprAST> ParsePrimaryExpression()
 {
@@ -721,7 +729,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 			{
 				// or it is source code for auto-complete
 				CompileExpect(tok_colon, "Expected an identifier after .");
-				auto expr = make_unique<AutoCompleteExprAST>(std::move(firstexpr));
+				auto expr = make_unique<AutoCompletionExprAST>(std::move(firstexpr), AutoCompletionExprAST::DOT);
 				throw MetAutoCompletionException(std::move(expr));
 				return false; //should not have other . () [] after auto-complete
 			}

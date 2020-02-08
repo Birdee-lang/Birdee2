@@ -423,7 +423,12 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_property("expr", [](ThrowAST& ths) {return GetRef(ths.expr); },
 			[](ThrowAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
 		.def("run", [](ThrowAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.expr)); });
-	py::class_<AutoCompleteExprAST, ExprAST>(m, "AutoCompleteExprAST")
-		.def_property_readonly("impl", [](AutoCompleteExprAST& ths) {return GetRef(ths.impl); })
-		.def("run", [](AutoCompleteExprAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.impl)); });
+	auto autocomp = py::class_<AutoCompletionExprAST, ExprAST>(m, "AutoCompletionExprAST");
+	py::enum_ < AutoCompletionExprAST::CompletionKind>(autocomp, "CompletionKind")
+		.value("DOT", AutoCompletionExprAST::DOT)
+		.value("NEW", AutoCompletionExprAST::NEW);
+	autocomp
+		.def_property_readonly("impl", [](AutoCompletionExprAST& ths) {return GetRef(ths.impl); })
+		.def_readonly("kind", &AutoCompletionExprAST::kind)
+		.def("run", [](AutoCompletionExprAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.impl)); });
 }

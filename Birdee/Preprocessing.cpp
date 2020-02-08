@@ -3806,15 +3806,16 @@ If usage vararg name is "", match the closest vararg
 		}
 	}
 
-	AutoCompleteExprAST::AutoCompleteExprAST(unique_ptr<ExprAST>&& impl): impl(std::move(impl))
+	AutoCompletionExprAST::AutoCompletionExprAST(unique_ptr<ExprAST>&& impl, 
+		AutoCompletionExprAST::CompletionKind kind): impl(std::move(impl)), kind(kind)
 	{
 		Pos = this->impl->Pos;
 	}
 
-	void AutoCompleteExprAST::print(int level)
+	void AutoCompletionExprAST::print(int level)
 	{
 		ExprAST::print(level);
-		std::cout << "AutoCompleteExprAST\n";
+		std::cout << "AutoCompletionExprAST\n";
 		impl->print(level + 1);
 	}
 
@@ -3823,12 +3824,23 @@ If usage vararg name is "", match the closest vararg
 		return preprocessing_state.auto_compl_ast;
 	}
 
-	void AutoCompleteExprAST::Phase1()
+	void AutoCompletionExprAST::Phase1()
 	{
-		impl->Phase1();
+		if (kind == NEW)
+		{
+			auto n = dynamic_cast<NewExprAST*>(impl.get());
+			assert(n);
+			auto method = std::move(n->method);
+			n->Phase1();
+			n->method = std::move(method);
+		}
+		else
+		{
+			impl->Phase1();
+		}
 		resolved_type = impl->resolved_type;
-		preprocessing_state.auto_compl_ast = impl.get();
-		throw CompileError(Pos, "Met AutoCompleteExprAST");
+		preprocessing_state.auto_compl_ast = this;
+		throw CompileError(Pos, "Met AutoCompletionExprAST");
 	}
 
 }
