@@ -13,6 +13,6 @@ namespace Birdee
 		PyHandle();
 		PyHandle(void* ptr);
 		PyHandle(PyHandle&& other) noexcept;
-		PyHandle& operator =(PyHandle&& other);
+		//PyHandle& operator =(PyHandle&& other);
 	};
 }

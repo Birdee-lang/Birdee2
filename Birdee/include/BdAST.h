@@ -109,7 +109,7 @@ namespace Birdee {
 	class AnnotationStatementAST;
 	
 	using string_ref = std::reference_wrapper<const string>;
-	struct ImportedModule
+	struct BD_CORE_API ImportedModule
 	{
 		//mapping from name to <Symbol,is_public>
 		unordered_map<string, std::pair<unique_ptr<ClassAST>,bool>> classmap;
@@ -129,8 +129,8 @@ namespace Birdee {
 		string source_dir;
 		string source_file;
 		bool is_header_only;
-		BD_CORE_API void HandleImport();
-		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
+		void HandleImport();
+		void Init(const vector<string>& package,const string& module_name);
 	};
 
 	//a quick structure to find & store names of imported packages

@@ -19,6 +19,30 @@ namespace Birdee
 	extern BD_CORE_API string GetSourcePathByIdx(int source_idx);
 }
 
+template<typename K, typename V>
+py::dict CopyMapToDict(unordered_map<K, V>& m)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	for (auto& itr : m)
+	{
+		setfunc(itr.first, GetRef(itr.second));
+	}
+	return std::move(dict);
+}
+
+template<typename K, typename V>
+py::dict CopyMapToDict(unordered_map<K, std::pair<V, bool>>& m)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	for (auto& itr : m)
+	{
+		setfunc(itr.first, py::make_tuple(GetRef(itr.second.first), itr.second.second));
+	}
+	return std::move(dict);
+}
+
 void RegisiterClassForBinding2(py::module& m) {
 	// `m` is a `py::module` which is used to bind functions and classes
 	py::class_<UniquePtr<unique_ptr<StatementAST>>>(m, "StatementASTUniquePtr")
@@ -65,7 +89,7 @@ void RegisiterClassForBinding2(py::module& m) {
 			if (ths.type == tok_class)
 				return py::cast(GetRef(ths.class_ast), py::return_value_policy::reference);
 			else if (ths.type == tok_package)
-				return py::cast(nullptr); //fix-me : return the import_node
+				return py::cast(GetRef(ths.import_node), py::return_value_policy::reference);
 			else if (ths.type == tok_func)
 				return py::cast(GetRef(ths.proto_ast), py::return_value_policy::reference);
 			else
@@ -76,15 +100,46 @@ void RegisiterClassForBinding2(py::module& m) {
 				ths.class_ast = py::cast<ClassAST*>(obj);
 			else if (type == tok_func)
 				ths.proto_ast = py::cast<PrototypeAST*>(obj);
+			else if (type==tok_package)
+				ths.import_node = py::cast<ImportTree*>(obj);
 			else
 				ths.class_ast = nullptr;
-			//fix-me : set the import_node
 			ths.type = type;
 			return;
 		})
 		.def("__eq__", &ResolvedType::operator ==)
 		.def("is_integer", &ResolvedType::isInteger);
-		
+	py::class_<ImportedModule>(m, "ImportedModule")
+		.def_readonly("source_dir", &ImportedModule::source_dir)
+		.def_readonly("source_file", &ImportedModule::source_file)
+		.def_readonly("is_header_only", &ImportedModule::is_header_only)
+		.def("get_classmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.classmap);
+		})
+		.def("get_funcmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.funcmap);
+		})
+		.def("get_dimmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.dimmap);
+		})
+		.def("get_functypemap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.functypemap);
+		})
+		.def("get_imported_classmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.imported_classmap);
+		})
+		.def("get_imported_funcmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.imported_funcmap);
+		})
+		.def("get_imported_dimmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.imported_dimmap);
+		})
+		.def("get_imported_functypemap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.functypemap);
+		});
+	py::class_<ImportTree>(m, "ImportTree")
+		.def("get_submodules", [](ImportTree& ths) {return CopyMapToDict(ths.map); })
+		.def_property_readonly("mod", [](ImportTree& ths) {return GetRef(ths.mod); });
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos)
 		.def("copy", [](StatementAST& ths) {

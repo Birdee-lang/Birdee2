@@ -43,6 +43,14 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+top_level('''import vector''')
+v=expr("birdee")
+mod=v.get().resolved_type.get_detail()
+assert(len(mod.get_submodules())==0)
+mod=mod.mod
+assert(len(mod.get_classmap())!=0)
+clear_compile_unit()
+
 ###Auto-complete Test
 try:
 	top_level('''
