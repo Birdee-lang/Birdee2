@@ -3830,15 +3830,39 @@ If usage vararg name is "", match the closest vararg
 		{
 			auto n = dynamic_cast<NewExprAST*>(impl.get());
 			assert(n);
-			auto method = std::move(n->method);
-			n->Phase1();
-			n->method = std::move(method);
+			resolved_type = ResolvedType(*n->ty, n->Pos);
+		}
+		else if (kind == PARAMETER)
+		{
+			auto n = dynamic_cast<NewExprAST*>(impl.get());
+			if (n)
+			{
+				resolved_type = ResolvedType(*n->ty, n->Pos); // we need to change this because we use "this" in ResolveClassMember
+				if (resolved_type.type == tok_class && resolved_type.index_level == 0)
+				{
+					auto cls = resolved_type.class_ast;
+					auto method = n->method.empty() ? "__init__" : n->method;
+					int cascade_parents = 0;
+					MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
+					MemberFunctionDef* outfunc = nullptr;
+					FieldDef* outfield = nullptr;
+					FunctionAST* outextension = nullptr;
+					auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield, outextension);
+					if (IsInternalMemberFunction(kind))
+						resolved_type = rty;
+				}
+			}
+			else
+			{
+				impl->Phase1();
+				resolved_type = impl->resolved_type;
+			}
 		}
 		else
 		{
 			impl->Phase1();
+			resolved_type = impl->resolved_type;
 		}
-		resolved_type = impl->resolved_type;
 		preprocessing_state.auto_compl_ast = this;
 		throw CompileError(Pos, "Met AutoCompletionExprAST");
 	}

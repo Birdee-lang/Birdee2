@@ -393,7 +393,7 @@ done:
 		return make_unique<VariableMultiDefAST>(std::move(defs), pos);
 }
 
-std::vector<std::unique_ptr<ExprAST>> ParseArguments()
+std::vector<std::unique_ptr<ExprAST>> ParseArguments(std::function<void(int)> on_auto_complete)
 {
 	std::vector<std::unique_ptr<ExprAST>> ret;
 	if (tokenizer.CurTok == tok_right_bracket)
@@ -403,6 +403,10 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 	}
 	for (;;)
 	{
+		if (tokenizer.CurTok == tok_colon) // auto complete for function call
+		{
+			on_auto_complete(ret.size());
+		}
 		ret.push_back(ParseExpressionUnknownImpl());
 		if (tokenizer.CurTok == tok_right_bracket)
 		{
@@ -456,6 +460,14 @@ std::unique_ptr<NewExprAST> ParseNew()
 	}
 	if (type->index_level == 0)
 	{
+		auto on_auto_complete = [&type, &expr, &method, &pos](int num_param) {
+			auto v = make_unique<AutoCompletionExprAST>(
+				make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos),
+				AutoCompletionExprAST::PARAMETER
+				);
+			v->parameter_number = num_param;
+			throw MetAutoCompletionException(std::move(v));
+		};
 		if (tokenizer.CurTok == tok_colon)
 		{
 			tokenizer.GetNextToken(); //eat :
@@ -473,14 +485,14 @@ std::unique_ptr<NewExprAST> ParseNew()
 			if (tokenizer.CurTok == tok_left_bracket)
 			{
 				tokenizer.GetNextToken(); //eat (
-				expr = ParseArguments();
+				expr = ParseArguments(on_auto_complete);
 			}
 		}
 		else if (tokenizer.CurTok == tok_left_bracket) // new Object(...)
 		{
 			method = "__init__";
 			tokenizer.GetNextToken(); // eat (
-			expr = ParseArguments();
+			expr = ParseArguments(on_auto_complete);
 		}
 	}
 	return make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos);
@@ -710,10 +722,17 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 			firstexpr = ParseIndexOrTemplateInstance(std::move(firstexpr),pos);
 			return true;
 		case tok_left_bracket:
+		{
 			tokenizer.GetNextToken();//eat (
-			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), ParseArguments());
+			auto args = ParseArguments([&firstexpr](int param_num) {
+				auto ret = std::make_unique<AutoCompletionExprAST>(std::move(firstexpr), AutoCompletionExprAST::PARAMETER);
+				ret->parameter_number = param_num;
+				throw MetAutoCompletionException(std::move(ret));
+			});
+			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), std::move(args));
 			firstexpr->Pos = pos;
 			return true;
+		}
 		case tok_dot:
 			tokenizer.GetNextToken();//eat .
 			pos = tokenizer.GetSourcePos();

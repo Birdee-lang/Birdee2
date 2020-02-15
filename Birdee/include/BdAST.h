@@ -1227,8 +1227,8 @@ namespace Birdee {
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
-		std::unique_ptr<Type> ty;
 	public:
+		std::unique_ptr<Type> ty;
 		string method;
 		vector<std::unique_ptr<ExprAST>> args;
 		FunctionAST* func = nullptr;
@@ -1332,9 +1332,11 @@ namespace Birdee {
 	public:
 		enum CompletionKind
 		{
-			DOT,
-			NEW
+			DOT, // XXX.
+			NEW, // new AAA:
+			PARAMETER, // somefunc(
 		}kind;
+		int parameter_number = 0;
 		unique_ptr<ExprAST> impl;
 		void Phase1() override;
 		llvm::Value* Generate() override;

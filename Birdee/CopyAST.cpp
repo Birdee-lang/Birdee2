@@ -38,7 +38,9 @@ namespace Birdee
 
 	ptrStatementAST AutoCompletionExprAST::Copy()
 	{
-		return make_unique<AutoCompletionExprAST>(unique_ptr_cast<ExprAST>(impl->Copy()), kind);
+		auto ret = make_unique<AutoCompletionExprAST>(unique_ptr_cast<ExprAST>(impl->Copy()), kind);
+		ret->parameter_number = parameter_number;
+		return std::move(ret);
 	}
 
 	std::unique_ptr<StatementAST> IdentifierExprAST::Copy()
