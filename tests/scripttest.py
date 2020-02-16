@@ -87,6 +87,19 @@ process_top_level()
 generate()
 clear_compile_unit()
 
+#top-level defer test
+assert_generate_ok('''
+println("AAAA")
+defer
+	println("BBBB")
+end
+dim c= int2str(12)
+defer
+	println("BBBB")
+end
+dim d = bool2str(true)
+''')
+
 assert_generate_ok('''
 struct AAA
 	public a as int

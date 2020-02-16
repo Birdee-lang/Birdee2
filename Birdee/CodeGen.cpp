@@ -1307,6 +1307,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		{
 			stmt->Generate();
 		}
+		gen_context.basic_block_info.back()->GenerateJumpToDeferBlocks();
 		if (!dyncast_resolve_anno<ReturnAST>(toplevel.back().get()))
 		{
 			dinfo.emitLocation(toplevel.back().get());
