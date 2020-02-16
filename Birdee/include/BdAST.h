@@ -109,7 +109,7 @@ namespace Birdee {
 	class AnnotationStatementAST;
 	
 	using string_ref = std::reference_wrapper<const string>;
-	struct ImportedModule
+	struct BD_CORE_API ImportedModule
 	{
 		//mapping from name to <Symbol,is_public>
 		unordered_map<string, std::pair<unique_ptr<ClassAST>,bool>> classmap;
@@ -129,8 +129,8 @@ namespace Birdee {
 		string source_dir;
 		string source_file;
 		bool is_header_only;
-		BD_CORE_API void HandleImport();
-		BD_CORE_API void Init(const vector<string>& package,const string& module_name);
+		void HandleImport();
+		void Init(const vector<string>& package,const string& module_name);
 	};
 
 	//a quick structure to find & store names of imported packages
@@ -1227,9 +1227,9 @@ namespace Birdee {
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
+	public:
 		std::unique_ptr<Type> ty;
 		string method;
-	public:
 		vector<std::unique_ptr<ExprAST>> args;
 		FunctionAST* func = nullptr;
 		std::unique_ptr<StatementAST> Copy();
@@ -1328,6 +1328,22 @@ namespace Birdee {
 		}
 	};
 
+	class BD_CORE_API AutoCompletionExprAST : public ExprAST {
+	public:
+		enum CompletionKind
+		{
+			DOT, // XXX.
+			NEW, // new AAA:
+			PARAMETER, // somefunc(
+		}kind;
+		int parameter_number = 0;
+		unique_ptr<ExprAST> impl;
+		void Phase1() override;
+		llvm::Value* Generate() override;
+		void print(int level) override;
+		unique_ptr<StatementAST> Copy() override;
+		AutoCompletionExprAST(unique_ptr<ExprAST>&& impl, CompletionKind kind);
+	};
 
 	/// MemberExprAST - Expression class for function calls.
 	class BD_CORE_API MemberExprAST : public ResolvedIdentifierExprAST {

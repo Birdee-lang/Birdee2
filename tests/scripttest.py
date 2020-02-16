@@ -43,6 +43,28 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+top_level('''import vector''')
+v=expr("birdee")
+mod=v.get().resolved_type.get_detail()
+assert(len(mod.get_submodules())==0)
+mod=mod.mod
+assert(len(mod.get_classmap())!=0)
+clear_compile_unit()
+
+###Auto-complete Test
+try:
+	top_level('''
+	dim p as string
+	println(p.:)
+	''')
+	process_top_level()
+except CompileException:
+	pass
+assert(get_auto_completion_ast()!=None)
+clear_compile_unit()
+assert(get_auto_completion_ast()==None)
+#####
+
 ####Test complicated source & clearing
 srcpath=os.path.join(os.environ["BIRDEE_HOME"], "src", "serialization", "json", "deserializer.bdm")
 print("Test source path", srcpath)
@@ -64,6 +86,19 @@ CallExprAST.new(expr("println"), [expr('"hello"')])
 process_top_level()
 generate()
 clear_compile_unit()
+
+#top-level defer test
+assert_generate_ok('''
+println("AAAA")
+defer
+	println("BBBB")
+end
+dim c= int2str(12)
+defer
+	println("BBBB")
+end
+dim d = bool2str(true)
+''')
 
 assert_generate_ok('''
 struct AAA

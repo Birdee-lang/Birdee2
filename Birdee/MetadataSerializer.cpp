@@ -339,6 +339,7 @@ json BuildGlobalFuncJson(json& func_template)
 				template_obj["annotations"] = ptr->annotation->anno;
 			template_obj["source_line"] = itr.second.first->Pos.line;
 			template_obj["is_public"] = itr.second.second;
+			template_obj["name"] = itr.second.first->Proto->Name;
 			func_template.push_back(std::move(template_obj));
 		}
 		else

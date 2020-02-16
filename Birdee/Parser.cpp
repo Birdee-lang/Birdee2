@@ -134,6 +134,7 @@ BD_CORE_API Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
 
 /////////////////////////////////////////////////////////////////////////////////////
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown();
+std::unique_ptr<ExprAST> ParseExpressionUnknownImpl();
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
@@ -392,7 +393,7 @@ done:
 		return make_unique<VariableMultiDefAST>(std::move(defs), pos);
 }
 
-std::vector<std::unique_ptr<ExprAST>> ParseArguments()
+std::vector<std::unique_ptr<ExprAST>> ParseArguments(std::function<void(int)> on_auto_complete)
 {
 	std::vector<std::unique_ptr<ExprAST>> ret;
 	if (tokenizer.CurTok == tok_right_bracket)
@@ -402,7 +403,11 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 	}
 	for (;;)
 	{
-		ret.push_back(ParseExpressionUnknown());
+		if (tokenizer.CurTok == tok_colon) // auto complete for function call
+		{
+			on_auto_complete(ret.size());
+		}
+		ret.push_back(ParseExpressionUnknownImpl());
 		if (tokenizer.CurTok == tok_right_bracket)
 		{
 			tokenizer.GetNextToken();
@@ -420,6 +425,15 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 
 }
 
+class MetAutoCompletionException
+{
+public:
+	std::unique_ptr<AutoCompletionExprAST> ptr;
+	MetAutoCompletionException(std::unique_ptr<AutoCompletionExprAST>&& p) {
+		ptr = std::move(p);
+	}
+};
+
 std::unique_ptr<NewExprAST> ParseNew()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
@@ -432,37 +446,53 @@ std::unique_ptr<NewExprAST> ParseNew()
 		if (tokenizer.GetNextToken() != tok_left_bracket) //new int*6
 		{
 			type->index_level++;
-			expr.push_back(ParseExpressionUnknown());
+			expr.push_back(ParseExpressionUnknownImpl());
 		}
 		else //if tok_left_bracket -> new int*(2,4)
 		{
 			do {
 				tokenizer.GetNextToken(); //eat ( or ,
 				type->index_level++;
-				expr.push_back(ParseExpressionUnknown());
+				expr.push_back(ParseExpressionUnknownImpl());
 			} while (tokenizer.CurTok==tok_comma);
 			CompileExpect(tok_right_bracket, "Expected )");
 		}
 	}
 	if (type->index_level == 0)
 	{
+		auto on_auto_complete = [&type, &expr, &method, &pos](int num_param) {
+			auto v = make_unique<AutoCompletionExprAST>(
+				make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos),
+				AutoCompletionExprAST::PARAMETER
+				);
+			v->parameter_number = num_param;
+			throw MetAutoCompletionException(std::move(v));
+		};
 		if (tokenizer.CurTok == tok_colon)
 		{
 			tokenizer.GetNextToken(); //eat :
+			if (tokenizer.CurTok == tok_colon) // auto-complete
+			{
+				auto auto_comp = make_unique<AutoCompletionExprAST>(
+					make_unique<NewExprAST>(std::move(type), std::move(expr), ":", pos),
+					AutoCompletionExprAST::NEW
+					);
+				throw MetAutoCompletionException(std::move(auto_comp));
+			}
 			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier after :");
 			method = tokenizer.IdentifierStr;
 			tokenizer.GetNextToken();
 			if (tokenizer.CurTok == tok_left_bracket)
 			{
 				tokenizer.GetNextToken(); //eat (
-				expr = ParseArguments();
+				expr = ParseArguments(on_auto_complete);
 			}
 		}
 		else if (tokenizer.CurTok == tok_left_bracket) // new Object(...)
 		{
 			method = "__init__";
 			tokenizer.GetNextToken(); // eat (
-			expr = ParseArguments();
+			expr = ParseArguments(on_auto_complete);
 		}
 	}
 	return make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos);
@@ -519,7 +549,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 		);
 		return std::move(expr);
 	}
-	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for array index or template");
+	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknownImpl(), "Expected an expression for array index or template");
 	if (tokenizer.CurTok == tok_right_index)
 	{
 		tokenizer.GetNextToken();
@@ -530,7 +560,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 	while (tokenizer.CurTok == tok_comma)
 	{
 		tokenizer.GetNextToken();
-		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
+		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknownImpl(), "Expected an expression for template"));
 	}
 	CompileExpect(tok_right_index, "Expected  \']\'");
 	return make_unique<FunctionTemplateInstanceExprAST>(std::move(expr), std::move(template_args), Pos);
@@ -566,7 +596,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof/addressof/pointerof");
-		firstexpr = ParseExpressionUnknown();
+		firstexpr = ParseExpressionUnknownImpl();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		// push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
@@ -580,7 +610,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		while (tokenizer.CurTok != tok_right_index)
 		{
 			CompileAssert(tokenizer.CurTok != tok_eof, "Unexpected end of file. Unmatched \'[\'.");
-			values.push_back(ParseExpressionUnknown());
+			values.push_back(ParseExpressionUnknownImpl());
 			if (tokenizer.CurTok != tok_comma)
 			{
 				CompileAssert(tokenizer.CurTok == tok_right_index, "Expecting \']\' for array initializer");
@@ -646,7 +676,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	case tok_left_bracket:
 		tokenizer.GetNextToken();
-		push_expr(ParseExpressionUnknown());
+		push_expr(ParseExpressionUnknownImpl());
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		break;
 	case tok_func:
@@ -692,18 +722,37 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 			firstexpr = ParseIndexOrTemplateInstance(std::move(firstexpr),pos);
 			return true;
 		case tok_left_bracket:
+		{
 			tokenizer.GetNextToken();//eat (
-			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), ParseArguments());
+			auto args = ParseArguments([&firstexpr](int param_num) {
+				auto ret = std::make_unique<AutoCompletionExprAST>(std::move(firstexpr), AutoCompletionExprAST::PARAMETER);
+				ret->parameter_number = param_num;
+				throw MetAutoCompletionException(std::move(ret));
+			});
+			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), std::move(args));
 			firstexpr->Pos = pos;
 			return true;
+		}
 		case tok_dot:
 			tokenizer.GetNextToken();//eat .
 			pos = tokenizer.GetSourcePos();
-			member = tokenizer.IdentifierStr;
-			CompileExpect(tok_identifier, "Expected an identifier after .");
-			firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
-			firstexpr->Pos = pos;
-			return true;
+			if (tokenizer.CurTok == tok_identifier)
+			{
+				member = tokenizer.IdentifierStr;
+				tokenizer.GetNextToken();
+				firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
+				firstexpr->Pos = pos;
+				return true;
+			}
+			else
+			{
+				// or it is source code for auto-complete
+				CompileExpect(tok_colon, "Expected an identifier after .");
+				auto expr = make_unique<AutoCompletionExprAST>(std::move(firstexpr), AutoCompletionExprAST::DOT);
+				throw MetAutoCompletionException(std::move(expr));
+				return false; //should not have other . () [] after auto-complete
+			}
+
 		default:
 			return false;
 		}
@@ -807,10 +856,35 @@ std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
 
 /*
 Parse an expression when we don't know what kind of it is. Maybe an identifier? A function def?
+This function is for "top-level" expressions (in BasicBlock, top-level, ParseStatement...). It handles
+MetAutoCompletionException and will skip to the next line to avoid parser errors. For sub-expressions
+that are not top-level in a basic block or etc., use ParseExpressionUnknownImpl instead
 */
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 {
+	try 
+	{
+		return ParseExpressionUnknownImpl();
+	}
+	catch (MetAutoCompletionException& e)
+	{
+		//we have met an auto-completion token, skip to the next line
+		//to avoid parser error. e.g.:
+		// somefunc(obj.
+		//we can avoid the complaint of expecting ")" here
+		while (tokenizer.CurTok != tok_newline 
+			&& tokenizer.CurTok != tok_eof
+			&& tokenizer.CurTok != tok_then)
+			tokenizer.GetNextToken();
+		return std::move(e.ptr);
+	}
+}
 
+/*
+Add functions that ParseExpressionUnknownImpl may call should call ParseExpressionUnknownImpl instead of ParseExpressionUnknown
+*/
+std::unique_ptr<ExprAST> ParseExpressionUnknownImpl()
+{
 	return ParseBinOpRHS(0,
 		CompileExpectNotNull(ParsePrimaryExpression(), "Expected an expression"));
 }

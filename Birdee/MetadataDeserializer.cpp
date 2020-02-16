@@ -735,7 +735,7 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 
 extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
-typedef string(*ModuleResolveFunc)(const vector<string>& package, unique_ptr<std::istream>& f);
+typedef string(*ModuleResolveFunc)(const vector<string>& package, unique_ptr<std::istream>& f, bool second_chance);
 static ModuleResolveFunc module_resolver = nullptr;
 BD_CORE_API void SetModuleResolver(ModuleResolveFunc f)
 {
@@ -747,7 +747,7 @@ static string GetModuleFile(const vector<string>& package, unique_ptr<std::istre
 	string ret;
 	if (module_resolver)
 	{
-		ret = module_resolver(package, f);
+		ret = module_resolver(package, f, false);
 		if (!ret.empty())
 			return ret;
 	}
@@ -792,6 +792,14 @@ static string GetModuleFile(const vector<string>& package, unique_ptr<std::istre
 		f = std::move(of);
 		return ret;
 	}
+
+	if (module_resolver)
+	{
+		ret = module_resolver(package, f, true);
+		if (!ret.empty())
+			return ret;
+	}
+
 	return "";
 
 }

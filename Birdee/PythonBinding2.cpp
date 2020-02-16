@@ -32,7 +32,8 @@ namespace Birdee
 {
 	extern void ClearPyHandles();
 	BD_CORE_API extern std::pair<int, FieldDef*> FindClassField(ClassAST* class_ast, const string& member);
-	BD_CORE_API void SetSourceFilePath(const string& source);
+	BD_CORE_API void SetSourceFilePath(const string& source); 
+	BD_CORE_API ExprAST* GetAutoCompletionAST();
 }
 
 struct BirdeePyContext
@@ -151,7 +152,7 @@ BIRDEE_BINDING_API string Birdee_RunScriptForString(const string& str, const Sou
 	auto& env = InitPython();
 	try
 	{
-		return py::eval(str.c_str()).cast<string>();
+		return py::eval(str.c_str(), InitPython().orig_scope).cast<string>();
 	}
 	catch (py::error_already_set& e)
 	{
@@ -475,7 +476,7 @@ PYBIND11_MAKE_OPAQUE(std::vector<MemberFunctionDef>);
 
 extern void RegisiterClassForBinding2(py::module& m);
 BD_CORE_API void SeralizeMetadata(std::ostream& out, bool is_empty);
-typedef string(*ModuleResolveFunc)(const vector<std::string>& package, unique_ptr<std::istream>& f);
+typedef string(*ModuleResolveFunc)(const vector<std::string>& package, unique_ptr<std::istream>& f, bool second_chance);
 extern BD_CORE_API void SetModuleResolver(ModuleResolveFunc f);
 
 static py::function module_resolver;
@@ -496,8 +497,8 @@ void RegisiterClassForBinding(py::module& m)
 		});
 		m.def("set_module_resolver", [](py::function f) {
 			module_resolver = f;
-			SetModuleResolver([](const vector<std::string>& package, unique_ptr<std::istream>& f) -> string {
-				auto result = module_resolver(package);
+			SetModuleResolver([](const vector<std::string>& package, unique_ptr<std::istream>& f, bool second_chance) -> string {
+				auto result = module_resolver(package, second_chance);
 				if (result.is_none())
 					return string();
 				auto ret = py::cast<py::tuple>(result);
@@ -512,13 +513,16 @@ void RegisiterClassForBinding(py::module& m)
 		m.def("set_source_file_path", [](string n) {
 			SetSourceFilePath(n);
 		});
-		m.def("get_module_name", []() {
-			auto ret = cu.symbol_prefix;
-			ret.pop_back(); //delete .
-			return ret;
+		m.def("get_auto_completion_ast", []() {
+			return GetRef(GetAutoCompletionAST());
 		});
 		cu.InitForGenerate();
 	}
+	m.def("get_module_name", []() {
+		auto ret = cu.symbol_prefix;
+		ret.pop_back(); //delete .
+		return ret;
+	});
 	m.def("imports", CompileImports);
 	m.def("get_os_name", []()->std::string {
 #ifdef _WIN32
