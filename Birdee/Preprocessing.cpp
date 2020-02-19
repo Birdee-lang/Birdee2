@@ -3152,7 +3152,7 @@ If usage vararg name is "", match the closest vararg
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
 		this->kind = MemberType::member_error;
 		resolved_type = ResolveClassMember(Obj.get(),this->member, Pos, this->casade_parents, this->kind, this->func, this->field, this->import_func);
-		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member);
+		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member + " in type " + Obj->resolved_type.GetString());
 	}
 	string TemplateArgument::GetString() const
 	{
