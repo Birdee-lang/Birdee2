@@ -15,13 +15,6 @@ using my_workaround_fifo_map = nlohmann::fifo_map<K, V, nlohmann::fifo_map_compa
 using json = nlohmann::basic_json<my_workaround_fifo_map>;
 using namespace Birdee;
 
-
-//fix-me: export: remember to include imported classes that is referenced by exported var/class/func
-//fix-me: import: first check if the DEFINED class has already been imported in CompileModule::orphan_classes
-//fix-me: import: first check if the IMPORTED class has already been imported in imported_package.find(..).class[...], then no need to add to orphan
-//fix-me: import: deserialize into ImportedModule & CompileModule::orphan_classes
-//fix-me: generate: pre-generate extern for var/class/func
-
 static unordered_map<PrototypeAST*, int> functype_idx_map;
 static vector<json> exported_functype;
 static long NextFunctionTypeIndex = -MAX_BASIC_TYPE_COUNT;
@@ -357,7 +350,7 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
 
-	if (dump_qualified_name && cls.isTemplate()) // if is imported && is a template
+	if (dump_qualified_name && (cls.isTemplate() || !cls.isTemplateInstance())) // only dump template instances for imported classes
 	{
 		// redirect to the class definition in another module
 		return json_cls;
