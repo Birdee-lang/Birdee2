@@ -11,6 +11,32 @@ Birdee Language compiler and runtime. Birdee language aims to help construct rob
  * easily try the language using an REPL
  * utilize auto-building tools to compile the code
 
+## Documentations
+
+Please view our [documents](https://birdee-lang.github.io/Doc/).
+
+## VSCode Language extension
+
+The VSCode extension for Birdee language is available! Search "Birdee" in VSCode's extension marketplace. The extension supports:
+
+ * Syntax highlighting
+ * Goto definition
+ * Auto-completion
+
+Visit the [repo](https://github.com/Birdee-lang/Birdee-VSCode) for more details on the extension
+
+## Installing pre-built binaries of Birdee compiler and libraries
+
+Please follow the [link](https://github.com/Birdee-lang/Birdee2/releases) to download the pre-built Birdee.
+
+For Windows version, just unzip and add the unzipped directory to the environment variable as `BIRDEE_HOME`. In the directory pointed by `BIRDEE_HOME`, there should be directories named `bin`, `pylib`, `blib` and `src`.  Also, Birdee compiler depends on a specific version of Python (e.g. 3.7).
+
+For Linux Debian systems, use `sudo dpkg -i birdee_xxxx.deb` to install and `sudo dpkg -r birdee` to remove. This package requires libpython3.7-dev, libgc-dev, libreadline-dev and LLVM-6.0 to be installed. Remember to add `/usr/bin/birdee0.1` to the environment variable as `BIRDEE_HOME`.
+
+## Compiling Birdee from source code
+
+Please follow the instructions in the [link](https://github.com/Birdee-lang/Birdee2/blob/master/BUILDME.md).
+
 ## Script-based meta-programming
 
 Script-based meta-programming is the most important feature of Birdee. It enables developers to use Python scripts to do the job of the "macro" system and template-based meta-programming of C++, which is powerful but hard to learn and understand. Birdee allows Python scripts to be embedded in Birdee code and the script will be run at compile time. The embeded script is surrounded by a pair of {@ ... @} .The script can:
@@ -100,23 +126,6 @@ clear_compile_unit()
 - [ ] compiling to portable LLVM IR files
 - [ ] JIT execution 
 - [ ] Runtime-compilation 
-
-
-## Documents
-
-Please view our [documents](https://birdee-lang.github.io/Doc/).
-
-## Installing pre-built binaries of Birdee compiler and libraries
-
-Please follow the [link](https://github.com/Birdee-lang/Birdee2/releases) to download the pre-built Birdee.
-
-For Windows version, just unzip and add the unzipped directory to the environment variable as `BIRDEE_HOME`. In the directory pointed by `BIRDEE_HOME`, there should be directories named `bin`, `pylib`, `blib` and `src`.  Also, Birdee compiler depends on a specific version of Python (e.g. 3.7).
-
-For Linux Debian systems, use `sudo dpkg -i birdee_xxxx.deb` to install and `sudo dpkg -r birdee` to remove. This package requires libpython3.7-dev, libgc-dev and LLVM-6.0 to be installed. Remember to add `/usr/bin/birdee0.1` to the environment variable as `BIRDEE_HOME`.
-
-## Compiling Birdee from source code
-
-Please follow the instructions in the [link](https://github.com/Birdee-lang/Birdee2/blob/master/BUILDME.md).
 
 ## What's in the Birdee toolkit?
 
