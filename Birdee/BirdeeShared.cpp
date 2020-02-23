@@ -176,7 +176,6 @@ void Birdee::CompileUnit::Clear()
 
 	imported_class_templates.clear();
 	imported_func_templates.clear();
-	orphan_class.clear();
 
 	class_extend_funcmap.clear();
 	init_scripts.clear();

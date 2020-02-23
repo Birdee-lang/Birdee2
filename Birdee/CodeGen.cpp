@@ -1017,8 +1017,6 @@ void Birdee::CompileUnit::SwitchModule()
 
 	//now all variables & functionASTs are moved to imported_packages
 	//or orphan_class. We clear all llvm_func and llvm_value
-	for (auto& cls : orphan_class)
-		cls.second->ClearLLVMFunction();
 	ResetLLVMValuesForFunctionsAndGV(&imported_packages);
 
 	gen_context._module = std::make_unique<Module>(name, context);

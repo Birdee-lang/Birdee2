@@ -384,11 +384,6 @@ namespace Birdee {
 
 		vector<ClassAST*> imported_class_templates;
 		vector<FunctionAST*> imported_func_templates;
-		/*
-		The classes that are referenced by an imported class, but the packages of the 
-		referenced classes are not yet imported. The mapping from qualified names of classes to AST
-		*/
-		map<string, unique_ptr<ClassAST>> orphan_class;
 
 		vector<string> imported_module_names;
 

@@ -205,10 +205,20 @@ def parse_bmm_dependency(bmm_path,self_cu):
 	with open(bmm_path) as f:
 		data = json.load(f)
 		dependencies=data['Imports']
+		need_re_compile = False
+		dep_arr = []
 		for dep in dependencies:
 			if dep[-1][0]==':' or dep[-1][0]=='*':  #if it is a "name import"
 				dep.pop() #pop the imported name
-			self_cu.add_dependency(prepare_module(dep,False))
+			dep_cu = prepare_module(dep,False)
+			dep_arr.append(dep_cu)
+			if dep_cu.source_path: #if we need to compile a dependency, we need to re-compile self_cu
+				need_re_compile = True		
+		if need_re_compile:
+			self_cu.source_path = "$$$???dummy"
+		else:
+			for dep_cu in dep_arr:
+				self_cu.add_dependency(dep_cu)
 		if 'HeaderOnly' in data:
 			return data['HeaderOnly']
 		else:
@@ -236,41 +246,49 @@ def prepare_module(modu,is_main):
 	if bmm:
 		cu = compile_unit(False,None,tuple_modu)
 		prepared_mod[tuple_modu] = cu
-		update_max_bin_timestamp(bmm+".bmm")
-		if not parse_bmm_dependency(bmm+".bmm", cu): #if is not header only
-			link_path.append(bmm)
+		header_only = parse_bmm_dependency(bmm+".bmm", cu)
+		if not cu.source_path: #if we found that a dependency is updated, we need to re-compile
+			update_max_bin_timestamp(bmm+".bmm")
+			if not header_only:#if is not header only
+				link_path.append(bmm)
+			return cu
+		#else re-compile the module
+	#if BMM file is not found
+	src=search_src(modu)
+	if not src:
+		raise RuntimeError("Cannot resolve module dependency: " + ".".join(modu))
+	if cu: #if we have to re-compile, reuse old CU
+		cu.source_path=src
+		cu.is_main=is_main
 	else:
-		src=search_src(modu)
-		if not src:
-			raise RuntimeError("Cannot resolve module dependency: " + ".".join(modu))
 		cu = compile_unit(is_main,src,tuple_modu)
-		prepared_mod[tuple_modu] = cu
-		update_max_bin_timestamp(src)
+	prepared_mod[tuple_modu] = cu
+	update_max_bin_timestamp(src)
 
-		cmdarr=[compiler_path,'-i',src, "--print-import"]
-		cmd=" ".join(cmdarr)
-		print("Running command " + cmd)
-		proc = subprocess.Popen(cmdarr,stdout=subprocess.PIPE)
-		dependencies_list=[]
-		while True:
-			line = proc.stdout.readline().decode(locale.getpreferredencoding())
-			if line != '':
-				dependencies_list.append(line.rstrip())
-			else:
-				break
-		dependencies_list.pop() #delete the last element, which is the package name of the source itself
-		if proc.wait()!=0:
-			raise RuntimeError("Compile failed, exit code: "+ str(proc.returncode))
-		proc=None #hope to release resource for the process pipe
-		module_set=set()
-		for depstr in dependencies_list:
-			dep=depstr.split(".")
-			if dep[-1][0]==':' or dep[-1][0]=='*':  #if it is a "name import"
-				dep.pop() #delete the imported name
-			module_set.add(tuple(dep)) #use a set to remove duplications
-		for dep in module_set:
-			cu.add_dependency(prepare_module(list(dep),False))
-		create_dirs(outpath,modu)
+	cmdarr=[compiler_path,'-i',src, "--print-import"]
+	cmd=" ".join(cmdarr)
+	print("Running command " + cmd)
+	proc = subprocess.Popen(cmdarr,stdout=subprocess.PIPE)
+	dependencies_list=[]
+	while True:
+		line = proc.stdout.readline().decode(locale.getpreferredencoding())
+		if line != '':
+			dependencies_list.append(line.rstrip())
+		else:
+			break
+	dependencies_list.pop() #delete the last element, which is the package name of the source itself
+	if proc.wait()!=0:
+		raise RuntimeError("Compile failed, exit code: "+ str(proc.returncode))
+	proc=None #hope to release resource for the process pipe
+	module_set=set()
+	for depstr in dependencies_list:
+		dep=depstr.split(".")
+		if dep[-1][0]==':' or dep[-1][0]=='*':  #if it is a "name import"
+			dep.pop() #delete the imported name
+		module_set.add(tuple(dep)) #use a set to remove duplications
+	for dep in module_set:
+		cu.add_dependency(prepare_module(list(dep),False))
+	create_dirs(outpath,modu)
 	return cu
 
 
