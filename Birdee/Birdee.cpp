@@ -27,9 +27,27 @@ namespace Birdee
 extern int RunGenerativeScript();
 #else
 #include <dlfcn.h>
-extern void* LoadBindingFunction(const char* name);
+	extern void* LoadBindingFunction(const char* name);
+	struct DLLoader{
+		void* handle = nullptr;
+		DLLoader(const char* path){
+			handle = dlopen(path, RTLD_LAZY| RTLD_GLOBAL);
+			if (!handle) {
+				fprintf(stderr, "%s\n", dlerror());
+				exit(1);
+			}
+		}
+		~DLLoader()
+		{
+			if (handle)
+				dlclose(handle);
+		}
+	};
 	static int RunGenerativeScript()
 	{
+		//raii loader for the SO
+		//load the SO to bypass lib-dyn bugs in Python
+		DLLoader dl = ("libpython" PY_VER ".so");
 		typedef void(*PtrImpl)();
 		static PtrImpl impl = nullptr;
 		if (impl == nullptr)

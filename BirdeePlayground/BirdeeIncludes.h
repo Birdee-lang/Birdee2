@@ -36,6 +36,9 @@ jit->addNative("extensions_0string_0string__find",extensions_0string_0string__fi
 extern void extensions_0string_0string__splitview();
 jit->addNative("extensions_0string_0string__splitview",extensions_0string_0string__splitview);
 
+extern void extensions_0string_0string__replace();
+jit->addNative("extensions_0string_0string__replace",extensions_0string_0string__replace);
+
 extern void extensions_0string_0string__split();
 jit->addNative("extensions_0string_0string__split",extensions_0string_0string__split);
 
@@ -50,6 +53,9 @@ jit->addNative("extensions_0string_0string__to__long",extensions_0string_0string
 
 extern void extensions_0string_0string__starts__with();
 jit->addNative("extensions_0string_0string__starts__with",extensions_0string_0string__starts__with);
+
+extern void extensions_0string_0char2str();
+jit->addNative("extensions_0string_0char2str",extensions_0string_0char2str);
 
 extern void extensions_0string_0string__view_0____init____();
 jit->addNative("extensions_0string_0string__view_0____init____",extensions_0string_0string__view_0____init____);

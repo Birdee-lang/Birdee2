@@ -72,6 +72,7 @@ clean_tests:
 
 clean:
 	$(MAKE)  -C $(COMPILER_DIR) clean
+	$(MAKE)  -C $(PLAYGROUND_DIR) clean
 	$(MAKE)  -C $(RUNTIME_DIR) clean
 	$(MAKE)  -C $(BLIB_DIR) clean
 	$(MAKE)  -C $(TESTS_DIR) clean

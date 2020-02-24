@@ -4,8 +4,10 @@ mklink: $(LIB_DIR)/libBirdeeBinding.so
 	rm -f $(LIB_DIR)/birdeec.so
 	ln $(LIB_DIR)/libBirdeeBinding.so $(LIB_DIR)/birdeec.so
 
-$(BIN_DIR)/birdeec: Birdee.o $(LIB_DIR)/libBirdeeCompilerCore.so $(LIB_DIR)/libBirdeeBinding.so
-	$(CXX) -o $@ $(CPPFLAGS)  -L$(LIB_DIR) -Wl,--start-group Birdee.o -lBirdeeCompilerCore -ldl -Wl,--end-group -Wl,-rpath='$$ORIGIN/../lib/'
+PY_VER = $(shell python -c "import sys;print('{}.{}{}'.format(sys.version_info.major, sys.version_info.minor, sys.abiflags))")
+
+$(BIN_DIR)/birdeec: Birdee.cpp $(LIB_DIR)/libBirdeeCompilerCore.so $(LIB_DIR)/libBirdeeBinding.so
+	$(CXX) -o $@ $(CPPFLAGS) Birdee.cpp -DPY_VER=\"$(PY_VER)\" -L$(LIB_DIR) -Wl,--start-group -lBirdeeCompilerCore -ldl -Wl,--end-group -Wl,-rpath='$$ORIGIN/../lib/'
 .PHONY:clean mklink remake
 
 
