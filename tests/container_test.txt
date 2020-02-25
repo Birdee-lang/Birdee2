@@ -2,7 +2,7 @@ import fmt
 import list:list
 import hash:hash_set
 import hash:hash_map
-import hash:hash_key_excption
+import hash:hash_key_exception
 
 import stack:stack
 import stack:stack_empty_exception
@@ -73,7 +73,7 @@ function hash_test()
 	try
 		a.remove("30")
 		{@bdassert("false")@}
-	catch e as hash_key_excption
+	catch e as hash_key_exception
 		println("Caught the exception as expected")
 	end
 

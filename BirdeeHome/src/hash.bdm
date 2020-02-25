@@ -1,12 +1,12 @@
 import unsafe:ptr_cast
 
 @enable_rtti
-class hash_key_excption
+class hash_key_exception
 
 end
 
 @enable_rtti
-class size_overflow_excption
+class size_overflow_exception
 
 end
 
@@ -231,7 +231,7 @@ class hash_map[K,V]
 	public function insert(t as K, v as V) as hash_iterator[K,V]
 		dim h = hash[K](t)
 		if do_find(h, t) !== null then
-			throw new hash_key_excption
+			throw new hash_key_exception
 		else
 			return mk_hash_iterator[K,V](insert_unique(h,t,v))
 		end
@@ -287,7 +287,7 @@ class hash_map[K,V]
 		dim h = hash[K](t)
 		dim node = do_find(h, t)
 		if node === null then
-			throw new hash_key_excption
+			throw new hash_key_exception
 		else
 			return _remove(h, node)
 		end
@@ -313,7 +313,7 @@ class hash_map[K,V]
 		dim h = hash[K](k)
 		dim node = do_find(h, k)
 		if  node === null then
-			throw new hash_key_excption
+			throw new hash_key_exception
 		else
 			return node.v
 		end
