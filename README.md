@@ -23,7 +23,7 @@ The VSCode extension for Birdee language is available! Search "Birdee" in VSCode
  * Goto definition
  * Auto-completion
 
-Visit the [repo](https://github.com/Birdee-lang/Birdee-VSCode) for more details on the extension
+Visit the [repo](https://github.com/Birdee-lang/Birdee-vscode) for more details on the extension
 
 ## Installing pre-built binaries of Birdee compiler and libraries
 
