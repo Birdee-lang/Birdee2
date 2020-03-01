@@ -1,0 +1,10 @@
+declare func add alias "dll__test_0add" (a as int, b as int) as int
+declare func get alias "dll__test_0get" () as int
+declare func get2 alias "dll__test2_0get2" () as int
+
+{@from bdassert import bdassert@}
+
+println(int2str(add(1,2)))
+{@bdassert("add(1,2)==3")@}
+{@bdassert("get()==2")@}
+{@bdassert("get2()==123")@}

@@ -26,6 +26,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 
 #include "CompileError.h"
 #include "BdAST.h"
@@ -248,6 +249,7 @@ struct GeneratorContext
 	~GeneratorContext()
 	{
 	}
+	Triple triple = Triple(sys::getProcessTriple());
 	TargetMachine* target_machine = nullptr;
 	Function* malloc_obj_func = nullptr;
 	Function* malloc_arr_func = nullptr;
@@ -924,13 +926,6 @@ DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* 
 	return SP;
 }
 
-//https://stackoverflow.com/a/2072890/4790873
-inline bool ends_with(std::string const & value, std::string const & ending)
-{
-	if (ending.size() > value.size()) return false;
-	return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
-}
-
 extern void ClearPreprocessingState();
 extern void ClearParserState();
 
@@ -1107,7 +1102,7 @@ BD_CORE_API TargetMachine* GetAndSetTargetMachine()
 	auto Features = "";
 
 	TargetOptions opt;
-	auto RM = Optional<Reloc::Model>();
+	auto RM = Optional<Reloc::Model>(cu.options->is_pic ? Reloc::PIC_ : Reloc::Static);
 	auto TheTargetMachine =
 		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
 
@@ -1136,6 +1131,23 @@ static void RestoreLinkOnceGlobals(vector<GlobalValue*>& weak_globals)
 {
 	for(auto g: weak_globals)
 		g->setLinkage(GlobalValue::LinkOnceODRLinkage);
+}
+
+static void PrintGlobals(Module* m)
+{
+	auto mark = [m](GlobalValue& gv)
+	{
+		auto l = gv.getLinkage();
+		if ((l == GlobalValue::ExternalLinkage || l == GlobalValue::LinkOnceODRLinkage || l == GlobalValue::CommonLinkage)
+			&& !gv.isDeclaration())
+		{
+			std::cout << "GLOBAL$" << std::string(gv.getName())<<std::endl;
+		}
+	};
+	for (auto& gv : m->getGlobalList())
+		mark(gv);
+	for (auto& gv : m->getFunctionList())
+		mark(gv);
 }
 
 //regenerate all imported llvm_value for VariableSingleDef
@@ -1167,17 +1179,18 @@ static void RegenerateLLVMValuesForGV(ImportTree* tree, string& namebuffer)
 
 bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 {
-	if (ends_with(cu.targetpath, ".o"))
+	auto triple = Triple(sys::getProcessTriple());
+	if (!triple.isOSWindows())
 	{
 		// Add the current debug info version into the module.
 		module->addModuleFlag(Module::Warning, "Debug Info Version",
 			DEBUG_METADATA_VERSION);
 
 		// Darwin only supports dwarf2.
-		if (Triple(sys::getProcessTriple()).isOSDarwin())
+		if (triple.isOSDarwin())
 			module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
 	}
-	else if (ends_with(cu.targetpath, ".obj"))
+	else
 	{
 		module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
 	}
@@ -1353,6 +1366,8 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	RestoreLinkOnceGlobals(weak_globals);
 	weak_globals.clear();
 
+	if (cu.options->is_print_symbols)
+		PrintGlobals(module);
 	if (cu.options->is_print_ir)
 		module->print(errs(), nullptr);
 
@@ -1375,7 +1390,7 @@ bool Birdee::CompileUnit::Generate()
 {
 	//fix-me: do we need to release target machine?
 
-	TargetMachine* TheTargetMachine = GetAndSetTargetMachine();;
+	TargetMachine* TheTargetMachine = GetAndSetTargetMachine();
 	if (GenerateIR(false, true))
 		return true;
 
@@ -1418,18 +1433,25 @@ bool Birdee::CompileUnit::Generate()
 	std::error_code EC;
 	raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
 
-	if (EC) {
-		throw CompileError(string("Could not open file: ") + EC.message());
+	if (strHasEnding(cu.targetpath, ".bc"))
+	{
+		WriteBitcodeToFile(module, dest);
 	}
-	assert(cu.options->optimize_level >= 0 && cu.options->optimize_level <= 3);
-	TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level));
-	auto FileType = TargetMachine::CGFT_ObjectFile;
-	if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
-		throw CompileError("TheTargetMachine can't emit a file of this type");
-	}
+	else
+	{
+		if (EC) {
+			throw CompileError(string("Could not open file: ") + EC.message());
+		}
+		assert(cu.options->optimize_level >= 0 && cu.options->optimize_level <= 3);
+		TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level));
+		auto FileType = TargetMachine::CGFT_ObjectFile;
+		if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
+			throw CompileError("TheTargetMachine can't emit a file of this type");
+		}
 
-	MPM.run(*module);
-	dest.flush();
+		MPM.run(*module);
+		dest.flush();
+	}
 	return false;
 
 }
@@ -1822,7 +1844,7 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	auto ftype=Proto->GenerateFunctionType();
 	auto myfunc = Function::Create(ftype, linkage, prefix, module);
 	llvm_func = myfunc;
-	if (strHasEnding(cu.targetpath,".obj") && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
+	if (gen_context.triple.isWindowsMSVCEnvironment() && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
 	{
 		myfunc->setComdat(module->getOrInsertComdat(llvm_func->getName()));
 		myfunc->setDSOLocal(true);
@@ -2998,7 +3020,7 @@ llvm::Value * Birdee::ClassAST::Generate()
 	{
 		auto tyinfo = GetOrCreateTypeInfoGlobalRaw(this);
 		tyinfo->setExternallyInitialized(false);
-		if (strHasEnding(cu.targetpath, ".obj") && isTemplateInstance())
+		if (gen_context.triple.isWindowsMSVCEnvironment() && isTemplateInstance())
 		{
 			tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
 			tyinfo->setDSOLocal(true);
