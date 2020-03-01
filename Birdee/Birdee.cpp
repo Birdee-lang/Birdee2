@@ -119,9 +119,17 @@ void ParseParameters(int argc, char** argv)
 				string ret = args.Get();
 				cu.symbol_prefix = ret;
 			}
+			else if (cmd == "--static")
+			{
+				cu.options->is_pic = false;
+			}
 			else if (cmd == "--print-import")
 			{
 				is_print_import_mode = true;
+			}
+			else if (cmd == "--print-symbols")
+			{
+				cu.options->is_print_symbols = true;
 			}
 			else if (cmd == "--script" || cmd== "-s")
 			{

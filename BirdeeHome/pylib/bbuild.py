@@ -19,7 +19,9 @@ bd_home=''
 link_path=[]
 prepared_mod=dict()
 link_target=None
-link_executable=False
+link_executable=None
+LINK_EXECUTEBALE = "EXE"
+LINK_SHARED = "DLL"
 runtime_lib_path=""
 max_bin_timestamp =0
 num_worker_threads = 1
@@ -27,6 +29,7 @@ thread_worker=None
 link_cmd = ""
 exe_postfix = ""
 obj_postfix = '.o'
+dll_symbol_list=set()
 if os.name == 'nt':
 	exe_postfix = ".exe"
 	obj_postfix = '.obj'
@@ -120,6 +123,28 @@ class compile_unit:
 			self.dependency_cnt += 1
 		#if cu is a binary module, we don't need to wait for it, so just ignore the dependency
 
+def add_symbols(pkg, bmmdata):
+		data = bmmdata
+		pkgname = '.'.join(pkg) + '.'
+		for var in data['Variables']:
+			fstr=""
+			fstr=mangler.mangle_func(pkgname+var['name'])
+			dll_symbol_list.add(fstr)
+		for func in data['Functions']:
+			fstr=""
+			if 'link_name' in func:
+				continue
+			else:
+				fstr=mangler.mangle_func(pkgname+func['name'])
+			dll_symbol_list.add(fstr)
+		for clazz in data['Classes']:
+			if 'funcs' in clazz:
+				for funcdef in clazz['funcs']:
+					if 'def' in funcdef:
+						func=funcdef['def']
+						fstr=mangler.mangle_func(pkgname+clazz['name']+'.'+func['name'])
+						dll_symbol_list.add(fstr)
+
 def update_max_bin_timestamp(fn):
 	global max_bin_timestamp
 	ts=os.path.getmtime(fn)
@@ -144,7 +169,10 @@ def parse_args(args):
 			bin_search_dirs.append(v)
 		elif args[i]=='-le' or args[i]=='--link-executable':
 			i,link_target = get_next(i,args)
-			link_executable=True
+			link_executable=LINK_EXECUTEBALE
+		elif args[i]=='-ls' or args[i]=='--link-shared':
+			i,link_target = get_next(i,args)
+			link_executable=LINK_SHARED
 		elif args[i]=='-lc' or args[i]=='--link-cmd':
 			i,link_cmd = get_next(i,args)
 		elif args[i]=='-j':
@@ -201,9 +229,8 @@ def search_src(modu):
 			return p
 
 #returns if is HeaderOnly
-def parse_bmm_dependency(bmm_path,self_cu):
-	with open(bmm_path) as f:
-		data = json.load(f)
+def parse_bmm_dependency(bmmdata,self_cu):
+		data=bmmdata
 		dependencies=data['Imports']
 		need_re_compile = False
 		dep_arr = []
@@ -224,9 +251,7 @@ def parse_bmm_dependency(bmm_path,self_cu):
 		else:
 			return False
 
-def parse_bmm_is_header_only(bmm_path):
-	with open(bmm_path) as f:
-		data = json.load(f)
+def parse_bmm_is_header_only(data):
 		if 'HeaderOnly' in data:
 			return data['HeaderOnly']
 		else:
@@ -246,11 +271,15 @@ def prepare_module(modu,is_main):
 	if bmm:
 		cu = compile_unit(False,None,tuple_modu)
 		prepared_mod[tuple_modu] = cu
-		header_only = parse_bmm_dependency(bmm+".bmm", cu)
-		if not cu.source_path: #if we found that a dependency is updated, we need to re-compile
+		with open(bmm+".bmm") as f:
+			data = json.load(f)
+		header_only = parse_bmm_dependency(data, cu)
+		if not cu.source_path:
+			#if we found that a dependency is never updated, we don't need to re-compile
 			update_max_bin_timestamp(bmm+".bmm")
 			if not header_only:#if is not header only
 				link_path.append(bmm)
+				add_symbols(tuple_modu, data)
 			return cu
 		#else re-compile the module
 	#if BMM file is not found
@@ -306,8 +335,12 @@ def compile_module(modu,src,is_main):
 	ret=subprocess.run(cmdarr)
 	if ret.returncode!=0:
 		raise RuntimeError("Compile failed")
-	if not parse_bmm_is_header_only(outfile + '.bmm'):
+	
+	with open(outfile + '.bmm') as f:
+		data = json.load(f)
+	if not parse_bmm_is_header_only(data):
 		link_path.append(outfile)
+		add_symbols(modu, data)
 
 def init_path():
 	global bd_home,compiler_path
@@ -321,16 +354,26 @@ def init_path():
 def link_msvc():
 	linker_path='link.exe'
 	#removed flag: /INCREMENTAL
-	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" {} /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" /DEBUG /MACHINE:X64  /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
+	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" {} /DEBUG /MACHINE:X64  /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
 	runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
 	pdb_path= os.path.splitext(link_target)[0]+".pdb"
 	obj_files='"{runtime_lib_path}"'.format(runtime_lib_path=runtime_lib_path)
 	for lpath in link_path:
 		lpath += obj_postfix
 		obj_files += ' "{lpath}"'.format(lpath=lpath)
-	cmd=msvc_command.format(linker_path,link_target,pdb_path,link_cmd,obj_files,link_target+".manifest")
-	if link_executable:
-		alias_cmd = "/alternatename:main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+	cmd=msvc_command.format(linker_path,link_target,pdb_path,obj_files,link_cmd,link_target+".manifest")
+	if link_executable == LINK_EXECUTEBALE:
+		alias_cmd = "/alternatename:_dll_main=default_dll_main,main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+		cmd += alias_cmd
+	elif link_executable == LINK_SHARED:
+		def_path = os.path.splitext(link_target)[0]+".def"
+		main_func_name = mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+		with open(def_path, 'w') as f:
+			f.write("EXPORTS\n  DllMain\n")
+			for itm in dll_symbol_list:
+				f.write("  {}\n".format(itm))
+			f.write("  {}".format(main_func_name))
+		alias_cmd = "/DEF:{} /DLL /alternatename:_dll_main={}".format(def_path,main_func_name)
 		cmd += alias_cmd
 	print("Running command " + cmd)
 	ret=subprocess.run(cmd)
@@ -340,20 +383,28 @@ def link_msvc():
 
 def link_gcc():
 	linker_path='gcc'
-	cmdarr = [linker_path,'-no-pie','-o',link_target, "-Wl,--start-group"]
+	cmdarr = [linker_path,'-o',link_target, "-Wl,--start-group"]
 	runtime_lib_path = os.path.join(bd_home,"lib","libBirdeeRuntime.a")
 	cmdarr.append(runtime_lib_path)
 	for lpath in link_path:
 		lpath += obj_postfix
 		cmdarr.append(lpath)
+	if link_executable == LINK_SHARED:
+		dllmain_lib_path = os.path.join(bd_home,"lib","dllmain.cpp")
+		cmdarr.append("-fPIC")
+		cmdarr.append(dllmain_lib_path)
 	cmdarr.append("-lgc")
 	cmdarr.append("-lstdc++")
 	cmdarr.append("-Wl,--end-group")
 	if len(link_cmd):
-		cmdarr.append(link_cmd)
-	if link_executable:
+		cmdarr+=link_cmd.split(" ")
+	if link_executable == LINK_EXECUTEBALE:
 		alias_cmd = "-Wl,--defsym,main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
 		cmdarr.append(alias_cmd)
+	elif link_executable == LINK_SHARED:
+		alias_cmd = "-DDLLMAIN=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+		cmdarr.append(alias_cmd)
+		cmdarr.append("-shared")
 	print("Running command " + ' '.join(cmdarr))
 	ret=subprocess.run(cmdarr)
 	if ret.returncode!=0:

@@ -103,6 +103,20 @@ struct ModuleConstructor
 
 static ModuleConstructor ctor;
 
+#ifdef _MSC_VER
+#include <stdio.h>
+extern "C" int _dll_main();
+extern "C" int default_dll_main() { return 0; };
+static struct Ctor
+{
+	Ctor()
+	{
+		_dll_main();
+	}
+}__my_ctor;
+
+#endif
+
 static void* BirdeeAllocArr(va_list args, uint32_t sz,uint32_t cur, uint32_t param_sz)
 {
 	uint32_t len = va_arg(args, uint32_t);
