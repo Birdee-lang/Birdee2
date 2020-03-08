@@ -31,6 +31,7 @@ namespace llvm {
 		void KaleidoscopeJIT::setTargetMachine(Module * m)
 		{
 			m->setDataLayout(TM->createDataLayout());
+			m->setTargetTriple(llvm::sys::getProcessTriple());
 		}
 
 		KaleidoscopeJIT::ModuleHandleT KaleidoscopeJIT::addModule(std::unique_ptr<Module> M) {

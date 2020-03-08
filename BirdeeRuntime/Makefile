@@ -9,5 +9,5 @@ clean:
 	# If .o does not exist, don't stop
 	rm -f *.o
 	rm -f $(LIB_DIR)/libBirdeeRuntime.a
-	$(LIB_DIR)/dllmain.cpp
+	rm -f $(LIB_DIR)/dllmain.cpp
 remake: clean $(LIB_DIR)/libBirdeeRuntime.a $(LIB_DIR)/dllmain.cpp
