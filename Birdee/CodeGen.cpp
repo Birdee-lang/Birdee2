@@ -1040,6 +1040,11 @@ void Birdee::CompileUnit::SwitchModule()
 	gen_context.basic_block_info.clear();
 	gen_context.landingpadtype = nullptr;
 	gen_context.rtti_map.clear();
+	gen_context.vtable_type_map.clear();
+	gen_context.itable_single_type_map.clear();
+	gen_context.itable_single_gv_map.clear();
+	gen_context.itable_type_map.clear();
+	gen_context.itable_dtype_map.clear();
 	gen_context.function_wrapper_cache.clear();
 	gen_context.function_ptr_wrapper_cache.clear();
 
