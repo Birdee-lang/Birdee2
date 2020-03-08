@@ -34,6 +34,7 @@ BD_CORE_API extern void RollbackTemplateInstances();
 #include <readline/history.h>
 #endif
 
+extern "C" int _dll_main() { return 0; }
 
 void get_line_from_stdin(std::string& str, const char* prompt)
 {
