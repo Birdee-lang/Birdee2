@@ -10,42 +10,49 @@ import traceback
 import mangler 
 #run %comspec% /k "D:\ProgramFiles\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat" first!!
 
-source_dirs=[]
-bin_search_dirs=[]
-root_modules=[]
+class context:
+	def __init__(self):
+		self.source_dirs=[]
+		self.bin_search_dirs=[]
+		self.root_modules=[]
+		self.outpath=""
+		self.link_path=[]
+		self.prepared_mod=dict()
+		self.link_target=None
+		self.link_executable=None
+		self.runtime_lib_path=""
+		self.max_bin_timestamp=0
+		self.num_worker_threads=1
+		self.thread_worker=None
+		self.link_cmd = ""
+
 compiler_path=""
-outpath=""
 bd_home=''
-link_path=[]
-prepared_mod=dict()
-link_target=None
-link_executable=None
+
 LINK_EXECUTEBALE = "EXE"
 LINK_SHARED = "DLL"
-runtime_lib_path=""
-max_bin_timestamp =0
-num_worker_threads = 1
-thread_worker=None
-link_cmd = ""
 exe_postfix = ""
 obj_postfix = '.o'
 dll_symbol_list=set()
 if os.name == 'nt':
 	exe_postfix = ".exe"
 	obj_postfix = '.obj'
+	dll_postfix = '.dll'
+else:
+	dll_postfix = '.so'
 
 class compile_worker:
 	RUNNING=0
 	DONE=1
 	ABORT=2
 	ABORT_DONE=3
-	def __init__(self):
+	def __init__(self, ctx:context):
 		self.q = Queue()
 		def worker():
 			while True:
 				cu = self.q.get()
 				try:
-					compile_module(cu.modu,cu.source_path,cu.is_main)
+					compile_module(ctx, cu.modu,cu.source_path,cu.is_main)
 					for dep_cu in cu.reverse_dependency:
 						if dep_cu.source_path and dep_cu.dependency_done():
 							#the module dep_cu depends on cu and it is a source code module,
@@ -55,12 +62,12 @@ class compile_worker:
 				except Exception as e:
 					#print(traceback.format_exc())
 					print("\n"+str(e))
-					if num_worker_threads == 1:
+					if ctx.num_worker_threads == 1:
 						print(traceback.format_exc())
 					self.state=compile_worker.ABORT
 				finally:
 					self.q.task_done()
-		for i in range(num_worker_threads):
+		for i in range(ctx.num_worker_threads):
 			 t = Thread(target=worker)
 			 t.daemon = True
 			 t.start()
@@ -104,7 +111,7 @@ class compile_unit:
 		self.reverse_dependency.add(cu)
 
 	def get_top_level_func_name(self):
-		return mangler.mangle_func(".".join(modu)+"_1main")
+		return mangler.mangle_func(".".join(self.modu)+"_1main")
 
 	#decrease dependency_cnt by 1, return true when this cu is ready to compile
 	def dependency_done(self):
@@ -145,72 +152,72 @@ def add_symbols(pkg, bmmdata):
 						fstr=mangler.mangle_func(pkgname+clazz['name']+'.'+func['name'])
 						dll_symbol_list.add(fstr)
 
-def update_max_bin_timestamp(fn):
-	global max_bin_timestamp
+def update_max_bin_timestamp(ctx:context, fn):
 	ts=os.path.getmtime(fn)
-	if ts>max_bin_timestamp:
-		max_bin_timestamp=ts
+	if ts>ctx.max_bin_timestamp:
+		ctx.max_bin_timestamp=ts
 
 def get_next(idx,args):
 	if idx+1>=len(args):
 		raise RuntimeError("Expecting an argument after "+args[idx])
 	return (idx+1,args[idx+1])
-def parse_args(args):
+def parse_args(args)->context:
+	ctx= context()
 	i=1
-	global source_dirs,bin_search_dirs,root_modules,outpath,link_target,link_executable,num_worker_threads,link_cmd
 	while i<len(args):
 		if args[i]=='-i' or args[i]=='--in-source':
 			i,v = get_next(i,args)
-			source_dirs.append(v)
+			ctx.source_dirs.append(v)
 		elif args[i]=='-o' or args[i]=='--out':
-			i,outpath = get_next(i,args)
+			i,ctx.outpath = get_next(i,args)
 		elif args[i]=='-bs' or args[i]=='--bin-search-path':
 			i,v = get_next(i,args)
-			bin_search_dirs.append(v)
+			ctx.bin_search_dirs.append(v)
 		elif args[i]=='-le' or args[i]=='--link-executable':
-			i,link_target = get_next(i,args)
-			link_executable=LINK_EXECUTEBALE
+			i,ctx.link_target = get_next(i,args)
+			ctx.link_executable=LINK_EXECUTEBALE
 		elif args[i]=='-ls' or args[i]=='--link-shared':
-			i,link_target = get_next(i,args)
-			link_executable=LINK_SHARED
+			i,ctx.link_target = get_next(i,args)
+			ctx.link_executable=LINK_SHARED
 		elif args[i]=='-lc' or args[i]=='--link-cmd':
-			i,link_cmd = get_next(i,args)
+			i,ctx.link_cmd = get_next(i,args)
 		elif args[i]=='-j':
 			i,v = get_next(i,args)
-			num_worker_threads = int(v)
-			if num_worker_threads<1:
+			ctx.num_worker_threads = int(v)
+			if ctx.num_worker_threads<1:
 				raise RuntimeError("Bad number of threads")
 		else:
 			if(args[i][0]=='-'):
 				raise RuntimeError("Unknown command "+args[i])
-			root_modules.append(args[i].split('.'))
+			ctx.root_modules.append(args[i].split('.'))
 		i+=1
-	if len(root_modules)==0 :
+	if len(ctx.root_modules)==0 :
 		raise RuntimeError("No root modules specified")
-	if len(outpath)==0 :
-		outpath='.'
-	bin_search_dirs.append(os.path.join(bd_home,"blib"))
-	if '.' not in source_dirs: source_dirs.append('.')
-	if '.' not in bin_search_dirs: bin_search_dirs.append('.')
+	if len(ctx.outpath)==0 :
+		ctx.outpath='.'
+	ctx.bin_search_dirs.append(os.path.join(bd_home,"blib"))
+	return ctx
+	#if '.' not in source_dirs: source_dirs.append('.')
+	#if '.' not in bin_search_dirs: bin_search_dirs.append('.')
 
-def search_bin(modu):
-	for path in bin_search_dirs:
+def search_bin(ctx: context, modu):
+	for path in ctx.bin_search_dirs:
 		raw_path=os.path.join(path,*modu)
 		p = raw_path +".bmm"
 		if os.path.exists(p) and os.path.isfile(p) :
 			#we have found the binary file, but if it need updating?
-			src=search_src(modu)
+			src=search_src(ctx, modu)
 			if src: #if it is in the source, check if source is newer than binary
 				mtime_src=os.path.getmtime(src)
 				mtime_bin=os.path.getmtime(p)
 				if mtime_src > mtime_bin:
 					return #act as if we do not find the binary file
 			return raw_path
-	raw_path=os.path.join(outpath,*modu)
+	raw_path=os.path.join(ctx.outpath,*modu)
 	p = raw_path +".bmm"
 	if os.path.exists(p) and os.path.isfile(p) :
 		#we have found the binary file, but if it need updating?
-		src=search_src(modu)
+		src=search_src(ctx,modu)
 		if src: #if it is in the source, check if source is newer than binary
 			mtime_src=os.path.getmtime(src)
 			mtime_bin=os.path.getmtime(p)
@@ -218,8 +225,8 @@ def search_bin(modu):
 				return #act as if we do not find the binary file
 		return raw_path	
 
-def search_src(modu):
-	for path in source_dirs:
+def search_src(ctx:context, modu):
+	for path in ctx.source_dirs:
 		raw_path=os.path.join(path,*modu)
 		p = raw_path +".bdm"
 		if os.path.exists(p) and os.path.isfile(p) :
@@ -229,7 +236,7 @@ def search_src(modu):
 			return p
 
 #returns if is HeaderOnly
-def parse_bmm_dependency(bmmdata,self_cu):
+def parse_bmm_dependency(ctx, bmmdata,self_cu):
 		data=bmmdata
 		dependencies=data['Imports']
 		need_re_compile = False
@@ -237,7 +244,7 @@ def parse_bmm_dependency(bmmdata,self_cu):
 		for dep in dependencies:
 			if dep[-1][0]==':' or dep[-1][0]=='*':  #if it is a "name import"
 				dep.pop() #pop the imported name
-			dep_cu = prepare_module(dep,False)
+			dep_cu = prepare_module(ctx,dep,False)
 			dep_arr.append(dep_cu)
 			if dep_cu.source_path: #if we need to compile a dependency, we need to re-compile self_cu
 				need_re_compile = True		
@@ -262,28 +269,28 @@ def create_dirs(root,modu):
 	if not os.path.exists(dirname):
 		os.makedirs(dirname)
 
-def prepare_module(modu,is_main):
+def prepare_module(ctx:context,modu,is_main):
 	tuple_modu=tuple(modu)
-	if tuple_modu in prepared_mod:
-		return prepared_mod[tuple_modu]
-	bmm=search_bin(modu)
+	if tuple_modu in ctx.prepared_mod:
+		return ctx.prepared_mod[tuple_modu]
+	bmm=search_bin(ctx, modu)
 	cu=None
 	if bmm:
 		cu = compile_unit(False,None,tuple_modu)
-		prepared_mod[tuple_modu] = cu
+		ctx.prepared_mod[tuple_modu] = cu
 		with open(bmm+".bmm") as f:
 			data = json.load(f)
-		header_only = parse_bmm_dependency(data, cu)
+		header_only = parse_bmm_dependency(ctx, data, cu)
 		if not cu.source_path:
 			#if we found that a dependency is never updated, we don't need to re-compile
-			update_max_bin_timestamp(bmm+".bmm")
+			update_max_bin_timestamp(ctx, bmm+".bmm")
 			if not header_only:#if is not header only
-				link_path.append(bmm)
+				ctx.link_path.append(bmm)
 				add_symbols(tuple_modu, data)
 			return cu
 		#else re-compile the module
 	#if BMM file is not found
-	src=search_src(modu)
+	src=search_src(ctx, modu)
 	if not src:
 		raise RuntimeError("Cannot resolve module dependency: " + ".".join(modu))
 	if cu: #if we have to re-compile, reuse old CU
@@ -291,8 +298,8 @@ def prepare_module(modu,is_main):
 		cu.is_main=is_main
 	else:
 		cu = compile_unit(is_main,src,tuple_modu)
-	prepared_mod[tuple_modu] = cu
-	update_max_bin_timestamp(src)
+	ctx.prepared_mod[tuple_modu] = cu
+	update_max_bin_timestamp(ctx, src)
 
 	cmdarr=[compiler_path,'-i',src, "--print-import"]
 	cmd=" ".join(cmdarr)
@@ -316,19 +323,19 @@ def prepare_module(modu,is_main):
 			dep.pop() #delete the imported name
 		module_set.add(tuple(dep)) #use a set to remove duplications
 	for dep in module_set:
-		cu.add_dependency(prepare_module(list(dep),False))
-	create_dirs(outpath,modu)
+		cu.add_dependency(prepare_module(ctx, list(dep),False))
+	create_dirs(ctx.outpath,modu)
 	return cu
 
 
-def compile_module(modu,src,is_main):
-	outfile=os.path.join(outpath,*modu) 
+def compile_module(ctx: context, modu,src,is_main):
+	outfile=os.path.join(ctx.outpath,*modu) 
 	cmdarr=[compiler_path,'-i',src, "-o", outfile+ obj_postfix]
-	for bpath in bin_search_dirs:
+	for bpath in ctx.bin_search_dirs:
 		cmdarr.append("-l")
 		cmdarr.append(bpath)
 	cmdarr.append("-l")
-	cmdarr.append(outpath)
+	cmdarr.append(ctx.outpath)
 	#if is_main:
 	#	cmdarr.append("-e")
 	print("Running command " + " ".join(cmdarr))
@@ -339,7 +346,7 @@ def compile_module(modu,src,is_main):
 	with open(outfile + '.bmm') as f:
 		data = json.load(f)
 	if not parse_bmm_is_header_only(data):
-		link_path.append(outfile)
+		ctx.link_path.append(outfile)
 		add_symbols(modu, data)
 
 def init_path():
@@ -351,23 +358,23 @@ def init_path():
 	if not os.path.exists(compiler_path) or not os.path.isfile(compiler_path):
 		raise RuntimeError("Cannot find birdee compiler")
 
-def link_msvc():
+def link_msvc(ctx: context):
 	linker_path='link.exe'
 	#removed flag: /INCREMENTAL
 	msvc_command='''{} /OUT:"{}" /MANIFEST /NXCOMPAT /PDB:"{}" /DYNAMICBASE {} "kernel32.lib" "user32.lib" "gdi32.lib" "winspool.lib" "comdlg32.lib" "advapi32.lib" "shell32.lib" "ole32.lib" "oleaut32.lib" "uuid.lib" "odbc32.lib" "odbccp32.lib" {} /DEBUG /MACHINE:X64  /SUBSYSTEM:CONSOLE /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /ManifestFile:"{}" /ERRORREPORT:PROMPT /NOLOGO /TLBID:1 '''
-	runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
-	pdb_path= os.path.splitext(link_target)[0]+".pdb"
-	obj_files='"{runtime_lib_path}"'.format(runtime_lib_path=runtime_lib_path)
-	for lpath in link_path:
+	ctx.runtime_lib_path = os.path.join(bd_home,"bin","BirdeeRuntime.lib")
+	pdb_path= os.path.splitext(ctx.link_target)[0]+".pdb"
+	obj_files='"{runtime_lib_path}"'.format(runtime_lib_path=ctx.runtime_lib_path)
+	for lpath in ctx.link_path:
 		lpath += obj_postfix
 		obj_files += ' "{lpath}"'.format(lpath=lpath)
-	cmd=msvc_command.format(linker_path,link_target,pdb_path,obj_files,link_cmd,link_target+".manifest")
-	if link_executable == LINK_EXECUTEBALE:
-		alias_cmd = "/alternatename:_dll_main=default_dll_main,main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+	cmd=msvc_command.format(linker_path,ctx.link_target,pdb_path,obj_files,ctx.link_cmd,ctx.link_target+".manifest")
+	if ctx.link_executable == LINK_EXECUTEBALE:
+		alias_cmd = "/alternatename:_dll_main=default_dll_main,main=" + mangler.mangle_func('.'.join(ctx.root_modules[0])) + "_0_1main"
 		cmd += alias_cmd
-	elif link_executable == LINK_SHARED:
-		def_path = os.path.splitext(link_target)[0]+".def"
-		main_func_name = mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+	elif ctx.link_executable == LINK_SHARED:
+		def_path = os.path.splitext(ctx.link_target)[0]+".def"
+		main_func_name = mangler.mangle_func('.'.join(ctx.root_modules[0])) + "_0_1main"
 		with open(def_path, 'w') as f:
 			f.write("EXPORTS\n  DllMain\n")
 			for itm in dll_symbol_list:
@@ -381,28 +388,28 @@ def link_msvc():
 		raise RuntimeError("Compile failed")
 
 
-def link_gcc():
+def link_gcc(ctx:context):
 	linker_path='gcc'
-	cmdarr = [linker_path,'-o',link_target, "-Wl,--start-group"]
-	runtime_lib_path = os.path.join(bd_home,"lib","libBirdeeRuntime.a")
-	cmdarr.append(runtime_lib_path)
-	for lpath in link_path:
+	cmdarr = [linker_path,'-o',ctx.link_target, "-Wl,--start-group"]
+	ctx.runtime_lib_path = os.path.join(bd_home,"lib","libBirdeeRuntime.a")
+	cmdarr.append(ctx.runtime_lib_path)
+	for lpath in ctx.link_path:
 		lpath += obj_postfix
 		cmdarr.append(lpath)
-	if link_executable == LINK_SHARED:
+	if ctx.link_executable == LINK_SHARED:
 		dllmain_lib_path = os.path.join(bd_home,"lib","dllmain.cpp")
 		cmdarr.append("-fPIC")
 		cmdarr.append(dllmain_lib_path)
 	cmdarr.append("-lgc")
 	cmdarr.append("-lstdc++")
 	cmdarr.append("-Wl,--end-group")
-	if len(link_cmd):
-		cmdarr+=link_cmd.split(" ")
-	if link_executable == LINK_EXECUTEBALE:
-		alias_cmd = "-Wl,--defsym,main=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+	if len(ctx.link_cmd):
+		cmdarr+=ctx.link_cmd.split(" ")
+	if ctx.link_executable == LINK_EXECUTEBALE:
+		alias_cmd = "-Wl,--defsym,main=" + mangler.mangle_func('.'.join(ctx.root_modules[0])) + "_0_1main"
 		cmdarr.append(alias_cmd)
-	elif link_executable == LINK_SHARED:
-		alias_cmd = "-DDLLMAIN=" + mangler.mangle_func('.'.join(root_modules[0])) + "_0_1main"
+	elif ctx.link_executable == LINK_SHARED:
+		alias_cmd = "-DDLLMAIN=" + mangler.mangle_func('.'.join(ctx.root_modules[0])) + "_0_1main"
 		cmdarr.append(alias_cmd)
 		cmdarr.append("-shared")
 	print("Running command " + ' '.join(cmdarr))
@@ -412,44 +419,47 @@ def link_gcc():
 
 
 init_path()
-parse_args(sys.argv)
-root_modules.append(['birdee'])
-file_cnt=0
-for modu in root_modules:
-	is_main = file_cnt==0 and link_executable
-	prepare_module(modu,is_main)
-	file_cnt += 1
+def build(ctx: context):
+	ctx.root_modules.append(['birdee'])
+	file_cnt=0
+	for modu in ctx.root_modules:
+		is_main = file_cnt==0 and ctx.link_executable
+		prepare_module(ctx,modu,is_main)
+		file_cnt += 1
 
-thread_worker=compile_worker()
-for modu,cu in prepared_mod.items():
-	if cu.source_path and cu.dependency_cnt==0: #if a module is waiting for compiling and all dependencies are resolved
-		thread_worker.put(cu)
-thread_worker.start_joiner()
-while True:
-	status = thread_worker.join(0.1)
-	if status == compile_worker.ABORT:
-		print("Aborted, waiting for tasks completion")
-		while thread_worker.join(0.1)!=compile_worker.ABORT_DONE: pass
-		break
-	if status == compile_worker.ABORT_DONE:
-		print("Aborted")
-		break
-	if status == compile_worker.DONE:
-		break
-		
+	ctx.thread_worker=compile_worker(ctx)
+	for modu,cu in ctx.prepared_mod.items():
+		if cu.source_path and cu.dependency_cnt==0: #if a module is waiting for compiling and all dependencies are resolved
+			ctx.thread_worker.put(cu)
+	ctx.thread_worker.start_joiner()
+	while True:
+		status = ctx.thread_worker.join(0.1)
+		if status == compile_worker.ABORT:
+			print("Aborted, waiting for tasks completion")
+			while ctx.thread_worker.join(0.1)!=compile_worker.ABORT_DONE: pass
+			break
+		if status == compile_worker.ABORT_DONE:
+			print("Aborted")
+			break
+		if status == compile_worker.DONE:
+			break
+			
 
 
-for modu,cu in prepared_mod.items():
-	if not cu.done:
-		raise RuntimeError("The compile unit " + ".".join(cu.modu) + " is not compiled. Dependency cnt = ", cu.dependency_cnt)
+	for modu,cu in ctx.prepared_mod.items():
+		if not cu.done:
+			raise RuntimeError("The compile unit " + ".".join(cu.modu) + " is not compiled. Dependency cnt = ", cu.dependency_cnt)
 
-if link_executable and link_target:
-	if os.path.exists(link_target) and os.path.isfile(link_target) and  os.path.getmtime(link_target)>max_bin_timestamp:
-		print("The link target is up to date")
-	else:
-		if os.name=='nt':
-			link_msvc()
+	if ctx.link_executable and ctx.link_target:
+		if os.path.exists(ctx.link_target) and os.path.isfile(ctx.link_target) and  os.path.getmtime(ctx.link_target)>ctx.max_bin_timestamp:
+			print("The link target is up to date")
 		else:
-			link_gcc()
+			if os.name=='nt':
+				link_msvc(ctx)
+			else:
+				link_gcc(ctx)
 
 
+if __name__=='__main__':
+	_ctx=parse_args(sys.argv)
+	build(_ctx)
