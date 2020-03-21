@@ -11,6 +11,12 @@ if 'BIRDEE_HOME' not in os.environ:
     raise RuntimeError("Cannot find BIRDEE_HOME in environment variables")
 
 birdee_home_path = os.environ['BIRDEE_HOME']
+sysbits = '64' if sys.maxsize > 2**32 else '32'
+osname="unknown"
+if sys.platform == 'linux2':
+    osname='linux' + sysbits
+elif sys.platform == 'win32':
+    osname='win' + sysbits
 
 class DownloaderInfo:
     def __init__(self, meta, package):
@@ -76,6 +82,7 @@ class ModuleDownloader:
         self.metafile_path = os.path.join(self.local_path, "bpackproject.json")
         self.required_by = set()
         self.isseleted=False
+        self.meta=None
     
     def download_metadata(self):
         download_file(self.templ.meta.format(author=self.username, name=self.name, version=self.version),
@@ -98,8 +105,12 @@ class ModuleDownloader:
                 shutil.move(os.path.join(zipdir, f), self.local_path)
             shutil.rmtree(unzipedpath)
         os.remove(pkgzip_path)
+        download_extra_binary(self.meta, self.local_path)
         return self.local_path
 
+    def get_linker_args(self,out):  
+        libpath=os.path.join(self.local_path,"dep", osname)
+        collect_linker_args(self.meta, libpath, out)
 
     def __str__(self):
         return "{}:{}:{}".format(self.author,self.name,self.version)
@@ -107,6 +118,26 @@ class ModuleDownloader:
     def add_reverse_dependency(self, dep):
         if dep:
             self.required_by.add(dep)
+
+def collect_linker_args(meta, deppath, out):
+    if 'linker_args' in meta:
+        if osname in meta['linker_args']:
+            for itm in meta['linker_args'][osname]:
+                out.add(itm.format(LIBPATH=deppath))
+
+def download_extra_binary(meta, outpath):
+    if 'extra' in meta:
+        if osname in meta['extra']:
+            url= meta['extra'][osname]
+            unzipedpath=os.path.join(outpath, "dep", osname)
+            if os.path.exists(unzipedpath):
+                return
+            zippath=os.path.join(outpath, "__extra_tmp.zip")
+            download_file(url, zippath)
+            with zipfile.ZipFile(zippath,"r") as zip_ref:
+                os.makedirs(unzipedpath, exist_ok=True)
+                zip_ref.extractall(unzipedpath)
+            os.remove(zippath)
 
 def module_garbage_collect(all_dependencies: dict):
     need_run=True
@@ -176,6 +207,7 @@ def _resolve_library_meta(author, name, version, required_by: ModuleDownloader, 
         m.download_metadata()
     with open(m.metafile_path+ ".cache") as f:
         meta = json.load(f)
+    m.meta=meta
     if 'dependencies' in meta:
         #first make a shadowed "preselected" dict. Add the package's own preselected into the shadowed one
         shadowed_preselected = preselected.copy()
@@ -206,10 +238,12 @@ def download_dependencies(pkgs):
     names = ', '.join([ m.author + ":" + m.name + ":" + m.version for m in all_dependencies.values() ])
     print("The packages to be installed:", names)
     paths=[]
+    linker_args=set()
     for m in all_dependencies.values():
         paths.append(m.download_source())
+        m.get_linker_args(linker_args)
     retpkgs=pkgs[:]
     retpkgs.extend(list(user_selections))
-    return retpkgs, paths
+    return retpkgs, paths, linker_args
 
 #print(download_dependencies(["local.Menooker:Birdee2:1.0.0"])) #,"local.Menooker:bdvm:master"
