@@ -49,7 +49,7 @@ extern "C" int RunGenerativeScript(int argc, char** argv);
 		//raii loader for the SO
 		//load the SO to bypass lib-dyn bugs in Python
 		DLLoader dl = ("libpython" PY_VER ".so");
-		typedef void(*PtrImpl)();
+		typedef int(*PtrImpl)(int argc, char** argv);
 		static PtrImpl impl = nullptr;
 		if (impl == nullptr)
 		{   
