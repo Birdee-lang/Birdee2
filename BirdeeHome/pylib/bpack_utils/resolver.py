@@ -29,12 +29,12 @@ templates = {
     }
 
 def download_file(url, file_name):
-    if not url.startswith('http://localhost'):
+    '''if not url.startswith('http://localhost'):
         proxy_support = urllib.request.ProxyHandler({'http': 'http://localhost:1080',
             'https': 'https://localhost:1080'
             })
         opener = urllib.request.build_opener(proxy_support)
-        urllib.request.install_opener(opener)
+        urllib.request.install_opener(opener)'''
     print("Downloading ", url)
     def reporthook(blocknum, blocksize, totalsize):
         readsofar = blocknum * blocksize

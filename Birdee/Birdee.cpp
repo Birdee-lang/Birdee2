@@ -24,7 +24,7 @@ namespace Birdee
 }
 
 #ifdef _WIN32
-extern int RunGenerativeScript();
+extern "C" int RunGenerativeScript(int argc, char** argv);
 #else
 #include <dlfcn.h>
 	extern void* LoadBindingFunction(const char* name);
@@ -43,7 +43,7 @@ extern int RunGenerativeScript();
 				dlclose(handle);
 		}
 	};
-	static int RunGenerativeScript()
+	static int RunGenerativeScript(int argc, char** argv)
 	{
 		//raii loader for the SO
 		//load the SO to bypass lib-dyn bugs in Python
@@ -52,9 +52,9 @@ extern int RunGenerativeScript();
 		static PtrImpl impl = nullptr;
 		if (impl == nullptr)
 		{   
-			impl = (PtrImpl)LoadBindingFunction( "_Z19RunGenerativeScriptv");
+			impl = (PtrImpl)LoadBindingFunction( "RunGenerativeScript");
 		}
-		impl();
+		return impl(argc, argv);
 	}
 #endif
 BD_CORE_API extern Tokenizer tokenizer;
@@ -239,6 +239,18 @@ fail:
 int main(int argc,char** argv)
 {
 	cu.is_compiler_mode = true;
+
+	if (argc > 1)
+	{
+		if (!strcmp(argv[1], "bpack")) //run bpack tool
+		{
+			cu.is_script_mode = true;
+			cu.directory = cu.homepath + "pylib/";
+			cu.filename = "bpack.py";
+			return RunGenerativeScript(argc - 1, argv + 1);
+		}
+	}
+
 	ParseParameters(argc, argv);
 	
 	//it is important to clear the imported modules before python interpreter quits
@@ -247,7 +259,7 @@ int main(int argc,char** argv)
 
 	if (cu.is_script_mode)
 	{
-		return RunGenerativeScript();
+		return RunGenerativeScript(0, nullptr);
 	}
 	int is_empty = false;
 	try {
