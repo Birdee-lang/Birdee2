@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <CompilerOptions.h>
+#include <string.h>
 using namespace Birdee;
 
 extern int ParseTopLevel(bool autoimport=true);
