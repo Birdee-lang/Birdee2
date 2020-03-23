@@ -97,18 +97,27 @@ extern "C" BIRDEE_BINDING_API int RunGenerativeScript(int argc, char** argv);
 
 extern "C" BIRDEE_BINDING_API int RunGenerativeScript(int argc, char** argv)
 {
-	std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-	std::vector<wchar_t*> wargv(argc);
-	std::vector<std::wstring> wargv_buf(argc);
-	for (int i = 0; i < argc; i++)
+
+	InitPython();
+	if (argc>0)
 	{
-		wargv_buf[i] = converter.from_bytes(argv[i]);
-		wargv[i] = (wchar_t*)wargv_buf[i].c_str();
+#ifdef _WIN32
+		std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+#else
+		std::wstring_convert<std::codecvt_utf16<wchar_t>> converter;
+#endif
+		std::vector<wchar_t*> wargv(argc);
+		std::vector<std::wstring> wargv_buf(argc);
+		for (int i = 0; i < argc; i++)
+		{
+			wargv_buf[i] = converter.from_bytes(argv[i]);
+			wargv[i] = (wchar_t*)wargv_buf[i].c_str();
+		}
+
+		PySys_SetArgv(argc, wargv.data());
 	}
 	try
 	{
-		InitPython();
-		PySys_SetArgv(argc, wargv.data());
 		py::eval_file((cu.directory + "/" + cu.filename).c_str(), InitPython().copied_scope);
 	}
 	catch (py::error_already_set& e)

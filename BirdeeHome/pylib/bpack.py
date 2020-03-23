@@ -76,7 +76,7 @@ elif args.command=='build':
     paths = [os.path.join(curdir, "src")]
     _paths, linker_args = do_resolve(meta)
     resolver.collect_linker_args(meta, os.path.join(curdir, "dep", resolver.osname), linker_args)
-    paths.extend(_paths)
+    paths.extend([os.path.join(p, "src") for p in _paths])
     ctx=bbuild.context()
     #paths.append(os.path.join(bbuild.bd_home,"blib"))
     ctx.bin_search_dirs.append(os.path.join(bbuild.bd_home,"blib"))

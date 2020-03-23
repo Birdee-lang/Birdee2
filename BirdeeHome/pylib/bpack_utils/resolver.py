@@ -13,7 +13,7 @@ if 'BIRDEE_HOME' not in os.environ:
 birdee_home_path = os.environ['BIRDEE_HOME']
 sysbits = '64' if sys.maxsize > 2**32 else '32'
 osname="unknown"
-if sys.platform == 'linux2':
+if sys.platform == 'linux2' or sys.platform == 'linux':
     osname='linux' + sysbits
 elif sys.platform == 'win32':
     osname='win' + sysbits
