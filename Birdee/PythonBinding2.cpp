@@ -101,19 +101,15 @@ extern "C" BIRDEE_BINDING_API int RunGenerativeScript(int argc, char** argv)
 	InitPython();
 	if (argc>0)
 	{
-#ifdef _WIN32
-		std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
-#else
-		std::wstring_convert<std::codecvt_utf16<wchar_t>> converter;
-#endif
 		std::vector<wchar_t*> wargv(argc);
 		std::vector<std::wstring> wargv_buf(argc);
 		for (int i = 0; i < argc; i++)
 		{
-			wargv_buf[i] = converter.from_bytes(argv[i]);
+			auto len = strlen(argv[i]) + 1;
+			wargv_buf[i] = std::wstring(len, L'\0');
+			mbstowcs(&wargv_buf[i][0], argv[i], len);
 			wargv[i] = (wchar_t*)wargv_buf[i].c_str();
 		}
-
 		PySys_SetArgv(argc, wargv.data());
 	}
 	try
