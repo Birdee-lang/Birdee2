@@ -858,6 +858,8 @@ namespace Birdee {
 		std::unique_ptr<Type> type;
 		std::unique_ptr<ExprAST> val;
 		ResolvedType resolved_type;
+		bool is_volatile = false;
+		bool is_threadlocal = false;
 
 		//the capture index in the "context" object, you need to add 1 to it if there is a captured "this"
 		int capture_import_idx = -1;

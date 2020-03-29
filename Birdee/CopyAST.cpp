@@ -214,6 +214,8 @@ namespace Birdee
 		ret->capture_import_idx = capture_import_idx;
 		ret->capture_export_type = capture_export_type;
 		ret->capture_export_idx = capture_export_idx;
+		ret->is_threadlocal = is_threadlocal;
+		ret->is_volatile = is_volatile;
 		return std::move(ret);
 	}
 
@@ -226,6 +228,8 @@ namespace Birdee
 		ret->capture_import_idx = capture_import_idx;
 		ret->capture_export_type = capture_export_type;
 		ret->capture_export_idx = capture_export_idx;
+		ret->is_threadlocal = is_threadlocal;
+		ret->is_volatile = is_volatile;
 		return std::move(ret);
 	}
 

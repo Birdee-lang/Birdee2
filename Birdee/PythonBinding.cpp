@@ -429,6 +429,8 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("capture_import_idx", &VariableSingleDefAST::capture_import_idx)
 		.def_readwrite("capture_export_idx", &VariableSingleDefAST::capture_export_idx)
 		.def_readwrite("capture_export_type", &VariableSingleDefAST::capture_export_type)
+		.def_readwrite("is_threadlocal", &VariableSingleDefAST::is_threadlocal)
+		.def_readwrite("is_volatile", &VariableSingleDefAST::is_volatile)
 		.def("run", [](VariableSingleDefAST& ths, py::object& func) {if (ths.val)func(GetRef(ths.val)); });
 
 	py::class_< VariableMultiDefAST, StatementAST>(m, "VariableMultiDefAST")

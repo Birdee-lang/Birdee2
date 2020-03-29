@@ -151,6 +151,8 @@ unique_ptr<VariableSingleDefAST> BuildVariableFromJson(const json& var)
 {
 	unique_ptr<VariableSingleDefAST> ret = make_unique<VariableSingleDefAST>(var["name"].get<string>(),
 		ConvertIdToType(var["type"]));
+	ret->is_threadlocal = ReadJSONWithDefault(var, "threadlocal", false);
+	ret->is_volatile = ReadJSONWithDefault(var, "volatile", false);
 	return std::move(ret);
 }
 

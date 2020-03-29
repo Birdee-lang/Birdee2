@@ -24,6 +24,7 @@ declare function pthread_mutex_lock(mutex as pointer) as int
 declare function pthread_mutex_trylock(mutex as pointer) as int
 declare function pthread_mutex_unlock(mutex as pointer) as int
 declare function pthread_join(thread as pointer, retval as pointer) as int
+declare function pthread_self() as pointer
 {@
 assert(get_os_name()=='linux' and get_target_bits()==64)
 @}
@@ -368,6 +369,10 @@ end
 
 function _close_thread(handle as pointer)
 	#nothing
+end
+
+function _get_current_thread() as pointer
+	return pthread_self()
 end
 
 function _await_multiple_awaitables(aw as awaitable[], offset as uint, len as uint,timeout as int) as awaitable

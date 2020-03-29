@@ -7,6 +7,9 @@
 #include <CastAST.h>
 #include <Util.h>
 #include <CompilerOptions.h>
+#include <locale>
+#include <codecvt>
+#include <string>
 
 using namespace Birdee;
 
@@ -90,10 +93,25 @@ static BirdeePyContext& InitPython()
 
 static_assert(sizeof(py::object) == sizeof(void*), "expecting sizeof(py::object) == sizeof(void*)");
 
+extern "C" BIRDEE_BINDING_API int RunGenerativeScript(int argc, char** argv);
 
-
-BIRDEE_BINDING_API int RunGenerativeScript()
+extern "C" BIRDEE_BINDING_API int RunGenerativeScript(int argc, char** argv)
 {
+
+	InitPython();
+	if (argc>0)
+	{
+		std::vector<wchar_t*> wargv(argc);
+		std::vector<std::wstring> wargv_buf(argc);
+		for (int i = 0; i < argc; i++)
+		{
+			auto len = strlen(argv[i]) + 1;
+			wargv_buf[i] = std::wstring(len, L'\0');
+			mbstowcs(&wargv_buf[i][0], argv[i], len);
+			wargv[i] = (wchar_t*)wargv_buf[i].c_str();
+		}
+		PySys_SetArgv(argc, wargv.data());
+	}
 	try
 	{
 		py::eval_file((cu.directory + "/" + cu.filename).c_str(), InitPython().copied_scope);

@@ -1,0 +1,41 @@
+import concurrent.threading:*
+import {@"system.specific.win32.concurrent" if get_os_name()=="windows" else "system.specific.unistd.concurrent"@}:do_create_thread
+import unsafe
+import threadlocal_mod:gg
+
+{@from bdassert import *@}
+
+@threadlocal
+dim p as int
+
+func printit(i as int)
+	p = i
+	gg=i
+	sleep(100*i)
+	{@bdassert("p==i")@}
+	{@bdassert("gg==i")@}
+end
+
+dim t1 = new thread(printit,1)
+dim t2 = new thread(printit,2)
+t1.join()
+t2.join()
+
+
+dim t3 as thread, t4 as thread
+dim v3 as int
+func threadproc(ptr as pointer)
+	unsafe.ptr_store(ptr, get_current_thread())
+	sleep(1000)
+	v3=123
+end
+do_create_thread(unsafe.bit_cast[pointer](threadproc), addressof(t3))
+do_create_thread(unsafe.bit_cast[pointer](threadproc), addressof(t4))
+
+sleep(600)
+t3.join()
+t4.join()
+{@bdassert("v3==123")@}
+println("threadlocal test done")
+
+
