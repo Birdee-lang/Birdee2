@@ -237,6 +237,10 @@ json BuildVariableJson(VariableSingleDefAST* var)
 	json ret;
 	ret["name"] = var->name;
 	ret["type"] = ConvertTypeToIndex(var->resolved_type);
+	if (var->is_threadlocal)
+		ret["threadlocal"] = var->is_threadlocal;
+	if (var->is_volatile)
+		ret["volatile"] = var->is_volatile;
 	return ret;
 }
 
@@ -309,7 +313,6 @@ json BuildGlobalVaribleJson()
 		t["is_public"] = itr.second.second;
 		t["line"] = itr.second.first->Pos.line;
 		t["pos"] = itr.second.first->Pos.pos;
-		t["threadlocal"] = itr.second.first->is_threadlocal;
 	}
 	return arr;
 }

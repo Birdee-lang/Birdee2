@@ -174,6 +174,18 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 			v->is_threadlocal = true;
 		}
 	}},
+	{"volatile", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(dynamic_cast<VariableDefAST*>(stmt) && is_top_level,"The volatile annotation can only be applied on variable definitions in the top level");
+		if (auto v = dynamic_cast<VariableMultiDefAST*>(stmt))
+		{
+			for (auto& itr : v->lst)
+				itr->is_volatile = true;
+		}
+		else if (auto v = dynamic_cast<VariableSingleDefAST*>(stmt))
+		{
+			v->is_volatile = true;
+		}
+	}},
 };
 
 //for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
@@ -1345,18 +1357,11 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 	{INTERNAL_ANNO_STACK_CAPTURE, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'stack_capture\' annotation can only be applied on member functions");
 		cls->funcs[index].decl->capture_on_stack = true;
-	}}
-	/*
-	{INTERNAL_ANNO_PURE_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
-		CompileAssert(!is_field,"The \'pure_virtual\' annotation can only be applied on member functions");
-		CompileAssert(!cls->is_struct, "The \'pure_virtual\' annotation can only be applied on class functions");
-		CompileAssert(!cls->isTemplate(), "The \'pure_virtual\' annotation cannot be applied on class templates");
-		cls->needs_rtti = true;
-		cls->is_abstract = true;
-		cls->funcs[index].is_pure = true;
-		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
-	}}
-	*/
+	}},
+	{"volatile", [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(is_field,"The \'volatile\' annotation can only be applied on member fields");
+		cls->fields[index].decl->is_volatile = true;
+	}},
 };
 
 BD_CORE_API bool ParseClassBody(ClassAST* ret)

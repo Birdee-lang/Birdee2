@@ -151,6 +151,8 @@ unique_ptr<VariableSingleDefAST> BuildVariableFromJson(const json& var)
 {
 	unique_ptr<VariableSingleDefAST> ret = make_unique<VariableSingleDefAST>(var["name"].get<string>(),
 		ConvertIdToType(var["type"]));
+	ret->is_threadlocal = ReadJSONWithDefault(var, "threadlocal", false);
+	ret->is_volatile = ReadJSONWithDefault(var, "volatile", false);
 	return std::move(ret);
 }
 
@@ -171,7 +173,6 @@ void BuildGlobalVaribleFromJson(const json& globals, ImportedModule& mod)
 	{
 		auto var = BuildVariableFromJson(itr);
 		var->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(itr, "line", 1), ReadJSONWithDefault(itr, "pos", 1));
-		var->is_threadlocal = ReadJSONWithDefault(itr, "threadlocal", false);
 		var->PreGenerateExternForGlobal(current_package_name);
 		auto& name = var->name;
 		mod.dimmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));

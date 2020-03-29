@@ -43,6 +43,24 @@ set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
+assert_generate_ok('''
+class AAA
+	@volatile
+	public v as int
+end
+
+dim t = new AAA
+t.v=1
+dim t2=t.v
+
+@volatile
+dim t3 as int
+
+t3=12
+dim g=t3
+g=23
+''')
+
 top_level('''import vector''')
 v=expr("birdee")
 mod=v.get().resolved_type.get_detail()
