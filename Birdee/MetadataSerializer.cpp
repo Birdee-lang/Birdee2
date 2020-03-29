@@ -309,6 +309,7 @@ json BuildGlobalVaribleJson()
 		t["is_public"] = itr.second.second;
 		t["line"] = itr.second.first->Pos.line;
 		t["pos"] = itr.second.first->Pos.pos;
+		t["threadlocal"] = itr.second.first->is_threadlocal;
 	}
 	return arr;
 }

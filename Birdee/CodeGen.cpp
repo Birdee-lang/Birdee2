@@ -798,8 +798,13 @@ void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& pack
 	MangleNameAndAppend(resolved_name, package_name);
 	resolved_name += "_0";
 	MangleNameAndAppend(resolved_name, name);
+	GlobalValue::ThreadLocalMode tls;
+	if (is_threadlocal)
+		tls = GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel;
+	else
+		tls = GlobalValue::ThreadLocalMode::NotThreadLocal;
 	GlobalVariable* v = new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage,
-		nullptr, resolved_name);
+		nullptr, resolved_name, nullptr, tls);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
 		dinfo.cu, resolved_name, resolved_name, dinfo.cu->getFile(), 0, ty,
 		true);
@@ -815,8 +820,13 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 	DIType* ty = type_n.dty;
 	string var_name = GetMangledSymbolPrefix();
 	MangleNameAndAppend(var_name, name);
-	GlobalVariable* v = new GlobalVariable(*module, type,false,GlobalValue::CommonLinkage,
-		Constant::getNullValue(type), var_name);
+	GlobalValue::ThreadLocalMode tls;
+	if (is_threadlocal)
+		tls = GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel;
+	else
+		tls = GlobalValue::ThreadLocalMode::NotThreadLocal;
+	GlobalVariable* v = new GlobalVariable(*module, type, false, GlobalValue::CommonLinkage,
+		Constant::getNullValue(type), var_name, nullptr, tls);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
 			dinfo.cu, var_name, var_name, dinfo.cu->getFile(), Pos.line, ty,
 			true);
@@ -2456,7 +2466,7 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 llvm::Value * Birdee::LocalVarExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	return builder.CreateLoad(def->GetLLVMValue());
+	return builder.CreateLoad(def->GetLLVMValue(), def->is_volatile);
 }
 
 llvm::Value * Birdee::ArrayInitializerExprAST::Generate()

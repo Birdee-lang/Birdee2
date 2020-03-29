@@ -30,6 +30,9 @@ declare function WakeAllConditionVariable(p as pointer)
 declare function SleepConditionVariableCS(p as pointer, pCritical as pointer, dwMilliseconds as int) as int
 declare function SleepConditionVariableSRW(p as pointer, pCritical as pointer, dwMilliseconds as int, flags as ulong) as int
 
+declare function GetCurrentThread() as pointer
+declare function GetCurrentProcess() as pointer
+declare function DuplicateHandle(hSourceProcessHandle as pointer, hSourceHandle as pointer, hTargetProcessHandle as pointer, lpTargetHandle as pointer, dwDesiredAccess as int, bInheritHandle as int, dwOptions as int) as int
 
 @init_script
 {@
@@ -219,6 +222,12 @@ end
 
 function _close_thread(handle as pointer)
 	CloseHandle(handle)
+end
+
+function _get_current_thread() as pointer
+	dim ret as pointer
+	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), addressof(ret), 0, 0, 2 ##DUPLICATE_SAME_ACCESS##)
+	return ret
 end
 
 #waits for events in aw, uses natives as a buffer. size of natives should > len

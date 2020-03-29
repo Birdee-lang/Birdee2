@@ -162,6 +162,18 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 		FunctionAST* f = static_cast<FunctionAST*>(stmt);
 		f->is_extension = true;
 	}},
+	{"threadlocal", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(dynamic_cast<VariableDefAST*>(stmt) && is_top_level,"The threadlocal annotation can only be applied on variable definitions in the top level");
+		if (auto v = dynamic_cast<VariableMultiDefAST*>(stmt))
+		{
+			for (auto& itr : v->lst)
+				itr->is_threadlocal = true;
+		}
+		else if (auto v = dynamic_cast<VariableSingleDefAST*>(stmt))
+		{
+			v->is_threadlocal = true;
+		}
+	}},
 };
 
 //for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
