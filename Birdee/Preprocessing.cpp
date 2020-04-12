@@ -96,7 +96,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define Birdee_RunScriptForString_NAME "_Z25Birdee_RunScriptForStringRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN6Birdee9SourcePosE"
 #endif
 
-static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
+void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
 {
 
 	typedef void(*PtrImpl)(std::vector<std::string>& anno, StatementAST* impl, SourcePos pos, void* globalscope);
@@ -1882,7 +1882,7 @@ namespace Birdee
 				{
 					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
 				}
-				cls->template_param->annotation = this;
+				cls->annotation = &anno;
 				return;
 			}
 			//if is not a template, fall through to the following code
@@ -1896,7 +1896,7 @@ namespace Birdee
 				{
 					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
 				}
-				func->template_param->annotation = this;
+				func->annotation = &anno;
 				return;
 			}
 			//if is not a template, fall through to the following code
@@ -2521,6 +2521,16 @@ If usage vararg name is "", match the closest vararg
 		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
+
+		if (src_func->annotation)
+		{
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(*src_func->annotation, func, func->Pos, globals);
+			PopPyScope();
+		}
+
 		if (!cls_template)
 			scope_mgr.class_stack = std::move(clsstack);
 		scope_mgr.RestoreTemplateEnv();
@@ -2558,6 +2568,14 @@ If usage vararg name is "", match the closest vararg
 		{
 			cls->Phase1();
 		}
+		if (src_cls->annotation)
+		{
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(*src_cls->annotation, cls, cls->Pos, globals);
+			PopPyScope();
+		}
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.RestoreClassTemplateEnv();
@@ -2577,14 +2595,6 @@ If usage vararg name is "", match the closest vararg
 		auto old_f_scopes = std::move(scope_mgr.function_scopes);
 		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
 		scope_mgr.function_scopes = std::move(old_f_scopes);
-		if (annotation)
-		{
-			PushPyScope(mod);
-			void* globals, *locals;
-			GetPyScope(globals, locals);
-			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos,globals);
-			PopPyScope();
-		}
 		return ret;
 	}
 
@@ -3114,6 +3124,22 @@ If usage vararg name is "", match the closest vararg
 				auto& type = funcdef.decl->Proto->resolved_type;
 				CompileAssert(type.type==tok_void && type.index_level==0, funcdef.decl->Pos, "__del__ destructor must not have return values");
 				CompileAssert(funcdef.access==access_public, funcdef.decl->Pos, "__del__ destructor must be public");
+			}
+			if (funcdef.annotations->size())
+			{
+				void* globals, *locals;
+				GetPyScope(globals, locals);
+				if (funcdef.decl->isTemplate())
+				{
+					for (auto& inst : funcdef.decl->template_param->instances)
+					{
+						Birdee_RunAnnotationsOn(*funcdef.annotations, inst.second.get(), Pos, globals);
+					}
+				}
+				else
+				{
+					Birdee_RunAnnotationsOn(*funcdef.annotations, funcdef.decl.get(), Pos, globals);
+				}
 			}
 		}
 		scope_mgr.PopClass();

@@ -25,6 +25,7 @@ static std::vector<ClassAST*> orphan_class_to_generate;
 static std::vector<ClassAST*> to_run_phase0;
 static string current_package_name;
 static int current_module_idx;
+static std::vector<FunctionAST*> annotations_to_run;
 
 extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
 extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
@@ -32,9 +33,14 @@ extern void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface);
 
 extern std::vector<std::string> Birdee::source_paths;
 extern void Birdee_Register_Module(const string& name, void* globals);
+extern void PushClass(ClassAST* cls);
+extern void PopClass();
 
 namespace Birdee
 {
+	extern void PushPyScope(ImportedModule* mod);
+	extern void PopPyScope();
+	extern void GetPyScope(void*& globals, void*& locals);
 	extern 	void AddFunctionToClassExtension(FunctionAST* func,
 		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap);
 }
@@ -211,23 +217,7 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 	return std::move(ret);
 }
 
-void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
-{
-	BirdeeAssert(globals.is_array(), "Expected a JSON array");
-	for (auto& itr : globals)
-	{
-		auto var = BuildFunctionFromJson(itr, nullptr);
-		if (var->is_extension)
-		{
-			AddFunctionToClassExtension(var.get(), mod.class_extend_funcmap);
-		}
-		var->PreGenerate();
-		auto name = var->Proto->GetName();
-		mod.funcmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
-	}
-}
-
-void BuildAnnotationsOnTemplate(const json& json_cls, AnnotationStatementAST*& annotation, ImportedModule& mod)
+void BuildAnnotationsOnTemplate(const json& json_cls, std::vector<std::string>*& annotation, ImportedModule& mod)
 {
 	auto anno_itr = json_cls.find("annotations");
 	if (anno_itr != json_cls.end())
@@ -239,7 +229,31 @@ void BuildAnnotationsOnTemplate(const json& json_cls, AnnotationStatementAST*& a
 			data.emplace_back(j.get<string>());
 		}
 		mod.annotations.push_back(make_unique<AnnotationStatementAST>(std::move(data), nullptr)); //fix-me: assign ret to AnnotationStatementAST?
-		annotation = mod.annotations.back().get();
+		annotation = &mod.annotations.back()->anno;
+	}
+}
+
+
+void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);
+
+void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
+{
+	BirdeeAssert(globals.is_array(), "Expected a JSON array");
+	for (auto& itr : globals)
+	{
+		auto var = BuildFunctionFromJson(itr, nullptr);
+		BuildAnnotationsOnTemplate(itr, var->annotation, mod);
+		if (var->is_extension)
+		{
+			AddFunctionToClassExtension(var.get(), mod.class_extend_funcmap);
+		}
+		var->PreGenerate();
+		if (var->annotation)
+		{
+			annotations_to_run.push_back(var.get());
+		}
+		auto name = var->Proto->GetName();
+		mod.funcmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
 	}
 }
 
@@ -269,7 +283,7 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
-		BuildAnnotationsOnTemplate(itr, func->template_param->annotation, mod);
+		BuildAnnotationsOnTemplate(itr, func->annotation, mod);
 		auto name = func->Proto->GetName();
 		mod.funcmap[name] = std::make_pair(std::move(func), IsSymbolGlobal(itr));;
 	}
@@ -330,12 +344,12 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	auto rtti_itr = json_cls.find("needs_rtti");
 	if (rtti_itr != json_cls.end())
 		ret->needs_rtti = rtti_itr->get<bool>();
+	BuildAnnotationsOnTemplate(json_cls, ret->annotation, mod);
 	auto temp_itr = json_cls.find("template");
 	if (temp_itr != json_cls.end()) //if it's a template
 	{
 		BuildTemplateClassFromJson(*temp_itr, ret, module_idx, GetTemplateLineNumber(json_cls), mod);
 		BirdeeAssert(ret->isTemplate(), "The class with \'template\' json field should be a template");
-		BuildAnnotationsOnTemplate(json_cls,ret->template_param->annotation , mod);
 		return;
 	}
 	{
@@ -408,6 +422,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 			Tokenizer old = StartParseTemplate(templ->get<string>(), first_tok, GetTemplateLineNumber(func));
 			BirdeeAssert(tok_func == first_tok, "The first token of template should be function");
 			funcdef = ParseFunction(ret);
+			BuildAnnotationsOnTemplate(func, funcdef->annotation, mod);
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
 			funcdef->template_param->mod = &mod;
 			funcdef->template_param->source.set(templ->get<string>());
@@ -417,15 +432,17 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 				cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
-			BuildAnnotationsOnTemplate(func, funcdef->template_param->annotation, mod);
 		}
 		else
 		{
 			funcdef = BuildFunctionFromJson(func["def"], ret);
+			BuildAnnotationsOnTemplate(func["def"], funcdef->annotation, mod);
+			if (funcdef->annotation)
+				annotations_to_run.push_back(funcdef.get());
 		}
 		const string& str = funcdef->Proto->GetName();
 		auto vidx_itr = func.find("virtual_idx");
-		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE));
+		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), std::vector<std::string>(), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE));
 		is_virtual |= (ret->funcs.back().virtual_idx != MemberFunctionDef::VIRT_NONE);
 		ret->funcmap[str] = idx;
 		idx++;
@@ -758,12 +775,6 @@ void Get2DStringArray(vector<vector<string>>& ret, const json& js)
 		}
 	}
 }
-namespace Birdee
-{
-	extern void PushPyScope(ImportedModule* mod);
-	extern void PopPyScope();
-	extern void GetPyScope(void*& globals, void*& locals);
-}
 
 extern void SplitString(const string& str, char delimiter, vector<string>& ret);
 extern ImportedModule* DoImportPackage(const vector<string>& package);
@@ -814,6 +825,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	idx_to_proto.clear();
 	idx_to_class.clear();
 	to_run_phase0.clear();
+	annotations_to_run.clear();
 	orphan_idx_to_class.clear();
 	orphan_class_to_generate.clear();
 	string srcpath;
@@ -828,6 +840,35 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");
+
+	struct RTTIPyScope
+	{
+		bool need=false;
+		~RTTIPyScope() {
+			if (need)
+			{
+				Birdee::PopPyScope();
+			}
+		}
+	}pyscope;
+	auto scriptitr = json.find("InitScripts");
+	if (scriptitr != json.end())
+	{
+		BirdeeAssert(scriptitr->is_string(), "InitScripts field in bmm file should be a string");
+		//if it has a init script, construct a temp ScriptAST and run it
+		Birdee::PushPyScope(this);
+		pyscope.need = true;
+		ScriptAST tmp = ScriptAST(string(), true);
+		tmp.script = scriptitr->get<string>();
+		if (!tmp.script.empty())
+		{
+			tmp.Phase1();
+		}
+		void* locals, *globals;
+		GetPyScope(globals, locals);
+		Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
+	}
+	
 
 	{
 		auto itr = json.find("FunctionTemplates");
@@ -877,25 +918,6 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BuildGlobalFuncFromJson(json["Functions"], *this);
 	
 	{
-		auto itr = json.find("InitScripts");
-		if (itr != json.end())
-		{
-			BirdeeAssert(itr->is_string(), "InitScripts field in bmm file should be a string");
-			//if it has a init script, construct a temp ScriptAST and run it
-			Birdee::PushPyScope(this);
-			ScriptAST tmp= ScriptAST(string(), true);
-			tmp.script = itr->get<string>();
-			if (!tmp.script.empty())
-			{
-				tmp.Phase1();
-			}
-			void* locals, *globals;
-			GetPyScope(globals, locals);
-			Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
-			Birdee::PopPyScope();
-		}
-	}
-	{
 		auto itr = json.find("SourceFile");
 		if (itr != json.end())
 		{
@@ -904,5 +926,19 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 			source_dir = arr[0].get<string>();
 			source_file = arr[1].get<string>();
 		}
+	}
+
+	for (auto funcdef : annotations_to_run)
+	{
+		if (funcdef->Proto->cls)
+			PushClass(funcdef->Proto->cls);
+		if (funcdef->annotation)
+		{
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(*funcdef->annotation, funcdef, funcdef->Pos, globals);
+		}
+		if (funcdef->Proto->cls)
+			PopClass();
 	}
 }

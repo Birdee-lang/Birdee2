@@ -1,9 +1,33 @@
 package test_package.a
 
+@init_script
+@init_script
+{@from overload import *@}
 class some_class
 	public b as float
 	public func __init__(v as float)=> b=v
 	public func get() as float => b
+
+	@preserve
+	@overloading("templ")
+	public func asd(v as int)
+	end
+
+	@overloaded
+	public func templ[T](g as T)
+
+	end
+end
+
+
+@overloaded
+func add[T1,T2](a as T1, b as T2)
+end
+
+@preserve
+@overloading("add")
+func myadd(a as int, b as string)
+	println(int2str(a)+b)
 end
 
 function funct() as string

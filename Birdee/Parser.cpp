@@ -189,21 +189,32 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 };
 
 //for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
-static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
+static bool ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
 {
+	bool preserve_annotations = false;
 	for (auto itr = anno.begin(); itr != anno.end();)
 	{
-		auto mapitr = interal_annontation_map.find(*itr);
-		if (mapitr != interal_annontation_map.end())
+		if (*itr == "preserve")
 		{
-			mapitr->second(stmt,is_top_level); //call the annotation function
+			CompileAssert(is_top_level && isa<FunctionAST>(stmt), "\'preserve\' can only be applied on toplevel functions");
 			itr = anno.erase(itr);
+			preserve_annotations = true;
 		}
 		else
 		{
-			itr++;
+			auto mapitr = interal_annontation_map.find(*itr);
+			if (mapitr != interal_annontation_map.end())
+			{
+				mapitr->second(stmt, is_top_level); //call the annotation function
+				itr = anno.erase(itr);
+			}
+			else
+			{
+				itr++;
+			}
 		}
 	}
+	return preserve_annotations;
 }
 
 void ClearParserState()
@@ -1394,20 +1405,57 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		tokenizer.GetNextToken();
 		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
 	}
-	/*
-	auto contain_annotation = [&anno_occurrence](const string & ano) -> bool {
-		return anno_occurrence.find(ano) != anno_occurrence.end();
-	}; 
-	*/
-	auto apply_annotations = [&anno, ret](bool is_field, int index)
+	bool preserve_annotations = false;
+	auto apply_annotations = [&anno, ret, &preserve_annotations](bool is_field, int index)
 	{
 		for (auto& ano : anno)
 		{
+			if (ano == "preserve")
+			{
+				CompileAssert(!is_field, "\'preserve\' can only be applied on functions");
+				preserve_annotations = true;
+				continue;
+			}
 			auto itr = interal_class_annontation_map.find(ano);
-			CompileAssert(itr != interal_class_annontation_map.end(), string("Unrecognized annotation: ") 
-				+ ano + " ,note that class members only supports internal annotations. Python annotations are not supported");
-			itr->second(ret, is_field, index);
+			if (itr == interal_class_annontation_map.end())
+			{
+				CompileAssert(!is_field, string("Unrecognized annotation: ")
+					+ ano + " ,note that class members fields only supports internal annotations. Python annotations are not supported");
+				ret->funcs[index].annotations->push_back(std::move(ano));
+			}
+			else
+			{
+				itr->second(ret, is_field, index);
+			}
 		}
+	};
+	auto parse_func = [ret, &classname_checker, &apply_annotations, &preserve_annotations](AccessModifier access) {
+		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
+		tokenizer.GetNextToken(); //eat function
+		ret->funcs.push_back(MemberFunctionDef(access, ParseFunction(ret), vector<string>()));
+		classname_checker(ret->funcs.back().decl->Pos, ret->funcs.back().decl->GetName());
+		ret->funcmap.insert(std::make_pair(reference_wrapper<const string>(ret->funcs.back().decl->GetName()),
+			ret->funcs.size() - 1));
+		CompileExpect(tok_newline, "Expected a new line after function definition");
+		apply_annotations(false, ret->funcs.size() - 1);
+		auto thefunc = ret->funcs.back().decl.get();
+		if (preserve_annotations || thefunc->isTemplate() && ret->funcs.back().annotations->size())
+			thefunc->annotation = ret->funcs.back().annotations.get();
+	};
+
+	auto parse_abstract = [ret, &classname_checker, &apply_annotations](AccessModifier access) {
+		tokenizer.GetNextToken(); //eat abstract
+		CompileExpect(tok_func, "Expected a function after abstract");
+		ret->needs_rtti = true;
+		ret->is_abstract = true;
+		auto& funcs = ret->funcs;
+		funcs.push_back(MemberFunctionDef(access, ParseFunction(ret, true), vector<string>(), MemberFunctionDef::VIRT_UNRESOLVED, true));
+		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+		ret->funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+			funcs.size() - 1));
+		CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
+		apply_annotations(false, funcs.size() - 1);
+		CompileAssert(ret->funcs.back().annotations->size() == 0, "Cannot annotate by Python script on abstract functions");
 	};
 	switch (tokenizer.CurTok)
 	{
@@ -1434,27 +1482,11 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 		else if (tokenizer.CurTok == tok_func)
 		{
-			CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
-			tokenizer.GetNextToken(); //eat function
-			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
-			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-				funcs.size() - 1));
-			CompileExpect(tok_newline, "Expected a new line after function definition");
-			apply_annotations(false, funcs.size() - 1);
+			parse_func(access);
 		}
 		else if (tokenizer.CurTok == tok_abstract)
 		{
-			tokenizer.GetNextToken(); //eat abstract
-			CompileExpect(tok_func, "Expected a function after abstract");
-			ret->needs_rtti = true;
-			ret->is_abstract = true;
-			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret, true), MemberFunctionDef::VIRT_UNRESOLVED, true));
-			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-				funcs.size() - 1));
-			CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
-			apply_annotations(false, funcs.size() - 1);
+			parse_abstract(access);
 		}
 		else
 		{
@@ -1462,36 +1494,21 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 		break;
 	case tok_func:
-		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
-		tokenizer.GetNextToken(); //eat function
-		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
-		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-			funcs.size() - 1));
-		CompileExpect(tok_newline, "Expected a new line after function definition");
-		apply_annotations(false, funcs.size() - 1);
+		parse_func(access_private);
 		break;
 	case tok_declare:
 		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
 		tokenizer.GetNextToken(); //eat declare
 		CompileExpect(tok_func, "Expected a function after declare");
-		funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret)));
+		funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret), vector<string>()));
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
 		apply_annotations(false, funcs.size() - 1);
+		CompileAssert(ret->funcs.back().annotations->size() == 0, "Cannot annotate by Python script on declared functions");
 		break;
 	case tok_abstract:
-		tokenizer.GetNextToken(); //eat abstract
-		CompileExpect(tok_func, "Expected a function after abstract");
-		ret->needs_rtti = true;
-		ret->is_abstract = true;
-		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret, true), MemberFunctionDef::VIRT_UNRESOLVED, true));
-		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-			funcs.size() - 1));
-		CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
-		apply_annotations(false, funcs.size() - 1);
+		parse_abstract(access_private);
 		break;
 	default :
 		return false;
@@ -2164,9 +2181,18 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 		};
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
-			ApplyInternalAnnotations(anno, st.get(), true);
+			bool preserve_annotations = ApplyInternalAnnotations(anno, st.get(), true);
 			if (anno.size())
-				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
+			{
+				auto annoast = make_unique<AnnotationStatementAST>(std::move(anno), std::move(st));
+				if (preserve_annotations)
+				{
+					auto funcast = dynamic_cast<FunctionAST*>(annoast->impl.get());
+					assert(funcast);
+					funcast->annotation = &annoast->anno;
+				}
+				out.push_back(std::move(annoast));
+			}
 			else
 				out.push_back(std::move(st));
 		};

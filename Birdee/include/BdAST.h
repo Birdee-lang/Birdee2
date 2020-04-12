@@ -1051,7 +1051,6 @@ namespace Birdee {
 		map<reference_wrapper<const vector<TemplateArgument>>, unique_ptr<T>> instances;
 		SourceStringHolder source; //no need to copy this field
 		ImportedModule* mod = nullptr;
-		AnnotationStatementAST* annotation = nullptr;
 		/*
 		For classast, it will take the ownership of v. For FunctionAST, it won't
 		*/
@@ -1090,6 +1089,7 @@ namespace Birdee {
 		IntrisicFunction* intrinsic_function = nullptr;
 		string vararg_name;
 		string link_name;
+		vector<string>* annotation = nullptr;
 		std::unique_ptr<PrototypeAST> Proto;
 		//the source template and the template args for the template function instance
 		unique_ptr<vector<TemplateArgument>> template_instance_args;
@@ -1207,6 +1207,7 @@ namespace Birdee {
 		int virtual_idx = -1;
 		// virtual_idx in itable
 		int if_virtual_idx = -1;
+		std::unique_ptr<std::vector<std::string>> annotations;
 		std::unique_ptr<FunctionAST> decl;
 		void print(int level)
 		{
@@ -1219,8 +1220,10 @@ namespace Birdee {
 			decl->print(level);
 		}
 		MemberFunctionDef Copy();
-		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl, int virtual_idx = -1, bool is_abstract = false) :
-			access(access), decl(std::move(decl)), virtual_idx(virtual_idx), is_abstract(is_abstract) {}
+		MemberFunctionDef(AccessModifier access, std::unique_ptr<FunctionAST>&& decl, std::vector<std::string>&& annotations,
+			int virtual_idx = -1, bool is_abstract = false) :
+			access(access), decl(std::move(decl)), virtual_idx(virtual_idx), is_abstract(is_abstract),
+			annotations(std::make_unique<std::vector<std::string>>(std::move(annotations))){}
 	};
 
 	class BD_CORE_API NewExprAST : public ExprAST {
@@ -1261,6 +1264,7 @@ namespace Birdee {
 		bool is_abstract = false;
 		bool is_interface = false;
 		int done_phase = 0;
+		vector<string>* annotation = nullptr;
 		//the table of virtual functions, including the inherited virt functions from parents
 		//valid after Phase0
 		vector<FunctionAST*> vtabledef;

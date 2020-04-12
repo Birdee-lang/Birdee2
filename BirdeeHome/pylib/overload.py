@@ -49,14 +49,26 @@ def overloaded(func):
         best_num_matches = 0
         for matcher in matchers:
             _num_matches = matcher.match(func.template_instance_args)
-            if _num_matches:
+            if _num_matches is not None:
                 if best_num_matches < _num_matches:
                     best_num_matches = _num_matches
                     best_matcher = [matcher]
                 elif best_num_matches == _num_matches:
                     best_matcher.append(matcher)
         if len(best_matcher)==1:
-            callexpr = CallExprAST.new(ResolvedFuncExprAST.new(best_matcher[0].impl), 
+            def cls2name(cls):
+                if cls:
+                    return cls.name
+                else:
+                    return "NONE"               
+            if func.proto.cls != best_matcher[0].impl.proto.cls:
+                raise RuntimeError("Overriding function {}.{} with a function from a different class {}.{}".format(
+                    cls2name(func.proto.cls), func.proto.name, cls2name(best_matcher[0].impl.proto.cls), best_matcher[0].impl.proto.name))
+            if func.proto.cls:
+                callee = MemberExprAST.new(ThisExprAST.new(), best_matcher[0].impl.proto.name)
+            else:
+                callee = ResolvedFuncExprAST.new(best_matcher[0].impl)
+            callexpr = CallExprAST.new(callee, 
                 [LocalVarExprAST.new(v) for v in func.proto.args])
             func.body.push_back(callexpr)
             return
@@ -72,7 +84,16 @@ def overloading_with(target_name, *args):
     def rfunc(func):
         iden = IdentifierExprAST.new(target_name)
         thefunc = iden.get().impl
-        if not isinstance(thefunc, ResolvedFuncExprAST):
+        if isinstance(thefunc, MemberExprAST):
+            if thefunc.kind!=MemberExprAST.MemberType.FUNCTION and thefunc.kind!=MemberExprAST.MemberType.IMPORTED_FUNCTION and thefunc.kind!=MemberExprAST.MemberType.VIRTUAL_FUNCTION:
+                raise RuntimeError("Expecting a function to overload with")
+            if thefunc.kind==MemberExprAST.MemberType.IMPORTED_FUNCTION:
+                thefunc = thefunc.imported_func
+            else:
+                thefunc = thefunc.func.decl
+        elif isinstance(thefunc, ResolvedFuncExprAST):
+            thefunc = thefunc.funcdef
+        else:
             raise RuntimeError("The overloading target {} is not a function definition".format(target_name))
         resolved_args = []
         for arg in args:
@@ -82,8 +103,6 @@ def overloading_with(target_name, *args):
                 resolved_args.append(arg)
             else:
                 raise RuntimeError("The annotation 'overloading' only accept str or ResolvedType as type arguments")
-
-        thefunc = thefunc.funcdef
         if thefunc not in _mapping:
             _mapping[thefunc] = []
         _mapping[thefunc].append(ImplMatcher(func, resolved_args))

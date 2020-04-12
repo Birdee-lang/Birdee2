@@ -1,7 +1,25 @@
 from bdtesting.utils import *
-#import birdeec
+import birdeec
 
 #birdeec.set_print_ir(True)
+assert_generate_ok('''
+{@from overload import *@}
+class AAA
+	@overloaded
+	public func add[T1,T2](a as T1, b as T2)
+	end
+
+	@overloading("add")
+	func myadd(a as int, b as string)
+		println(int2str(a)+b)
+	end
+end
+{@print("HHHH")@}
+dim t = new AAA
+t.add(2,"3")
+''')
+
+
 assert_generate_ok('''
 {@from overload import *@}
 

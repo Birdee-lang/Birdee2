@@ -314,6 +314,7 @@ namespace Birdee
 		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, is_vararg,std::move(vararg_n), Pos);
 		ret->isTemplateInstance = isTemplateInstance;
 		ret->is_extension = is_extension;
+		ret->annotation = annotation;
 		return std::move(ret);
 	}
 
@@ -360,6 +361,7 @@ namespace Birdee
 		clsdef->template_source_class = template_source_class;
 		assert(clsdef->template_instance_args==nullptr);
 		cur_cls = old_cls;
+		clsdef->annotation = annotation;
 		return std::move(clsdef);
 	}
 
@@ -397,7 +399,7 @@ namespace Birdee
 	}
 	MemberFunctionDef Birdee::MemberFunctionDef::Copy()
 	{
-		return MemberFunctionDef(access,unique_ptr_cast<FunctionAST>(decl->Copy()),virtual_idx);
+		return MemberFunctionDef(access,unique_ptr_cast<FunctionAST>(decl->Copy()), std::vector<std::string>(*annotations), virtual_idx, is_abstract);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::ResolvedFuncExprAST::Copy()

@@ -649,7 +649,7 @@ void RegisiterClassForBinding(py::module& m)
 
 	py::class_ < MemberFunctionDef>(m, "MemberFunctionDef")
 		.def_static("new", [](AccessModifier access, UniquePtrStatementAST& v) {
-			return new UniquePtr< MemberFunctionDef>(MemberFunctionDef(access, move_cast_or_throw< FunctionAST>(v.ptr)));
+			return new UniquePtr< MemberFunctionDef>(MemberFunctionDef(access, move_cast_or_throw< FunctionAST>(v.ptr), std::vector<std::string>()));
 		})
 		.def_readwrite("access", &MemberFunctionDef::access)
 		.def_property("decl", [](MemberFunctionDef& ths) {return GetRef(ths.decl); },
