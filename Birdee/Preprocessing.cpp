@@ -955,6 +955,41 @@ inline bool IsFunctype(const ResolvedType& v)
 	return v.index_level == 0 && v.type == tok_func && !v.proto_ast->is_closure;
 }
 
+BD_CORE_API bool TypeCanBeConvertedTo(ResolvedType& from, ResolvedType& target)
+{
+	if (target == from)
+	{
+		return true;
+	}
+	if (IsClosure(target) && IsFunctype(from))
+	{
+		//if both types are functions and target is closure & source value is not closure
+		if (target.proto_ast->IsSamePrototype(*from.proto_ast))
+		{
+			return true;
+		}
+	}
+	if (target.isReference() && from.isReference())
+	{
+		if (from.isNull())
+		{
+			return true;
+		}
+		if (IsResolvedTypeClass(from)
+			&& IsResolvedTypeClass(target)) // check for upcast
+		{
+			if (from.class_ast->HasParent(target.class_ast) ||
+				from.class_ast->HasImplement(target.class_ast))
+				return true;
+		}
+	}
+	else if (target.isNumber() && from.isNumber())
+	{
+		return true;
+	}
+	return false;
+}
+
 unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAST>&& val,SourcePos pos)
 {
 	if (target == val->resolved_type)

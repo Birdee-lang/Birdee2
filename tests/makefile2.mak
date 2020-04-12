@@ -4,7 +4,7 @@ all: $(OUT_DIR) dlltest autoclose_test.test array_literal.test interface_test.te
     import_test.test json_test.test logic_obj_cmp.test net_test.ntest operators.test \
 	rtti2.test string_test.test template_link_test.test threading_test.test threadpool_test.test threadlocal_test.test typedptr_test.test \
 	vector_test.test reflection_test.test unary_op_test.test \
-	ast_write_test.pytest scripttest.pytest template_vararg.pytest getset_test.pytest \
+	ast_write_test.pytest scripttest.pytest template_vararg.pytest getset_test.pytest overloadtest.pytest \
 	py_module_test.module
 SRC_DIR=.
 OUT_DIR=bin

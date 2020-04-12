@@ -11,7 +11,7 @@ all:${TEST_BIN_DIR} dlltest autoclose_test.test array_literal.test interface_tes
     import_test.test json_test.test logic_obj_cmp.test net_test.ttest operators.test \
 	rtti2.test string_test.test template_link_test.test threading_test.ttest threadpool_test.ttest threadlocal_test.ttest typedptr_test.test\
 	vector_test.test reflection_test.test unary_op_test.test \
-	ast_write_test.pytest scripttest.pytest template_vararg.pytest getset_test.pytest \
+	ast_write_test.pytest scripttest.pytest template_vararg.pytest getset_test.pytest overloadtest.pytest \
 	py_module_test.module
 
 
