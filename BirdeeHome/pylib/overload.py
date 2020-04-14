@@ -68,8 +68,12 @@ def overloaded(func):
                 callee = MemberExprAST.new(ThisExprAST.new(), best_matcher[0].impl.proto.name)
             else:
                 callee = ResolvedFuncExprAST.new(best_matcher[0].impl)
-            callexpr = CallExprAST.new(callee, 
+            mycallexpr = CallExprAST.new(callee, 
                 [LocalVarExprAST.new(v) for v in func.proto.args])
+            if func.proto.return_type.base != BasicType.VOID:
+                callexpr = ReturnAST.new(mycallexpr)
+            else:
+                callexpr = mycallexpr
             func.body.push_back(callexpr)
             return
         elif len(best_matcher)>1:

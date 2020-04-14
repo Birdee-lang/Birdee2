@@ -7,8 +7,9 @@ dim o = new test_package.a.mod1.some_class(2.3)
 o.templ(2)
 o.templ(2.2)
 
-test_package.a.mod1.add(1,"asd")
+dim v=test_package.a.mod1.add(1,"asd")
 
+{@bdassert('v=="1asd"')@}
 {@bdassert("o.b==2.3")@}
 {@bdassert("o.get()==2.3")@}
 {@bdassert("test_package.a.mod1.funct()==\"HAHA\"")@}

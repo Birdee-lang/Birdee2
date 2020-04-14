@@ -19,15 +19,14 @@ class some_class
 	end
 end
 
-
 @overloaded
-func add[T1,T2](a as T1, b as T2)
+func add[T1,T2](a as T1, b as T2) as T2
 end
 
 @preserve
 @overloading("add")
-func myadd(a as int, b as string)
-	println(int2str(a)+b)
+func myadd(a as int, b as string) as string
+	return (int2str(a)+b)
 end
 
 function funct() as string

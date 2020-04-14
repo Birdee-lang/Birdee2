@@ -41,8 +41,9 @@ namespace Birdee
 	extern void PushPyScope(ImportedModule* mod);
 	extern void PopPyScope();
 	extern void GetPyScope(void*& globals, void*& locals);
-	extern 	void AddFunctionToClassExtension(FunctionAST* func,
+	extern void AddFunctionToClassExtension(FunctionAST* func,
 		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap);
+	extern void RunAnnotationOnImportedFunction(FunctionAST* func, ImportedModule* mod);
 }
 
 static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
@@ -232,9 +233,6 @@ void BuildAnnotationsOnTemplate(const json& json_cls, std::vector<std::string>*&
 		annotation = &mod.annotations.back()->anno;
 	}
 }
-
-
-void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope);
 
 void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
 {
@@ -442,7 +440,8 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 		}
 		const string& str = funcdef->Proto->GetName();
 		auto vidx_itr = func.find("virtual_idx");
-		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), std::vector<std::string>(), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE));
+		bool is_abstract = ReadJSONWithDefault(func, "is_abstract", false);
+		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), std::vector<std::string>(), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE, is_abstract));
 		is_virtual |= (ret->funcs.back().virtual_idx != MemberFunctionDef::VIRT_NONE);
 		ret->funcmap[str] = idx;
 		idx++;
@@ -850,25 +849,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 				Birdee::PopPyScope();
 			}
 		}
-	}pyscope;
-	auto scriptitr = json.find("InitScripts");
-	if (scriptitr != json.end())
-	{
-		BirdeeAssert(scriptitr->is_string(), "InitScripts field in bmm file should be a string");
-		//if it has a init script, construct a temp ScriptAST and run it
-		Birdee::PushPyScope(this);
-		pyscope.need = true;
-		ScriptAST tmp = ScriptAST(string(), true);
-		tmp.script = scriptitr->get<string>();
-		if (!tmp.script.empty())
-		{
-			tmp.Phase1();
-		}
-		void* locals, *globals;
-		GetPyScope(globals, locals);
-		Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
-	}
-	
+	}pyscope;	
 
 	{
 		auto itr = json.find("FunctionTemplates");
@@ -928,17 +909,31 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 		}
 	}
 
+	{
+		auto scriptitr = json.find("InitScripts");
+		if (scriptitr != json.end())
+		{
+			BirdeeAssert(scriptitr->is_string(), "InitScripts field in bmm file should be a string");
+			//if it has a init script, construct a temp ScriptAST and run it
+			Birdee::PushPyScope(this);
+			pyscope.need = true;
+			ScriptAST tmp = ScriptAST(string(), true);
+			tmp.script = scriptitr->get<string>();
+			if (!tmp.script.empty())
+			{
+				tmp.Phase1();
+			}
+			void* locals, *globals;
+			GetPyScope(globals, locals);
+			Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
+		}
+	}
+
 	for (auto funcdef : annotations_to_run)
 	{
-		if (funcdef->Proto->cls)
-			PushClass(funcdef->Proto->cls);
 		if (funcdef->annotation)
 		{
-			void* globals, *locals;
-			GetPyScope(globals, locals);
-			Birdee_RunAnnotationsOn(*funcdef->annotation, funcdef, funcdef->Pos, globals);
+			RunAnnotationOnImportedFunction(funcdef, this);
 		}
-		if (funcdef->Proto->cls)
-			PopClass();
 	}
 }

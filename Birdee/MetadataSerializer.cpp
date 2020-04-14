@@ -405,6 +405,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 			auto access = GetAccessModifierName(func.access);
 			json_func["access"] = access;
 			json_func["virtual_idx"] = func.virtual_idx;
+			if (func.is_abstract)
+				json_func["is_abstract"] = true;
 			if (func.decl->isTemplate())
 			{
 				/*for (auto& instance : (func.decl->template_param->instances))

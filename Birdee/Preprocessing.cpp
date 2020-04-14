@@ -2485,15 +2485,11 @@ If usage vararg name is "", match the closest vararg
 			return cu.imported_module_names[package_name_idx] + '.' + name;
 	}
 
-	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
-		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
+	static ClassAST* PrepareEnvForFunction(FunctionAST* func, vector<TemplateArgument>& v,
+		const vector<TemplateParameter>& parameters, vector<ClassAST*>& clsstack, ImportedModule* mod, SourcePos pos)
 	{
-		preprocessing_state.func_templ_inst_rollback.emplace_back(make_unique<TemplateInstanceArgs<FuncTemplateInstMap>>(
-			&src_func->template_param->instances, 
-			*v, parameters, mod, pos));
-		func->Proto->Name += GetTemplateArgumentString(*v);
-		ClassAST* cls_template=nullptr;
-		if (func->Proto->cls) 
+		ClassAST* cls_template = nullptr;
+		if (func->Proto->cls)
 		{
 			cls_template = func->Proto->cls;
 			if (func->Proto->cls->template_instance_args)//if the function is defined in a template class, push the template environment
@@ -2509,11 +2505,71 @@ If usage vararg name is "", match the closest vararg
 		{
 			scope_mgr.SetEmptyClassTemplateEnv();
 		}
-		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
+		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
-		vector<ClassAST*> clsstack;
-		if(!cls_template) // if it is not a member function, clear the class environment
+		
+		if (!cls_template) // if it is not a member function, clear the class environment
 			clsstack = std::move(scope_mgr.class_stack);
+		return cls_template;
+	}
+
+	static void RunAnnotationAndPopEnvForFunction(ClassAST* cls_template, FunctionAST* func, vector<ClassAST*>& clsstack, vector<string>* annotation, ImportedModule* mod)
+	{
+		auto oldfunc = cur_func;
+		cur_func = func;
+		if (annotation)
+		{
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(*annotation, func, func->Pos, globals);
+			PopPyScope();
+		}
+
+		if (!cls_template)
+			scope_mgr.class_stack = std::move(clsstack);
+		scope_mgr.template_trace_back_stack.pop_back();
+		scope_mgr.RestoreTemplateEnv();
+		if (cls_template)
+		{
+			scope_mgr.PopClass();
+		}
+		scope_mgr.RestoreClassTemplateEnv();
+		cur_func = oldfunc;
+	}
+
+	void RunAnnotationOnImportedFunction(FunctionAST* func, ImportedModule* mod)
+	{
+		vector<ClassAST*> clsstack;
+		vector<TemplateArgument>* targ;
+		vector<TemplateParameter>* tparam;
+		vector<TemplateArgument> tmparg;
+		vector<TemplateParameter> tmpparam;
+		if (func->template_instance_args)
+		{
+			targ = func->template_instance_args.get();
+			assert(func->template_source_func && func->template_source_func->template_param);
+			tparam = &func->template_source_func->template_param->params;
+		}
+		else
+		{
+			targ = &tmparg;
+			tparam = &tmpparam;
+		}
+		ClassAST* cls_template = PrepareEnvForFunction(func, *targ, *tparam, clsstack, mod, func->Pos);
+		RunAnnotationAndPopEnvForFunction(cls_template, func, clsstack, func->annotation, mod);
+	}
+
+	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
+		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
+	{
+		preprocessing_state.func_templ_inst_rollback.emplace_back(make_unique<TemplateInstanceArgs<FuncTemplateInstMap>>(
+			&src_func->template_param->instances, 
+			*v, parameters, mod, pos));
+		func->Proto->Name += GetTemplateArgumentString(*v);
+		vector<ClassAST*> clsstack;
+		ClassAST* cls_template= PrepareEnvForFunction(func, *v, parameters, clsstack, mod, pos);
+		
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
@@ -2522,25 +2578,8 @@ If usage vararg name is "", match the closest vararg
 		func->Phase0();
 		func->Phase1();
 
-		if (src_func->annotation)
-		{
-			PushPyScope(mod);
-			void* globals, *locals;
-			GetPyScope(globals, locals);
-			Birdee_RunAnnotationsOn(*src_func->annotation, func, func->Pos, globals);
-			PopPyScope();
-		}
-
-		if (!cls_template)
-			scope_mgr.class_stack = std::move(clsstack);
-		scope_mgr.RestoreTemplateEnv();
-		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.function_scopes = std::move(basic_blocks_backup);
-		if (cls_template)
-		{
-			scope_mgr.PopClass();
-		}
-		scope_mgr.RestoreClassTemplateEnv();
+		RunAnnotationAndPopEnvForFunction(cls_template, func, clsstack, src_func->annotation, mod);
 	}
 
 	/*
