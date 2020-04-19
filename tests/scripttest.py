@@ -1,47 +1,58 @@
 from birdeec import *
+from bdtesting.utils import * 
 import os
-
-def assert_fail(istr):
-	try:
-		top_level(istr)
-		process_top_level()
-		assert(False)
-	except TokenizerException:
-		e=get_tokenizer_error()
-		print(e.linenumber,e.pos,e.msg)
-	except CompileException:
-		e=get_compile_error()
-		print(e.linenumber,e.pos,e.msg)		
-	clear_compile_unit()
-
-def assert_ok(istr):
-	top_level(istr)
-	process_top_level()
-	clear_compile_unit()
-
-def assert_generate_ok(istr):
-	top_level(istr)
-	process_top_level()
-	generate()
-	clear_compile_unit()
-
-def assert_generate_fail(istr):
-	try:
-		top_level(istr)
-		process_top_level()
-		generate()
-		assert(False)
-	except TokenizerException:
-		e=get_tokenizer_error()
-		print(e.linenumber,e.pos,e.msg)
-	except CompileException:
-		e=get_compile_error()
-		print(e.linenumber,e.pos,e.msg)		
-	clear_compile_unit()
 
 set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
+
+assert_ok('''
+{@
+annotated=[]
+def some(f):
+	print(f.proto.name)
+	annotated.append(f.proto.name)
+@}
+class AAA
+	@some
+	public func asd()
+	end
+
+	@some
+	public func asd2[T]()
+	end
+end
+
+dim t = new AAA
+t.asd2[int]()
+
+{@
+assert(annotated[0]=="asd")
+assert(annotated[1]=="asd2[int]")
+@}
+''')
+
+assert_fail('''
+{@def some(f):
+	print(f.proto.name)@}
+
+class AAA
+	@some
+	abstract func bbb()
+end
+@}
+''')
+
+assert_fail('''
+{@def some(f):
+	print(f.proto.name)@}
+
+class AAA
+	@some
+	public a as int
+end
+@}
+''')
 
 assert_generate_ok('''
 class AAA

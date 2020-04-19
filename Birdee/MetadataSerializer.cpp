@@ -253,6 +253,8 @@ json BuildFunctionJson(FunctionAST* func)
 		return ret;
 	}
 	ret["name"] = func->GetName();
+	if (func->annotation)
+		ret["annotations"] = *func->annotation;
 	if (!func->Proto->cls && func->isDeclare)
 		ret["link_name"] = func->link_name.empty()? func->GetName(): func->link_name;
 	json args = json::array();
@@ -332,8 +334,8 @@ json BuildGlobalFuncJson(json& func_template)
 			json template_obj;
 			auto ptr = itr.second.first->template_param.get();
 			template_obj["template"] = ptr->source.get();
-			if (ptr->annotation)
-				template_obj["annotations"] = ptr->annotation->anno;
+			if (itr.second.first->annotation)
+				template_obj["annotations"] = *itr.second.first->annotation;
 			template_obj["source_line"] = itr.second.first->Pos.line;
 			template_obj["is_public"] = itr.second.second;
 			template_obj["name"] = itr.second.first->Proto->Name;
@@ -362,6 +364,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
 	json_cls["is_interface"] = cls.is_interface;
+	if (cls.annotation)
+		json_cls["annotations"] = *cls.annotation;
 	if (cls.parent_class)
 	{
 		json_cls["parent"] = ConvertClassToIndex(cls.parent_class);
@@ -379,8 +383,6 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 		assert(!cls.template_param->source.empty());
 		json_cls["template"] = cls.template_param->source.get();
 		json_cls["source_line"] = cls.Pos.line;
-		if (cls.template_param->annotation)
-			json_cls["annotations"] = cls.template_param->annotation->anno;
 	}
 	else
 	{
@@ -403,6 +405,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 			auto access = GetAccessModifierName(func.access);
 			json_func["access"] = access;
 			json_func["virtual_idx"] = func.virtual_idx;
+			if (func.is_abstract)
+				json_func["is_abstract"] = true;
 			if (func.decl->isTemplate())
 			{
 				/*for (auto& instance : (func.decl->template_param->instances))
@@ -424,8 +428,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 				}
 				else
 					json_func["template"] = source.get();
-				if (func.decl->template_param->annotation)
-					json_func["annotations"] = func.decl->template_param->annotation->anno;
+				if (func.decl->annotation)
+					json_func["annotations"] = *func.decl->annotation;
 				json_func["source_line"] = func.decl->Pos.line;
 			}
 			else

@@ -12,6 +12,7 @@ using namespace Birdee;
 
 extern void CompileExpr(char* cmd);
 extern BD_CORE_API Tokenizer tokenizer;
+extern bool TypeCanBeConvertedTo(ResolvedType& from, ResolvedType& target);
 
 namespace Birdee
 {
@@ -108,6 +109,7 @@ void RegisiterClassForBinding2(py::module& m) {
 			return;
 		})
 		.def("__eq__", &ResolvedType::operator ==)
+		.def("is_convertible_to", TypeCanBeConvertedTo)
 		.def("is_integer", &ResolvedType::isInteger);
 	py::class_<ImportedModule>(m, "ImportedModule")
 		.def_readonly("source_dir", &ImportedModule::source_dir)
