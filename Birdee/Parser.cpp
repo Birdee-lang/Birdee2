@@ -1565,6 +1565,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface)
 				tokenizer.GetNextToken(); // eat comma
 			}
 		}
+		ret->needs_rtti = true;
 	}
 	
 	CompileExpect(tok_newline, "Expected newline or inheritance keyword after class name");
