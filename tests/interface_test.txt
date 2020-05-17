@@ -49,7 +49,6 @@ class quail : bird implements itest
 	end
 end
 
-@enable_rtti
 class sparrow implements itest2, itest3[int, string]
 	public func a() as string
 		return "sparrow itest a"

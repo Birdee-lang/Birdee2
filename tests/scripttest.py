@@ -7,6 +7,17 @@ set_print_ir(False)
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
 
 assert_ok('''
+func add(a as int,
+	b as int) as int
+	return a+b
+end
+
+add(
+	12,
+	3)
+''')
+
+assert_ok('''
 {@
 annotated=[]
 def some(f):

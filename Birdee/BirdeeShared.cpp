@@ -361,12 +361,15 @@ Birdee::Tokenizer& Birdee::Tokenizer::operator =(Tokenizer&& old_t)
 	IdentifierStr = std::move(old_t.IdentifierStr);
 	is_recording = old_t.is_recording;
 	NumVal = old_t.NumVal;
+	skip_newline = old_t.skip_newline;
 	template_source = std::move(old_t.template_source);
 	return *this;
 }
 
 Token Birdee::Tokenizer::gettok() {
 	static_assert(TOKENIZER_PENDING_CHAR != EOF, "expecting TOKENIZER_PENDING_CHAR != EOF");
+	bool skip_newline = this->skip_newline;
+	this->skip_newline = false;
 	if (!f)
 		return tok_error;
 	if (LastChar == TOKENIZER_PENDING_CHAR)
@@ -378,6 +381,16 @@ Token Birdee::Tokenizer::gettok() {
 	if (single_token != single_token_map.end())
 	{
 		LastChar = GetChar();
+		if (skip_newline && single_token->second == tok_newline)
+		{
+			// the skip_newline flag is set, skip the current newline token
+			this->skip_newline = true;
+			return gettok();
+		}
+		else if (single_token->second == tok_comma || single_token->second == tok_left_bracket)
+		{
+			this->skip_newline = true;
+		}
 		return single_token->second;
 	}
 	single_token = single_operator_map.find(LastChar);

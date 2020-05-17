@@ -67,3 +67,24 @@ end
 function as_instance[T1,T2](ptr as T2) as option[T1]
 	return some(dyn_cast[T1,T2](ptr))
 end
+
+function match_call[T, T1](val as T, f as closure(v as T1)) as boolean
+	dim ptr = dyn_cast[T1](val)
+	if ptr !== null then
+		f(ptr)
+		return true
+	end
+	return false
+end
+
+function match[T, ...](val as T, ...) as boolean
+{@
+func = get_cur_func()
+args = func.proto.args
+for i in range(1, len(args)):
+	bdutils.set_stmt('''if match_call(val, {}) then
+	return true
+end'''.format(args[i].name))
+@}
+	return false
+end
