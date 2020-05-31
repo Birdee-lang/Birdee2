@@ -1981,13 +1981,16 @@ namespace Birdee
 					{
 						if (!this->is_interface && super->is_interface)
 						{
+							// if the func override an interface func
 							if (funcdef.virtual_idx == MemberFunctionDef::VIRT_NONE) {
+								// automatically mark function as 'virtual'
 								funcdef.virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
 							}
 							funcdef.if_virtual_idx = cls->funcs[itr->second].virtual_idx;
 						}
 						else 
 						{
+							// if the func override a parent virtual func
 							funcdef.virtual_idx = cls->funcs[itr->second].virtual_idx;
 						}
 						break;
@@ -2186,64 +2189,71 @@ namespace Birdee
 				cls = cls->parent_class;
 			}
 		}
-		// check conflict functions between self interfaces & parent
-		unordered_map<string, ClassAST*> parent_funcdef;
-		ClassAST* cls = parent_class;
-		while (cls) {
-			for (auto& funcdef : cls->funcs) {
-				string & name = funcdef.decl->Proto->Name;
-				parent_funcdef[name] = cls;
-			}
-			cls = cls->parent_class;
-		}
-		for (auto & func : parent_funcdef) {
-			auto fitr = self_implement_funcdef.find(func.first);
-			if (fitr != self_implement_funcdef.end()) {
-				throw CompileError(Pos, "method " + func.first + " in parent class " + func.second->name +
-					" conflicts with method in interface " + fitr->second->name);
-			}
-		}
 
 		for (auto& funcdef : funcs) {
 			if (funcdef.is_abstract) {
+				string & name = funcdef.decl->Proto->Name;
+				// check for inconsistency with parent funcs
 				ClassAST* cls = parent_class;
 				while (cls)
 				{
-					auto itr = cls->funcmap.find(funcdef.decl->Proto->Name);
+					auto itr = cls->funcmap.find(name);
 					if (itr != cls->funcmap.end())
 					{
 						CompileAssert(cls->funcs[itr->second].is_abstract, funcdef.decl->Pos,
-							"method " + funcdef.decl->Proto->Name + "is defind as abstract in class " +
+							"method " + name + " is defind as abstract in class " +
 							this->GetUniqueName() + ", but it's non-abstract in parent class " + cls->GetUniqueName());
 						break;
+					}
+					cls = cls->parent_class;
+				}
+				// check for inconsistency with interface funcs
+				CompileAssert(self_implement_funcdef.find(name) 
+					== self_implement_funcdef.end(), funcdef.decl->Pos,
+					"method " + name + " defind as abstract in class " +
+					this->GetUniqueName() + " is duplicated with func in interface " + self_implement_funcdef[name]->GetUniqueName());
+			}
+		}
+
+		unordered_map<string, std::pair<ClassAST*, MemberFunctionDef*>> parent_funcdef;
+		if (parent_class) {
+			for (auto & unimpl_func : parent_class->unimpl_abstract_funcs) {
+				unimpl_abstract_funcs.insert(unimpl_func);
+			}
+			if (!this->is_interface) {
+				// get parent funcdefs
+				ClassAST* cls = parent_class;
+				while (cls) {
+					for (auto& funcdef : cls->funcs) {
+						string & name = funcdef.decl->Proto->Name;
+						if (parent_funcdef.find(name) == parent_funcdef.end()) {
+							parent_funcdef[name] = { cls, &funcdef };
+						}
 					}
 					cls = cls->parent_class;
 				}
 			}
 		}
 
-		if (parent_class) {
-			for (auto & unimpl_func : parent_class->unimpl_abstract_funcs) {
-				unimpl_abstract_funcs.insert(unimpl_func);
-			}
-		}
 		if (!this->is_interface) {
+			// add self abstract funcs
+			for (auto & funcdef : this->funcs) {
+				if (funcdef.is_abstract) {
+					string & name = funcdef.decl->Proto->Name;
+					unimpl_abstract_funcs[name] = std::make_pair(this, &funcdef);
+				}
+			}
 			for (int i = 0; i < self_implements.size(); ++i) {
 				for (auto & unimpl_func : self_implements[i]->unimpl_abstract_funcs) {
 					unimpl_abstract_funcs.insert(unimpl_func);
 				}
 			}
-			// automatically mark class as abstract if there's unimplemented abstract function
 			for (auto& funcdef : this->funcs) 
 			{
 				string & name = funcdef.decl->Proto->Name;
 				if (unimpl_abstract_funcs.find(name) != unimpl_abstract_funcs.end()) {
 					unimpl_abstract_funcs.erase(name);
 				}
-			}
-			if (unimpl_abstract_funcs.size() > 0) 
-			{
-				this->is_abstract = true;
 			}
 		} else {
 			for (auto & funcdef : this->funcs) {
@@ -2255,7 +2265,7 @@ namespace Birdee
 						throw CompileError("interfaces do not support overriden functions");
 					}
 				}
-				unimpl_abstract_funcs.insert(std::make_pair(name, &funcdef));
+				unimpl_abstract_funcs[name] = std::make_pair(this, &funcdef);
 			}
 		}
 
@@ -2271,7 +2281,7 @@ namespace Birdee
 		}
 		// find lineage for virtual funcs
 		map<ClassAST*, std::set<MemberFunctionDef*>> lineage;
-		// std::set<MemberFunctionDef*> orphan;
+		// put none-interface virtual functions in vtable
 		for (auto & funcdef : funcs)
 		{
 			if (funcdef.virtual_idx != MemberFunctionDef::VIRT_NONE)
@@ -2280,6 +2290,7 @@ namespace Birdee
 			}
 		}
 		if (!this->is_interface) {
+			// put interface virtual function in corresponsing itable
 			for (int i = 0; i < implements.size(); ++i) {
 				checkVirtLineage(lineage, implements[i]);
 			}
@@ -2288,6 +2299,41 @@ namespace Birdee
 		resolveVtable(lineage, parent_class, vtabledef);
 		for (int i = 0; i < if_vtabledef.size(); ++i) {
 			resolveVtable(lineage, implements[i], if_vtabledef[i]);
+		}
+
+		// resolve interface functions implemented by parent
+		if (!this->is_interface) {
+			// build self interface* -> itable idx map
+			unordered_map<ClassAST*, int> interf_idx_map;
+			for (int i = 0; i < self_implements.size(); ++i) {
+				interf_idx_map[self_implements[i]] = i + implements.size() - self_implements.size();
+			}
+			// here, funcs found by parent func from unimpl_abstract_funcs must be self implement func
+			for (auto & func : parent_funcdef) {
+				const string & name = func.first;
+				auto fitr = unimpl_abstract_funcs.find(name);
+				if (fitr != unimpl_abstract_funcs.end()) {
+					ClassAST* iterf = fitr->second.first;
+					MemberFunctionDef* overriding_funcdef = func.second.second;
+					MemberFunctionDef* interf_funcdef = fitr->second.second;
+					if (iterf->is_interface && interf_idx_map.find(iterf) != interf_idx_map.end()) { // for safety
+						FunctionAST* overriding_func = overriding_funcdef->decl.get();
+						FunctionAST* interf_func = interf_funcdef->decl.get();
+						CompileAssert(interf_func->Proto->CanBeAssignedWith(*overriding_func->Proto), overriding_func->Pos,
+							string("The function ") + overriding_func->Proto->Name + " overrides the function at " + interf_func->Pos.ToString()
+							+ " but they have different prototypes");
+						int itable_idx = interf_idx_map[iterf];
+						if_vtabledef[itable_idx][interf_funcdef->virtual_idx] = overriding_func;
+						// remove interface func implemented by parent
+						unimpl_abstract_funcs.erase(name);
+					}
+				}
+			}
+		}
+		// automatically mark class as abstract if there's unimplemented abstract function
+		if (unimpl_abstract_funcs.size() > 0)
+		{
+			this->is_abstract = true;
 		}
 
 		for (auto& fielddef : fields)
