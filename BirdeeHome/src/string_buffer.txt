@@ -9,4 +9,12 @@ class string_buffer
 		buf.push_chunk(b,0,v.length())
 		return this
 	end
+
+	public func write_char(v as byte) as string_buffer
+		buf.push_back(v)
+		return this
+	end
+
+	public func reserve(n as uint) => buf.reserve(n)
+	public func write(v as string) => append(v)
 end

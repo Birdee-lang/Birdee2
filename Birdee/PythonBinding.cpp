@@ -12,10 +12,36 @@ using namespace Birdee;
 
 extern void CompileExpr(char* cmd);
 extern BD_CORE_API Tokenizer tokenizer;
+extern bool TypeCanBeConvertedTo(ResolvedType& from, ResolvedType& target);
 
 namespace Birdee
 {
 	extern BD_CORE_API bool IsResolvedTypeClass(const ResolvedType& r);
+	extern BD_CORE_API string GetSourcePathByIdx(int source_idx);
+}
+
+template<typename K, typename V>
+py::dict CopyMapToDict(unordered_map<K, V>& m)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	for (auto& itr : m)
+	{
+		setfunc(itr.first, GetRef(itr.second));
+	}
+	return std::move(dict);
+}
+
+template<typename K, typename V>
+py::dict CopyMapToDict(unordered_map<K, std::pair<V, bool>>& m)
+{
+	py::dict dict;
+	py::function setfunc = py::cast<py::function>(dict.attr("__setitem__"));
+	for (auto& itr : m)
+	{
+		setfunc(itr.first, py::make_tuple(GetRef(itr.second.first), itr.second.second));
+	}
+	return std::move(dict);
 }
 
 void RegisiterClassForBinding2(py::module& m) {
@@ -50,6 +76,9 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("source_idx", &SourcePos::source_idx)
 		.def_readwrite("line", &SourcePos::line)
 		.def_readwrite("pos", &SourcePos::pos)
+		.def_property_readonly("source_path", [](SourcePos& pos) {
+			return GetSourcePathByIdx(pos.source_idx);
+		})
 		.def("__str__", &SourcePos::ToString);
 	py::class_<ResolvedType>(m, "ResolvedType")
 		.def(py::init<>())
@@ -61,7 +90,7 @@ void RegisiterClassForBinding2(py::module& m) {
 			if (ths.type == tok_class)
 				return py::cast(GetRef(ths.class_ast), py::return_value_policy::reference);
 			else if (ths.type == tok_package)
-				return py::cast(nullptr); //fix-me : return the import_node
+				return py::cast(GetRef(ths.import_node), py::return_value_policy::reference);
 			else if (ths.type == tok_func)
 				return py::cast(GetRef(ths.proto_ast), py::return_value_policy::reference);
 			else
@@ -72,15 +101,47 @@ void RegisiterClassForBinding2(py::module& m) {
 				ths.class_ast = py::cast<ClassAST*>(obj);
 			else if (type == tok_func)
 				ths.proto_ast = py::cast<PrototypeAST*>(obj);
+			else if (type==tok_package)
+				ths.import_node = py::cast<ImportTree*>(obj);
 			else
 				ths.class_ast = nullptr;
-			//fix-me : set the import_node
 			ths.type = type;
 			return;
 		})
 		.def("__eq__", &ResolvedType::operator ==)
+		.def("is_convertible_to", TypeCanBeConvertedTo)
 		.def("is_integer", &ResolvedType::isInteger);
-		
+	py::class_<ImportedModule>(m, "ImportedModule")
+		.def_readonly("source_dir", &ImportedModule::source_dir)
+		.def_readonly("source_file", &ImportedModule::source_file)
+		.def_readonly("is_header_only", &ImportedModule::is_header_only)
+		.def("get_classmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.classmap);
+		})
+		.def("get_funcmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.funcmap);
+		})
+		.def("get_dimmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.dimmap);
+		})
+		.def("get_functypemap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.functypemap);
+		})
+		.def("get_imported_classmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.imported_classmap);
+		})
+		.def("get_imported_funcmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.imported_funcmap);
+		})
+		.def("get_imported_dimmap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.imported_dimmap);
+		})
+		.def("get_imported_functypemap", [](ImportedModule& ths) {
+			return CopyMapToDict(ths.functypemap);
+		});
+	py::class_<ImportTree>(m, "ImportTree")
+		.def("get_submodules", [](ImportTree& ths) {return CopyMapToDict(ths.map); })
+		.def_property_readonly("mod", [](ImportTree& ths) {return GetRef(ths.mod); });
 	py::class_<StatementAST>(m, "StatementAST")
 		.def_readwrite("pos", &StatementAST::Pos)
 		.def("copy", [](StatementAST& ths) {
@@ -184,11 +245,15 @@ void RegisiterClassForBinding2(py::module& m) {
 			[](IdentifierExprAST& ths, UniquePtrStatementAST& v) {ths.impl = move_cast_or_throw<ResolvedIdentifierExprAST>(v.ptr); })
 		.def("run", [](IdentifierExprAST& ths, py::object& func) {func(GetRef(ths.impl)); });
 	py::class_< ResolvedFuncExprAST, ResolvedIdentifierExprAST>(m, "ResolvedFuncExprAST")
+		.def_static("new", [](FunctionAST& f) {return new UniquePtrStatementAST(make_unique<ResolvedFuncExprAST>(&f, tokenizer.GetSourcePos())); })
 		.def_readwrite("funcdef", &ResolvedFuncExprAST::def)
 		.def("run", [](ResolvedFuncExprAST& ths, py::object& func) { });
 	py::class_< ThisExprAST, ExprAST>(m, "ThisExprAST")
 		.def_static("new", []() {return new UniquePtrStatementAST(make_unique<ThisExprAST>()); })
 		.def("run", [](ThisExprAST& ths, py::object& func) {});
+	py::class_< SuperExprAST, ExprAST>(m, "SuperExprAST")
+		.def_static("new", [](ClassAST& cls, SourcePos pos) {return new UniquePtrStatementAST(make_unique<SuperExprAST>(&cls, pos)); })
+		.def("run", [](SuperExprAST& ths, py::object& func) {});
 	py::class_< BoolLiteralExprAST, ExprAST>(m, "BoolLiteralExprAST")
 		.def_static("new", [](bool b) {return new UniquePtrStatementAST(make_unique<BoolLiteralExprAST>(b)); })
 		.def_readwrite("value", &BoolLiteralExprAST::v)
@@ -322,6 +387,9 @@ void RegisiterClassForBinding2(py::module& m) {
 				func(GetRef(ths.instance));
 		});
 
+	py::class_< NullExprAST, ExprAST>(m, "NullExprAST")
+		.def("run", [](NullExprAST& ths, py::object& func) {
+		});
 	// py::class_< AddressOfExprAST, ExprAST>(m, "AddressOfExprAST")
 	// 	.def_static("new", [](UniquePtrStatementAST& v, bool is_address_of) {
 	// 		return new UniquePtrStatementAST(std::make_unique<AddressOfExprAST>(v.move_expr(),is_address_of,tokenizer.GetSourcePos())); 
@@ -331,7 +399,15 @@ void RegisiterClassForBinding2(py::module& m) {
 	// 	.def_readwrite("is_address_of", &AddressOfExprAST::is_address_of)
 	// 	.def("run", [](AddressOfExprAST& ths, py::object& func) {func(GetRef(ths.expr)); });
 
-	py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
+		py::class_< CallExprAST, ExprAST>(m, "CallExprAST")
+			.def_static("new", [](UniquePtrStatementAST& callee, std::vector<UniquePtrStatementAST*> v) {
+				std::vector<std::unique_ptr<ExprAST>> args;
+				for (auto p : v)
+				{
+					args.push_back(p->move_expr());
+				}
+		 		return new UniquePtrStatementAST(std::make_unique<CallExprAST>(callee.move_expr(),std::move(args)));
+			})
 		.def_property("callee", [](CallExprAST& ths) {return GetRef(ths.Callee); },
 			[](CallExprAST& ths, UniquePtrStatementAST& v) {ths.Callee = v.move_expr(); })
 		.def_property_readonly("args", [](CallExprAST& ths) {return GetRef(ths.Args); })
@@ -355,6 +431,8 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_readwrite("capture_import_idx", &VariableSingleDefAST::capture_import_idx)
 		.def_readwrite("capture_export_idx", &VariableSingleDefAST::capture_export_idx)
 		.def_readwrite("capture_export_type", &VariableSingleDefAST::capture_export_type)
+		.def_readwrite("is_threadlocal", &VariableSingleDefAST::is_threadlocal)
+		.def_readwrite("is_volatile", &VariableSingleDefAST::is_volatile)
 		.def("run", [](VariableSingleDefAST& ths, py::object& func) {if (ths.val)func(GetRef(ths.val)); });
 
 	py::class_< VariableMultiDefAST, StatementAST>(m, "VariableMultiDefAST")
@@ -404,4 +482,14 @@ void RegisiterClassForBinding2(py::module& m) {
 		.def_property("expr", [](ThrowAST& ths) {return GetRef(ths.expr); },
 			[](ThrowAST& ths, UniquePtrStatementAST& v) {ths.expr = v.move_expr(); })
 		.def("run", [](ThrowAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.expr)); });
+	auto autocomp = py::class_<AutoCompletionExprAST, ExprAST>(m, "AutoCompletionExprAST");
+	py::enum_ < AutoCompletionExprAST::CompletionKind>(autocomp, "CompletionKind")
+		.value("DOT", AutoCompletionExprAST::DOT)
+		.value("NEW", AutoCompletionExprAST::NEW)
+		.value("PARAMETER", AutoCompletionExprAST::PARAMETER);
+	autocomp
+		.def_property_readonly("impl", [](AutoCompletionExprAST& ths) {return GetRef(ths.impl); })
+		.def_readonly("kind", &AutoCompletionExprAST::kind)
+		.def_readonly("parameter_number", &AutoCompletionExprAST::parameter_number)
+		.def("run", [](AutoCompletionExprAST& ths, py::object& pyfunc) { pyfunc(GetRef(ths.impl)); });
 }

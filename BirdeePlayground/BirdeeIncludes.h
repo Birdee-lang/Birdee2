@@ -1,31 +1,43 @@
 extern "C"{
 void AddFunctions(llvm::orc::KaleidoscopeJIT* jit){
-extern void extensions_0string_0ptr__add();
-jit->addNative("extensions_0string_0ptr__add",extensions_0string_0ptr__add);
+extern void extensions_0string_0string__ends__with();
+jit->addNative("extensions_0string_0string__ends__with",extensions_0string_0string__ends__with);
 
-extern void extensions_0string_0ptr__diff();
-jit->addNative("extensions_0string_0ptr__diff",extensions_0string_0ptr__diff);
+extern void extensions_0string_0strstr__slow();
+jit->addNative("extensions_0string_0strstr__slow",extensions_0string_0strstr__slow);
 
 extern void extensions_0string_0string______mul____();
 jit->addNative("extensions_0string_0string______mul____",extensions_0string_0string______mul____);
 
-extern void extensions_0string_0check__index();
-jit->addNative("extensions_0string_0check__index",extensions_0string_0check__index);
+extern void extensions_0string_0ptr__diff();
+jit->addNative("extensions_0string_0ptr__diff",extensions_0string_0ptr__diff);
+
+extern void extensions_0string_0ptr__add();
+jit->addNative("extensions_0string_0ptr__add",extensions_0string_0ptr__add);
+
+extern void extensions_0string_0string__findview();
+jit->addNative("extensions_0string_0string__findview",extensions_0string_0string__findview);
+
+extern void extensions_0string_0__findchar();
+jit->addNative("extensions_0string_0__findchar",extensions_0string_0__findchar);
 
 extern void extensions_0string_0string1__view();
 jit->addNative("extensions_0string_0string1__view",extensions_0string_0string1__view);
 
+extern void extensions_0string_0string__find__char();
+jit->addNative("extensions_0string_0string__find__char",extensions_0string_0string__find__char);
+
 extern void extensions_0string_0string__viewall();
 jit->addNative("extensions_0string_0string__viewall",extensions_0string_0string__viewall);
-
-extern void extensions_0string_0string__findview();
-jit->addNative("extensions_0string_0string__findview",extensions_0string_0string__findview);
 
 extern void extensions_0string_0string__find();
 jit->addNative("extensions_0string_0string__find",extensions_0string_0string__find);
 
 extern void extensions_0string_0string__splitview();
 jit->addNative("extensions_0string_0string__splitview",extensions_0string_0string__splitview);
+
+extern void extensions_0string_0string__replace();
+jit->addNative("extensions_0string_0string__replace",extensions_0string_0string__replace);
 
 extern void extensions_0string_0string__split();
 jit->addNative("extensions_0string_0string__split",extensions_0string_0string__split);
@@ -38,6 +50,12 @@ jit->addNative("extensions_0string_0string__to__double",extensions_0string_0stri
 
 extern void extensions_0string_0string__to__long();
 jit->addNative("extensions_0string_0string__to__long",extensions_0string_0string__to__long);
+
+extern void extensions_0string_0string__starts__with();
+jit->addNative("extensions_0string_0string__starts__with",extensions_0string_0string__starts__with);
+
+extern void extensions_0string_0char2str();
+jit->addNative("extensions_0string_0char2str",extensions_0string_0char2str);
 
 extern void extensions_0string_0string__view_0____init____();
 jit->addNative("extensions_0string_0string__view_0____init____",extensions_0string_0string__view_0____init____);
@@ -60,6 +78,9 @@ jit->addNative("extensions_0string_0string__view_0view",extensions_0string_0stri
 extern void extensions_0string_0string__view_0find();
 jit->addNative("extensions_0string_0string__view_0find",extensions_0string_0string__view_0find);
 
+extern void extensions_0string_0string__view_0find__char();
+jit->addNative("extensions_0string_0string__view_0find__char",extensions_0string_0string__view_0find__char);
+
 extern void extensions_0string_0string__view_0split();
 jit->addNative("extensions_0string_0string__view_0split",extensions_0string_0string__view_0split);
 
@@ -78,8 +99,32 @@ jit->addNative("extensions_0string_0string__view_0to__long",extensions_0string_0
 extern void extensions_0string_0string__view_0to__double();
 jit->addNative("extensions_0string_0string__view_0to__double",extensions_0string_0string__view_0to__double);
 
+extern void extensions_0string_0string__view_0trim__left();
+jit->addNative("extensions_0string_0string__view_0trim__left",extensions_0string_0string__view_0trim__left);
+
+extern void extensions_0string_0string__view_0trim__right();
+jit->addNative("extensions_0string_0string__view_0trim__right",extensions_0string_0string__view_0trim__right);
+
+extern void extensions_0string_0string__view_0trim();
+jit->addNative("extensions_0string_0string__view_0trim",extensions_0string_0string__view_0trim);
+
+extern void extensions_0string_0string__view_0____hash____();
+jit->addNative("extensions_0string_0string__view_0____hash____",extensions_0string_0string__view_0____hash____);
+
+extern void extensions_0string_0string__view_0is__at__end();
+jit->addNative("extensions_0string_0string__view_0is__at__end",extensions_0string_0string__view_0is__at__end);
+
+extern void extensions_0string_0string__view_0starts__with();
+jit->addNative("extensions_0string_0string__view_0starts__with",extensions_0string_0string__view_0starts__with);
+
+extern void extensions_0string_0string__view_0ends__with();
+jit->addNative("extensions_0string_0string__view_0ends__with",extensions_0string_0string__view_0ends__with);
+
 extern void extensions_0string_0_1main();
 jit->addNative("extensions_0string_0_1main",extensions_0string_0_1main);
+
+extern void hash_0get__bucket__size();
+jit->addNative("hash_0get__bucket__size",hash_0get__bucket__size);
 
 extern void hash_0int__hash();
 jit->addNative("hash_0int__hash",hash_0int__hash);
@@ -177,6 +222,15 @@ jit->addNative("string__buffer_0string__buffer_0____init____",string__buffer_0st
 extern void string__buffer_0string__buffer_0append();
 jit->addNative("string__buffer_0string__buffer_0append",string__buffer_0string__buffer_0append);
 
+extern void string__buffer_0string__buffer_0write__char();
+jit->addNative("string__buffer_0string__buffer_0write__char",string__buffer_0string__buffer_0write__char);
+
+extern void string__buffer_0string__buffer_0reserve();
+jit->addNative("string__buffer_0string__buffer_0reserve",string__buffer_0string__buffer_0reserve);
+
+extern void string__buffer_0string__buffer_0write();
+jit->addNative("string__buffer_0string__buffer_0write",string__buffer_0string__buffer_0write);
+
 extern void string__buffer_0_1main();
 jit->addNative("string__buffer_0_1main",string__buffer_0_1main);
 
@@ -234,23 +288,47 @@ jit->addNative("system_0io_0file_0file_0____del____",system_0io_0file_0file_0___
 extern void system_0io_0file_0file_0____init____();
 jit->addNative("system_0io_0file_0file_0____init____",system_0io_0file_0file_0____init____);
 
-extern void system_0io_0file_0string__scanner_0____init____();
-jit->addNative("system_0io_0file_0string__scanner_0____init____",system_0io_0file_0string__scanner_0____init____);
-
-extern void system_0io_0file_0string__scanner_0read();
-jit->addNative("system_0io_0file_0string__scanner_0read",system_0io_0file_0string__scanner_0read);
-
-extern void system_0io_0file_0string__scanner_0get__char();
-jit->addNative("system_0io_0file_0string__scanner_0get__char",system_0io_0file_0string__scanner_0get__char);
-
-extern void system_0io_0file_0string__scanner_0get__until();
-jit->addNative("system_0io_0file_0string__scanner_0get__until",system_0io_0file_0string__scanner_0get__until);
-
-extern void system_0io_0file_0string__scanner_0get__line();
-jit->addNative("system_0io_0file_0string__scanner_0get__line",system_0io_0file_0string__scanner_0get__line);
-
 extern void system_0io_0file_0_1main();
 jit->addNative("system_0io_0file_0_1main",system_0io_0file_0_1main);
+
+extern void system_0io_0stream_0abstract__input__stream_0____init____();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0____init____",system_0io_0stream_0abstract__input__stream_0____init____);
+
+extern void system_0io_0stream_0abstract__input__stream_0read__to__buffer();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0read__to__buffer",system_0io_0stream_0abstract__input__stream_0read__to__buffer);
+
+extern void system_0io_0stream_0abstract__input__stream_0read();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0read",system_0io_0stream_0abstract__input__stream_0read);
+
+extern void system_0io_0stream_0abstract__input__stream_0get__char();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0get__char",system_0io_0stream_0abstract__input__stream_0get__char);
+
+extern void system_0io_0stream_0abstract__input__stream_0peek();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0peek",system_0io_0stream_0abstract__input__stream_0peek);
+
+extern void system_0io_0stream_0abstract__input__stream_0get__str();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0get__str",system_0io_0stream_0abstract__input__stream_0get__str);
+
+extern void system_0io_0stream_0abstract__input__stream_0get__until();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0get__until",system_0io_0stream_0abstract__input__stream_0get__until);
+
+extern void system_0io_0stream_0abstract__input__stream_0next__token();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0next__token",system_0io_0stream_0abstract__input__stream_0next__token);
+
+extern void system_0io_0stream_0abstract__input__stream_0get__line();
+jit->addNative("system_0io_0stream_0abstract__input__stream_0get__line",system_0io_0stream_0abstract__input__stream_0get__line);
+
+extern void system_0io_0stream_0byte__input__stream_0____init____();
+jit->addNative("system_0io_0stream_0byte__input__stream_0____init____",system_0io_0stream_0byte__input__stream_0____init____);
+
+extern void system_0io_0stream_0byte__input__stream_0from__string();
+jit->addNative("system_0io_0stream_0byte__input__stream_0from__string",system_0io_0stream_0byte__input__stream_0from__string);
+
+extern void system_0io_0stream_0byte__input__stream_0read__to__buffer();
+jit->addNative("system_0io_0stream_0byte__input__stream_0read__to__buffer",system_0io_0stream_0byte__input__stream_0read__to__buffer);
+
+extern void system_0io_0stream_0_1main();
+jit->addNative("system_0io_0stream_0_1main",system_0io_0stream_0_1main);
 
 extern void system_0io_0filedef_0file__open__exception_0____init____();
 jit->addNative("system_0io_0filedef_0file__open__exception_0____init____",system_0io_0filedef_0file__open__exception_0____init____);
@@ -456,8 +534,20 @@ jit->addNative("birdee_0type__info_0get__name",birdee_0type__info_0get__name);
 extern void birdee_0type__info_0get__parent();
 jit->addNative("birdee_0type__info_0get__parent",birdee_0type__info_0get__parent);
 
+extern void birdee_0type__info_0get__implement__size();
+jit->addNative("birdee_0type__info_0get__implement__size",birdee_0type__info_0get__implement__size);
+
 extern void birdee_0type__info_0is__parent__of();
 jit->addNative("birdee_0type__info_0is__parent__of",birdee_0type__info_0is__parent__of);
+
+extern void birdee_0type__info_0is__impl__of();
+jit->addNative("birdee_0type__info_0is__impl__of",birdee_0type__info_0is__impl__of);
+
+extern void birdee_0type__info_0get__impl__itable();
+jit->addNative("birdee_0type__info_0get__impl__itable",birdee_0type__info_0get__impl__itable);
+
+extern void birdee_0invalid__index__exception_0____init____();
+jit->addNative("birdee_0invalid__index__exception_0____init____",birdee_0invalid__index__exception_0____init____);
 
 extern void birdee_0runtime__exception_0____init____();
 jit->addNative("birdee_0runtime__exception_0____init____",birdee_0runtime__exception_0____init____);

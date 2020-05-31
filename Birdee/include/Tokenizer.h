@@ -135,10 +135,8 @@ namespace Birdee
 		static  std::map<int, Token> single_token_map;
 		static  std::map < std::string, Token > token_map;
 		std::string IdentifierStr; // Filled in if tok_identifier
-
-
-
-		/// gettok - Return the next token from standard input.
+		bool skip_newline = false;  // we allow skipping new line tokens after , and (
+		// gettok - Return the next token from standard input.
 		Token gettok();
 
 	};

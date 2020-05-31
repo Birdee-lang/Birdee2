@@ -1,0 +1,189 @@
+package serialization.json
+
+import unsafe
+import typedptr:get_field_ptr
+import string_buffer:string_buffer
+
+@init_script
+{@from bdutils import *
+from traits import *
+@}
+
+
+@init_script
+{@
+ty_str=resolve_type("birdee.string")
+ty_int=resolve_type("int")
+ty_double=resolve_type("double")
+ty_pointer=resolve_type("pointer")
+ty_bool=resolve_type("boolean")
+from bdutils import *
+from traits import *
+
+
+	
+def generate_field(idx, length, field):
+	set_stmt('print_indents()')
+	set_stmt('serialize("{name}")'.format(name=field.decl.name))
+	set_stmt('s.write(format.colon)')
+	global fty #make fty usable in taowa script
+	fty = field.decl.resolved_type
+	set_stmt('serialize(unsafe.ptr_load[{fty}](get_field_ptr["{name}", T](pointerof(obj))))'
+		.format(name=field.decl.name, fty = '{@set_type(fty)@'+'}'))
+	if idx != length -1:
+		set_stmt('s.write(format.comma)')
+	else:
+		set_stmt('''if format === pretty_formats then
+			s.write("{}")
+		end'''.format("\\n"))
+
+@}
+
+@private
+class formats
+	public comma as string
+	public colon as string
+	public obj_start as string
+	public obj_end as string
+	public arr_start as string
+	public arr_end as string
+	public func __init__(comma as string, colon as string, obj_start as string, obj_end as string, arr_start as string, arr_end as string)
+		this.comma=comma
+		this.colon=colon
+		this.obj_start=obj_start
+		this.obj_end=obj_end
+		this.arr_start=arr_start
+		this.arr_end=arr_end
+	end
+end
+
+@private
+dim ugly_formats = new formats(",", ":","{", "}", "[", "]")
+
+@private
+dim pretty_formats = new formats(",\n", ": ", "{\n", "}", "[\n", "]")
+
+class json_serializer[Stream]
+
+	private s as Stream
+	private indent as int
+	private format as formats
+
+	private function print_indents()
+		if format === pretty_formats then
+			for dim i=0 till indent
+				s.write("\t")
+			end
+		end
+	end 
+
+	public function __init__(s as Stream, pretty as boolean)
+		this.s=s
+		indent = 0
+		if pretty then
+			format = pretty_formats
+		else
+			format = ugly_formats
+		end
+	end
+
+	public function serialize[T](v as T)
+{@
+T=get_func_type_templ_at(0)
+if is_boolean(T):
+	set_stmt("s.write(bool2str(v))")
+elif T == ty_str:
+	set_stmt('s.write("\\"")')
+	set_stmt("str2escaped(s, v)")
+	set_stmt('s.write("\\"")')
+elif is_integer(T):
+	set_stmt("s.write(int2str(v))")
+elif is_float_point(T):
+	set_stmt("s.write(double2str(v))")
+elif T.index_level>0:
+	set_stmt("serialize_array(v)")
+elif is_a_class(T):
+	set_stmt("serialize_object(v)")
+else:
+	raise RuntimeError("Cannot convert {} to string".format(str(T)))
+@}
+	end
+
+	public function serialize_array[T](obj as T[])
+		if obj===null then
+			s.write("null")
+			return
+		end
+		s.write(format.arr_start)
+		indent = indent + 1
+		dim len = obj.length()
+		for dim i=0 till len - 1
+			print_indents()
+			serialize(obj[i])
+			s.write(format.comma)
+		end
+		if len!=0 then
+			print_indents()
+			serialize(obj[len-1])
+			if format === pretty_formats then
+				s.write("\n")
+			end
+		end
+		obj_end(format.arr_end)
+	end
+
+	private function obj_end(token as string)
+		indent = indent - 1
+		print_indents()
+		s.write(token)
+	end
+
+	public function serialize_object[T](obj as T)
+		if obj===null then
+			s.write("null")
+			return
+		end
+		s.write(format.obj_start)
+		indent = indent + 1
+{@
+foreach_field(get_func_type_templ_at(0), generate_field)
+@}
+		obj_end(format.obj_end)
+	end
+
+end
+
+function str2escaped[Stream](out as Stream, s as string)
+	dim t as byte
+	dim len = s.length()
+	for dim i = 0 till len
+		t = s[i]
+		if t == {@set_char('\b')@} then
+			out.write("\\b")
+		else if t == {@set_char('\f')@} then
+			out.write("\\f")
+		else if t == {@set_char('\n')@} then
+			out.write("\\n")
+		else if t == {@set_char('\r')@} then
+			out.write("\\r")
+		else if t == {@set_char('\t')@} then
+			out.write("\\t")
+		else if t == {@set_char('"')@} then
+			out.write("\\\"")
+		else if t == {@set_char('\\')@} then
+			out.write("\\\\")
+		else
+			out.write_char(t)
+		end
+	end
+end
+
+class json_to_str_converter: json_serializer[string_buffer]
+	private strbuf as string_buffer
+	public func __init__(pretty as boolean)
+		strbuf = new string_buffer
+		super.__init__(strbuf, pretty)
+	end
+
+	public func to_str() as string => strbuf.to_str()
+end

@@ -227,6 +227,7 @@
   <ItemGroup>
     <ClCompile Include="BirdeeException.cpp" />
     <ClCompile Include="BirdeeRuntime.cpp" />
+    <ClCompile Include="DLLMain.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='DynLLVM|x64'">Create</PrecompiledHeader>

@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include "Tokenizer.h"
+#include "CompileError.h"
 
 using std::unordered_map;
 template<class K, class V, class dummy_compare, class A>
@@ -19,9 +20,12 @@ using namespace Birdee;
 static std::vector<ClassAST*> idx_to_class;
 static std::vector<PrototypeAST*> idx_to_proto;
 static std::vector<ClassAST*> orphan_idx_to_class;
+//the orphan classes that needs to call PreGenerate on
+static std::vector<ClassAST*> orphan_class_to_generate;
 static std::vector<ClassAST*> to_run_phase0;
 static string current_package_name;
 static int current_module_idx;
+static std::vector<FunctionAST*> annotations_to_run;
 
 extern Tokenizer SwitchTokenizer(Tokenizer&& tokzr);
 extern std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
@@ -29,22 +33,18 @@ extern void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface);
 
 extern std::vector<std::string> Birdee::source_paths;
 extern void Birdee_Register_Module(const string& name, void* globals);
+extern void PushClass(ClassAST* cls);
+extern void PopClass();
 
 namespace Birdee
 {
-	extern 	void AddFunctionToClassExtension(FunctionAST* func,
+	extern void PushPyScope(ImportedModule* mod);
+	extern void PopPyScope();
+	extern void GetPyScope(void*& globals, void*& locals);
+	extern void AddFunctionToClassExtension(FunctionAST* func,
 		unordered_map<std::pair<ClassAST*, str_view>, FunctionAST*, pair_hash>& targetmap);
+	extern void RunAnnotationOnImportedFunction(FunctionAST* func, ImportedModule* mod);
 }
-/*
-fix-me: Load template class & functions & instances
-link templates to instances by name (for every new template source imported, remember find instances in orphans)
-link instances to templates sources by name (remember find them in orphans)
-<del>Template class' template functions are not included in the metadata of class template instances, which are already included in the class template.
-<del>remember to restore the functions in the cls template instances!
-test if serializing imported template instance classes really works!!!!!!!!!!!! (check if function templates in the template instances are properly dumped)
-import template class instance
-*/
-
 
 static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
 {
@@ -54,6 +54,16 @@ static Tokenizer StartParseTemplate(string&& str, Token& first_tok, int line)
 	first_tok = toknzr.CurTok;
 	toknzr.GetNextToken();
 	return SwitchTokenizer(std::move(toknzr));
+}
+
+template<typename T>
+T ReadJSONWithDefault(const json& j, const char* name, T defaults)
+{
+	auto itr = j.find(name);
+	if (itr != j.end())
+		return itr->get<T>();
+	else
+		return defaults;
 }
 
 ClassAST* ConvertIdToClass(int idtype)
@@ -148,6 +158,8 @@ unique_ptr<VariableSingleDefAST> BuildVariableFromJson(const json& var)
 {
 	unique_ptr<VariableSingleDefAST> ret = make_unique<VariableSingleDefAST>(var["name"].get<string>(),
 		ConvertIdToType(var["type"]));
+	ret->is_threadlocal = ReadJSONWithDefault(var, "threadlocal", false);
+	ret->is_volatile = ReadJSONWithDefault(var, "volatile", false);
 	return std::move(ret);
 }
 
@@ -167,6 +179,7 @@ void BuildGlobalVaribleFromJson(const json& globals, ImportedModule& mod)
 	for (auto& itr : globals)
 	{
 		auto var = BuildVariableFromJson(itr);
+		var->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(itr, "line", 1), ReadJSONWithDefault(itr, "pos", 1));
 		var->PreGenerateExternForGlobal(current_package_name);
 		auto& name = var->name;
 		mod.dimmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
@@ -199,28 +212,13 @@ unique_ptr<FunctionAST> BuildFunctionFromJson(const json& func, ClassAST* cls)
 		if (itr != func.end())
 			ret->is_extension = itr->get<bool>();
 	}
+	ret->Pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(func, "line", 1), ReadJSONWithDefault(func, "pos", 1));
 	ret->resolved_type.type = tok_func;
 	ret->resolved_type.proto_ast = protoptr;
 	return std::move(ret);
 }
 
-void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
-{
-	BirdeeAssert(globals.is_array(), "Expected a JSON array");
-	for (auto& itr : globals)
-	{
-		auto var = BuildFunctionFromJson(itr, nullptr);
-		if (var->is_extension)
-		{
-			AddFunctionToClassExtension(var.get(), mod.class_extend_funcmap);
-		}
-		var->PreGenerate();
-		auto name = var->Proto->GetName();
-		mod.funcmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
-	}
-}
-
-void BuildAnnotationsOnTemplate(const json& json_cls, AnnotationStatementAST*& annotation, ImportedModule& mod)
+void BuildAnnotationsOnTemplate(const json& json_cls, std::vector<std::string>*& annotation, ImportedModule& mod)
 {
 	auto anno_itr = json_cls.find("annotations");
 	if (anno_itr != json_cls.end())
@@ -232,7 +230,28 @@ void BuildAnnotationsOnTemplate(const json& json_cls, AnnotationStatementAST*& a
 			data.emplace_back(j.get<string>());
 		}
 		mod.annotations.push_back(make_unique<AnnotationStatementAST>(std::move(data), nullptr)); //fix-me: assign ret to AnnotationStatementAST?
-		annotation = mod.annotations.back().get();
+		annotation = &mod.annotations.back()->anno;
+	}
+}
+
+void BuildGlobalFuncFromJson(const json& globals, ImportedModule& mod)
+{
+	BirdeeAssert(globals.is_array(), "Expected a JSON array");
+	for (auto& itr : globals)
+	{
+		auto var = BuildFunctionFromJson(itr, nullptr);
+		BuildAnnotationsOnTemplate(itr, var->annotation, mod);
+		if (var->is_extension)
+		{
+			AddFunctionToClassExtension(var.get(), mod.class_extend_funcmap);
+		}
+		var->PreGenerate();
+		if (var->annotation)
+		{
+			annotations_to_run.push_back(var.get());
+		}
+		auto name = var->Proto->GetName();
+		mod.funcmap[name] = std::make_pair(std::move(var), IsSymbolGlobal(itr));
 	}
 }
 
@@ -262,7 +281,7 @@ void BuildGlobalTemplateFuncFromJson(const json& globals, ImportedModule& mod)
 		SwitchTokenizer(std::move(var));
 		cu.imported_func_templates.push_back(func.get());
 		func->Proto->prefix_idx = current_module_idx;
-		BuildAnnotationsOnTemplate(itr, func->template_param->annotation, mod);
+		BuildAnnotationsOnTemplate(itr, func->annotation, mod);
 		auto name = func->Proto->GetName();
 		mod.funcmap[name] = std::make_pair(std::move(func), IsSymbolGlobal(itr));;
 	}
@@ -323,27 +342,12 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 	auto rtti_itr = json_cls.find("needs_rtti");
 	if (rtti_itr != json_cls.end())
 		ret->needs_rtti = rtti_itr->get<bool>();
+	BuildAnnotationsOnTemplate(json_cls, ret->annotation, mod);
 	auto temp_itr = json_cls.find("template");
 	if (temp_itr != json_cls.end()) //if it's a template
 	{
 		BuildTemplateClassFromJson(*temp_itr, ret, module_idx, GetTemplateLineNumber(json_cls), mod);
 		BirdeeAssert(ret->isTemplate(), "The class with \'template\' json field should be a template");
-		BuildAnnotationsOnTemplate(json_cls,ret->template_param->annotation , mod);
-
-		//find the template instances in orphan classes whose name starts with: package.clazzname[......
-		string starts = current_package_name + '.' + ret->name + '[';
-		for (auto itr = cu.orphan_class.lower_bound(starts); itr != cu.orphan_class.end();)
-		{
-			if (itr->first.find(starts) != 0)
-				break;
-			assert(!itr->second->template_source_class);
-			//link the instance with the template
-			itr->second->template_source_class = ret;
-			auto v = itr->second->template_instance_args.get();
-			ret->template_param->AddImpl(*v, std::move(itr->second));
-			itr = cu.orphan_class.erase(itr);
-		}
-
 		return;
 	}
 	{
@@ -416,6 +420,7 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 			Tokenizer old = StartParseTemplate(templ->get<string>(), first_tok, GetTemplateLineNumber(func));
 			BirdeeAssert(tok_func == first_tok, "The first token of template should be function");
 			funcdef = ParseFunction(ret);
+			BuildAnnotationsOnTemplate(func, funcdef->annotation, mod);
 			BirdeeAssert(funcdef->template_param.get(), "func->template_param");
 			funcdef->template_param->mod = &mod;
 			funcdef->template_param->source.set(templ->get<string>());
@@ -425,15 +430,18 @@ void BuildSingleClassFromJson(ClassAST* ret, const json& json_cls, int module_id
 				cu.imported_func_templates.push_back(funcdef.get());
 			funcdef->Proto->prefix_idx = current_module_idx;
 			SwitchTokenizer(std::move(old));
-			BuildAnnotationsOnTemplate(func, funcdef->template_param->annotation, mod);
 		}
 		else
 		{
 			funcdef = BuildFunctionFromJson(func["def"], ret);
+			BuildAnnotationsOnTemplate(func["def"], funcdef->annotation, mod);
+			if (funcdef->annotation)
+				annotations_to_run.push_back(funcdef.get());
 		}
 		const string& str = funcdef->Proto->GetName();
 		auto vidx_itr = func.find("virtual_idx");
-		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE));
+		bool is_abstract = ReadJSONWithDefault(func, "is_abstract", false);
+		ret->funcs.push_back(MemberFunctionDef(acc, std::move(funcdef), std::vector<std::string>(), vidx_itr != func.end() ? vidx_itr->get<int>() : MemberFunctionDef::VIRT_NONE, is_abstract));
 		is_virtual |= (ret->funcs.back().virtual_idx != MemberFunctionDef::VIRT_NONE);
 		ret->funcmap[str] = idx;
 		idx++;
@@ -454,17 +462,11 @@ void PreBuildClassFromJson(const json& cls, const string& module_name, ImportedM
 		{
 			//BirdeeAssert(!has_end, "Class def is not allowed after class template instances");
 			string name = itr->get<string>();
-			auto orphan = cu.orphan_class.find(module_name + '.' + name);
 			unique_ptr<ClassAST> classdef;
-			if (orphan != cu.orphan_class.end())
-			{
-				classdef = std::move(orphan->second);
-				cu.orphan_class.erase(orphan);
-			}
-			else
-			{
-				classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
-			}
+			int src_line = ReadJSONWithDefault(json_cls, "line", 0);
+			int src_pos = ReadJSONWithDefault(json_cls, "pos", 0);
+			classdef = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, src_line, src_pos)); //add placeholder
+			
 			idx_to_class.push_back(classdef.get());
 			mod.classmap[name] = std::make_pair(std::move(classdef), IsSymbolGlobal(json_cls));
 		}
@@ -486,13 +488,10 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 
 	auto& json_cls = cls[idx];
 	string name = json_cls["name"].get<string>();
-	auto orphan = cu.orphan_class.find(name);
 	ClassAST* classdef;
-	if (orphan != cu.orphan_class.end())
-	{//if already imported in orphan classes
-		classdef = orphan->second.get();
-	}
-	else if (json_cls.size() == 1) // if we have only one field, this class is redirected to another module
+	//whether we need to call PreGenerate on this class?
+	bool needs_generate = true;
+	if (json_cls.size() == 1) // if we have only one field, this class is redirected to another module
 	{
 		auto moddef_itr = clsname2mod.find(name);
 		BirdeeAssert(moddef_itr != clsname2mod.end(), "Cannot find the pre-imported module");
@@ -501,6 +500,7 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 		auto clsdef_itr = src_mod->classmap.find(cls_simple_name);
 		BirdeeAssert(clsdef_itr != src_mod->classmap.end(), "Cannot find the class in pre-imported module");
 		classdef = clsdef_itr->second.first.get();
+		needs_generate = false;
 	}
 	else
 	{
@@ -508,7 +508,8 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 
 		//first, check if it is a template instance
 		auto templ_idx = name.find('[');
-		if (templ_idx != string::npos)
+		BirdeeAssert(templ_idx != string::npos, "Invalid imported class name, must be a template instance");
+			
 		{//template instance
 			auto idx = name.find_last_of('.', templ_idx - 1);
 			BirdeeAssert(idx != string::npos && idx != templ_idx - 1, "Invalid imported class name");
@@ -547,34 +548,20 @@ void PreBuildOneOrphanClassFromJson(const json& cls, int idx,
 					classdef->template_source_class = src;
 					src->template_param->AddImpl(vec, std::move(newclass));
 				}
+				else
+				{
+					needs_generate = false;
+				}
 			}
 			else
-			{//if the template itself is not imported, make it an orphan
+			{//if the template itself is not imported, raise an error
 				BirdeeAssert(false, "Cannot import a class template because cannot find the source module");
 			}
 		}
-		else //if it's a class def
-		{
-			auto idx = name.find_last_of('.');
-			BirdeeAssert(idx != string::npos && idx != name.size() - 1, "Invalid imported class name");
-
-			auto node = cu.imported_packages.Contains(name, idx);
-			if (node)
-			{//if the package is imported
-				auto itr = node->mod->classmap.find(name.substr(idx + 1));
-				BirdeeAssert(itr != node->mod->classmap.end(), "Module imported, but cannot find the class");
-				classdef = itr->second.first.get();
-			}
-			else
-			{
-				auto newclass = make_unique<ClassAST>(string(), SourcePos(source_paths.size() - 1, 0, 0)); //add placeholder
-				classdef = newclass.get();
-				cu.orphan_class[name] = std::move(newclass);
-			}
-		}
-
 	}
 	orphan_idx_to_class[idx] = classdef;
+	if (needs_generate)
+		orphan_class_to_generate.push_back(classdef);
 }
 
 void PreBuildOrphanClassFromJson(const json& cls, 
@@ -602,6 +589,7 @@ void PreBuildPrototypeFromJson(const json& funcs, ImportedModule& mod)
 		bool is_closure = func["is_closure"].get<bool>();
 		auto proto = make_unique<PrototypeAST>("", vector<unique_ptr<VariableSingleDefAST>>(),
 			ResolvedType(), (ClassAST*)nullptr, current_module_idx, is_closure);
+		proto->pos = SourcePos(source_paths.size() - 1, ReadJSONWithDefault(func, "line", 1), ReadJSONWithDefault(func, "pos", 1));
 		auto protoptr = proto.get();
 		if (name.size() != 0) //if it is a named prototype
 			mod.functypemap[name] = std::make_pair(std::move(proto), IsSymbolGlobal(func));
@@ -666,14 +654,14 @@ void BuildClassFromJson(const json& cls, ImportedModule& mod)
 		//fix-me: check if the imported type is the same as the existing type
 
 
-		auto srcitr = json_cls.find("source");
+		auto srcitr = json_cls.find("template_source");
 		if (srcitr != json_cls.end()) //if it's a class template instance
 		{
 			int src_idx = srcitr->get<int>();
 			BirdeeAssert(src_idx >= 0 && src_idx < idx_to_class.size(), "Template source index out of index");
 			ClassAST* src = idx_to_class[src_idx];
 			BirdeeAssert(src->isTemplate(), "The source must be a class template");
-			auto targs = BuildTemplateArgsFromJson(json_cls["arguments"]);
+			auto targs = BuildTemplateArgsFromJson(json_cls["template_arguments"]);
 			auto name_cls_itr = mod.classmap.find((*itr)->name);
 			assert(name_cls_itr != mod.classmap.end());
 			auto oldcls = src->template_param->Get(*targs);
@@ -699,16 +687,28 @@ void BuildOrphanClassFromJson(const json& cls, ImportedModule& mod)
 		{
 			BuildSingleClassFromJson((*itr), json_cls, -2, mod); //orphan classes, module index=-2
 		}
-		//fix-me: check if the imported type is the same as the existing type
 		itr++;
 	}
 }
 
 extern string GetModuleNameByArray(const vector<string>& package, const char* delimiter = ".");
 
-string GetModuleFile(const vector<string>& package, std::ifstream& f)
+typedef string(*ModuleResolveFunc)(const vector<string>& package, unique_ptr<std::istream>& f, bool second_chance);
+static ModuleResolveFunc module_resolver = nullptr;
+BD_CORE_API void SetModuleResolver(ModuleResolveFunc f)
+{
+	module_resolver = f;
+}
+
+static string GetModuleFile(const vector<string>& package, unique_ptr<std::istream>& f)
 {
 	string ret;
+	if (module_resolver)
+	{
+		ret = module_resolver(package, f, false);
+		if (!ret.empty())
+			return ret;
+	}
 	string libpath;
 	for (auto& s : package)
 	{
@@ -720,9 +720,12 @@ string GetModuleFile(const vector<string>& package, std::ifstream& f)
 	for (auto& spath : cu.search_path)
 	{
 		ret = spath + libpath;
-		f = std::ifstream(ret, std::ios::in);
-		if (f)
+		auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+		if (*of)
+		{
+			f = std::move(of);
 			return ret;
+		}
 	}
 	
 	string cur_dir_path = cu.directory + "/";
@@ -732,15 +735,29 @@ string GetModuleFile(const vector<string>& package, std::ifstream& f)
 		for (int i = 0; i < dot_cnt - 1; i++)
 			cur_dir_path += "../";
 		ret = cur_dir_path + libpath;
-		f = std::ifstream(ret, std::ios::in);
-		if (f)
+		auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+		if (*of)
+		{
+			f = std::move(of);
 			return ret;
+		}
 	}
 
 	ret = cu.homepath + "blib" + libpath;
-	f = std::ifstream(ret, std::ios::in);
-	if (f)
+	auto of = std::make_unique<std::ifstream>(ret, std::ios::in);
+	if (*of)
+	{
+		f = std::move(of);
 		return ret;
+	}
+
+	if (module_resolver)
+	{
+		ret = module_resolver(package, f, true);
+		if (!ret.empty())
+			return ret;
+	}
+
 	return "";
 
 }
@@ -756,12 +773,6 @@ void Get2DStringArray(vector<vector<string>>& ret, const json& js)
 			ret.back().push_back(itm.get<string>());
 		}
 	}
-}
-namespace Birdee
-{
-	extern void PushPyScope(ImportedModule* mod);
-	extern void PopPyScope();
-	extern void GetPyScope(void*& globals, void*& locals);
 }
 
 extern void SplitString(const string& str, char delimiter, vector<string>& ret);
@@ -796,12 +807,12 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 {
 	json json;
 	
-	std::ifstream in; 
-	string path = GetModuleFile(package, in);
-	if (!in)
+	unique_ptr<std::istream> ptrin; 
+	string path = GetModuleFile(package, ptrin);
+	auto& in = *ptrin;
+	if (!ptrin || !in)
 	{
-		std::cerr << "Cannot find module " << GetModuleNameByArray(package) << '\n';
-		std::exit(2);
+		throw CompileError(string("Cannot find module ") + GetModuleNameByArray(package));
 	}
 	in >> json;
 	int tmp_current_module_idx = cu.imported_module_names.size() - 1;
@@ -813,11 +824,32 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	idx_to_proto.clear();
 	idx_to_class.clear();
 	to_run_phase0.clear();
+	annotations_to_run.clear();
 	orphan_idx_to_class.clear();
-	source_paths.push_back(path);
+	orphan_class_to_generate.clear();
+	string srcpath;
+	{
+		auto itr = json.find("SourceFile");
+		if (itr != json.end())
+			srcpath = itr->at(0).get<string>() + "/" + itr->at(1).get<string>();
+		else
+			srcpath = path;
+	}
+	source_paths.push_back(srcpath);
 	BirdeeAssert(json["Type"].get<string>() == "Birdee Module Metadata", "Bad file type");
 	BirdeeAssert(json["Version"].get<double>() <= META_DATA_VERSION, "Unsupported version");
 	BirdeeAssert(json["Package"] == module_name, "The module path does not fit the package name");
+
+	struct RTTIPyScope
+	{
+		bool need=false;
+		~RTTIPyScope() {
+			if (need)
+			{
+				Birdee::PopPyScope();
+			}
+		}
+	}pyscope;	
 
 	{
 		auto itr = json.find("FunctionTemplates");
@@ -852,7 +884,7 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 		cls.second.first->PreGenerateFuncs();
 		//cls.second->Generate();
 	}
-	for (auto cls : orphan_idx_to_class)
+	for (auto cls : orphan_class_to_generate)
 	{
 		cls->PreGenerate();
 		cls->PreGenerateFuncs();
@@ -867,25 +899,6 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 	BuildGlobalFuncFromJson(json["Functions"], *this);
 	
 	{
-		auto itr = json.find("InitScripts");
-		if (itr != json.end())
-		{
-			BirdeeAssert(itr->is_string(), "InitScripts field in bmm file should be a string");
-			//if it has a init script, construct a temp ScriptAST and run it
-			Birdee::PushPyScope(this);
-			ScriptAST tmp= ScriptAST(string(), true);
-			tmp.script = itr->get<string>();
-			if (!tmp.script.empty())
-			{
-				tmp.Phase1();
-			}
-			void* locals, *globals;
-			GetPyScope(globals, locals);
-			Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
-			Birdee::PopPyScope();
-		}
-	}
-	{
 		auto itr = json.find("SourceFile");
 		if (itr != json.end())
 		{
@@ -893,6 +906,34 @@ void ImportedModule::Init(const vector<string>& package, const string& module_na
 			BirdeeAssert(arr.is_array() && arr.size()==2, "SourceFile field in bmm file should be an array of 2 elements");
 			source_dir = arr[0].get<string>();
 			source_file = arr[1].get<string>();
+		}
+	}
+
+	{
+		auto scriptitr = json.find("InitScripts");
+		if (scriptitr != json.end())
+		{
+			BirdeeAssert(scriptitr->is_string(), "InitScripts field in bmm file should be a string");
+			//if it has a init script, construct a temp ScriptAST and run it
+			Birdee::PushPyScope(this);
+			pyscope.need = true;
+			ScriptAST tmp = ScriptAST(string(), true);
+			tmp.script = scriptitr->get<string>();
+			if (!tmp.script.empty())
+			{
+				tmp.Phase1();
+			}
+			void* locals, *globals;
+			GetPyScope(globals, locals);
+			Birdee_Register_Module(GetModuleNameByArray(package, "_0"), globals);
+		}
+	}
+
+	for (auto funcdef : annotations_to_run)
+	{
+		if (funcdef->annotation)
+		{
+			RunAnnotationOnImportedFunction(funcdef, this);
 		}
 	}
 }

@@ -2,7 +2,7 @@ import fmt
 import list:list
 import hash:hash_set
 import hash:hash_map
-import hash:hash_key_excption
+import hash:hash_key_exception
 
 import stack:stack
 import stack:stack_empty_exception
@@ -58,6 +58,7 @@ function hash_test()
 	end
 	#a.dbgprint()
 	check_map(a,0,100,{@line_pos()@})
+	{@bdassert("a.get_bucket_num()==255")@}
 
 	println("removing")
 	for dim i=7 till 100
@@ -72,7 +73,7 @@ function hash_test()
 	try
 		a.remove("30")
 		{@bdassert("false")@}
-	catch e as hash_key_excption
+	catch e as hash_key_exception
 		println("Caught the exception as expected")
 	end
 
@@ -94,6 +95,12 @@ function hash_test()
 	#a.dbgprint()
 
 	check_map(a,0,15,{@line_pos()@})
+
+	a.rehash(3)
+	{@bdassert("a.get_bucket_num()==3")@}
+	check_map(a,0,15,{@line_pos()@})
+	println("Rehash ok")
+
 	a["233"] = 12345
 	{@bdassert('''a["233"] == 12345''')@}
 	a.clear()

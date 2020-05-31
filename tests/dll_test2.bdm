@@ -1,0 +1,4 @@
+println("DLLTEST2")
+dim p as int=123
+dim str as string = "asdasd"
+func get2() as int=>p

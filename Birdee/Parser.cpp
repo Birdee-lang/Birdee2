@@ -134,6 +134,7 @@ BD_CORE_API Tokenizer SwitchTokenizer(Tokenizer&& tokzr)
 
 /////////////////////////////////////////////////////////////////////////////////////
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown();
+std::unique_ptr<ExprAST> ParseExpressionUnknownImpl();
 std::unique_ptr<FunctionAST> ParseFunction(ClassAST*, bool is_pure_virtual = false);
 std::unique_ptr<IfBlockAST> ParseIf();
 ////////////////////////////////////////////////////////////////////////////////////
@@ -161,24 +162,59 @@ static unordered_map<string, std::function<void(StatementAST*,bool)>> interal_an
 		FunctionAST* f = static_cast<FunctionAST*>(stmt);
 		f->is_extension = true;
 	}},
+	{"threadlocal", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(dynamic_cast<VariableDefAST*>(stmt) && is_top_level,"The threadlocal annotation can only be applied on variable definitions in the top level");
+		if (auto v = dynamic_cast<VariableMultiDefAST*>(stmt))
+		{
+			for (auto& itr : v->lst)
+				itr->is_threadlocal = true;
+		}
+		else if (auto v = dynamic_cast<VariableSingleDefAST*>(stmt))
+		{
+			v->is_threadlocal = true;
+		}
+	}},
+	{"volatile", [](StatementAST* stmt,bool is_top_level) {
+		CompileAssert(dynamic_cast<VariableDefAST*>(stmt) && is_top_level,"The volatile annotation can only be applied on variable definitions in the top level");
+		if (auto v = dynamic_cast<VariableMultiDefAST*>(stmt))
+		{
+			for (auto& itr : v->lst)
+				itr->is_volatile = true;
+		}
+		else if (auto v = dynamic_cast<VariableSingleDefAST*>(stmt))
+		{
+			v->is_volatile = true;
+		}
+	}},
 };
 
 //for all annotation, find interal annotation and apply them. Comsume and remove all internal annotations 
-static void ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
+static bool ApplyInternalAnnotations(vector<string>& anno, StatementAST* stmt, bool is_top_level=false)
 {
+	bool preserve_annotations = false;
 	for (auto itr = anno.begin(); itr != anno.end();)
 	{
-		auto mapitr = interal_annontation_map.find(*itr);
-		if (mapitr != interal_annontation_map.end())
+		if (*itr == "preserve")
 		{
-			mapitr->second(stmt,is_top_level); //call the annotation function
+			CompileAssert(is_top_level && isa<FunctionAST>(stmt), "\'preserve\' can only be applied on toplevel functions");
 			itr = anno.erase(itr);
+			preserve_annotations = true;
 		}
 		else
 		{
-			itr++;
+			auto mapitr = interal_annontation_map.find(*itr);
+			if (mapitr != interal_annontation_map.end())
+			{
+				mapitr->second(stmt, is_top_level); //call the annotation function
+				itr = anno.erase(itr);
+			}
+			else
+			{
+				itr++;
+			}
 		}
 	}
+	return preserve_annotations;
 }
 
 void ClearParserState()
@@ -392,7 +428,7 @@ done:
 		return make_unique<VariableMultiDefAST>(std::move(defs), pos);
 }
 
-std::vector<std::unique_ptr<ExprAST>> ParseArguments()
+std::vector<std::unique_ptr<ExprAST>> ParseArguments(std::function<void(int)> on_auto_complete)
 {
 	std::vector<std::unique_ptr<ExprAST>> ret;
 	if (tokenizer.CurTok == tok_right_bracket)
@@ -402,7 +438,11 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 	}
 	for (;;)
 	{
-		ret.push_back(ParseExpressionUnknown());
+		if (tokenizer.CurTok == tok_colon) // auto complete for function call
+		{
+			on_auto_complete(ret.size());
+		}
+		ret.push_back(ParseExpressionUnknownImpl());
 		if (tokenizer.CurTok == tok_right_bracket)
 		{
 			tokenizer.GetNextToken();
@@ -420,6 +460,15 @@ std::vector<std::unique_ptr<ExprAST>> ParseArguments()
 
 }
 
+class MetAutoCompletionException
+{
+public:
+	std::unique_ptr<AutoCompletionExprAST> ptr;
+	MetAutoCompletionException(std::unique_ptr<AutoCompletionExprAST>&& p) {
+		ptr = std::move(p);
+	}
+};
+
 std::unique_ptr<NewExprAST> ParseNew()
 {
 	SourcePos pos = tokenizer.GetSourcePos();
@@ -432,37 +481,53 @@ std::unique_ptr<NewExprAST> ParseNew()
 		if (tokenizer.GetNextToken() != tok_left_bracket) //new int*6
 		{
 			type->index_level++;
-			expr.push_back(ParseExpressionUnknown());
+			expr.push_back(ParseExpressionUnknownImpl());
 		}
 		else //if tok_left_bracket -> new int*(2,4)
 		{
 			do {
 				tokenizer.GetNextToken(); //eat ( or ,
 				type->index_level++;
-				expr.push_back(ParseExpressionUnknown());
+				expr.push_back(ParseExpressionUnknownImpl());
 			} while (tokenizer.CurTok==tok_comma);
 			CompileExpect(tok_right_bracket, "Expected )");
 		}
 	}
 	if (type->index_level == 0)
 	{
+		auto on_auto_complete = [&type, &expr, &method, &pos](int num_param) {
+			auto v = make_unique<AutoCompletionExprAST>(
+				make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos),
+				AutoCompletionExprAST::PARAMETER
+				);
+			v->parameter_number = num_param;
+			throw MetAutoCompletionException(std::move(v));
+		};
 		if (tokenizer.CurTok == tok_colon)
 		{
 			tokenizer.GetNextToken(); //eat :
+			if (tokenizer.CurTok == tok_colon) // auto-complete
+			{
+				auto auto_comp = make_unique<AutoCompletionExprAST>(
+					make_unique<NewExprAST>(std::move(type), std::move(expr), ":", pos),
+					AutoCompletionExprAST::NEW
+					);
+				throw MetAutoCompletionException(std::move(auto_comp));
+			}
 			CompileAssert(tokenizer.CurTok == tok_identifier, "Expected an identifier after :");
 			method = tokenizer.IdentifierStr;
 			tokenizer.GetNextToken();
 			if (tokenizer.CurTok == tok_left_bracket)
 			{
 				tokenizer.GetNextToken(); //eat (
-				expr = ParseArguments();
+				expr = ParseArguments(on_auto_complete);
 			}
 		}
 		else if (tokenizer.CurTok == tok_left_bracket) // new Object(...)
 		{
 			method = "__init__";
 			tokenizer.GetNextToken(); // eat (
-			expr = ParseArguments();
+			expr = ParseArguments(on_auto_complete);
 		}
 	}
 	return make_unique<NewExprAST>(std::move(type), std::move(expr), method, pos);
@@ -519,7 +584,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 		);
 		return std::move(expr);
 	}
-	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for array index or template");
+	auto firstexpr = CompileExpectNotNull(ParseExpressionUnknownImpl(), "Expected an expression for array index or template");
 	if (tokenizer.CurTok == tok_right_index)
 	{
 		tokenizer.GetNextToken();
@@ -530,7 +595,7 @@ unique_ptr<ExprAST> ParseIndexOrTemplateInstance(unique_ptr<ExprAST> expr,Source
 	while (tokenizer.CurTok == tok_comma)
 	{
 		tokenizer.GetNextToken();
-		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknown(), "Expected an expression for template"));
+		template_args.emplace_back(CompileExpectNotNull(ParseExpressionUnknownImpl(), "Expected an expression for template"));
 	}
 	CompileExpect(tok_right_index, "Expected  \']\'");
 	return make_unique<FunctionTemplateInstanceExprAST>(std::move(expr), std::move(template_args), Pos);
@@ -566,7 +631,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		auto token = tokenizer.CurTok;
 		tokenizer.GetNextToken();
 		CompileExpect(tok_left_bracket, "Expected \"(\" after typeof/addressof/pointerof");
-		firstexpr = ParseExpressionUnknown();
+		firstexpr = ParseExpressionUnknownImpl();
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		// push_expr(make_unique<TypeofExprAST>(std::move(firstexpr), tokenizer.GetSourcePos()));
 		push_expr(make_unique<UnaryExprAST>(token, std::move(firstexpr), tokenizer.GetSourcePos()));
@@ -580,7 +645,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		while (tokenizer.CurTok != tok_right_index)
 		{
 			CompileAssert(tokenizer.CurTok != tok_eof, "Unexpected end of file. Unmatched \'[\'.");
-			values.push_back(ParseExpressionUnknown());
+			values.push_back(ParseExpressionUnknownImpl());
 			if (tokenizer.CurTok != tok_comma)
 			{
 				CompileAssert(tokenizer.CurTok == tok_right_index, "Expecting \']\' for array initializer");
@@ -646,7 +711,7 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 		break;
 	case tok_left_bracket:
 		tokenizer.GetNextToken();
-		push_expr(ParseExpressionUnknown());
+		push_expr(ParseExpressionUnknownImpl());
 		CompileExpect(tok_right_bracket, "Expected \')\'");
 		break;
 	case tok_func:
@@ -692,15 +757,37 @@ std::unique_ptr<ExprAST> ParsePrimaryExpression()
 			firstexpr = ParseIndexOrTemplateInstance(std::move(firstexpr),pos);
 			return true;
 		case tok_left_bracket:
+		{
 			tokenizer.GetNextToken();//eat (
-			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), ParseArguments());
+			auto args = ParseArguments([&firstexpr](int param_num) {
+				auto ret = std::make_unique<AutoCompletionExprAST>(std::move(firstexpr), AutoCompletionExprAST::PARAMETER);
+				ret->parameter_number = param_num;
+				throw MetAutoCompletionException(std::move(ret));
+			});
+			firstexpr = make_unique<CallExprAST>(std::move(firstexpr), std::move(args));
+			firstexpr->Pos = pos;
 			return true;
+		}
 		case tok_dot:
 			tokenizer.GetNextToken();//eat .
-			member = tokenizer.IdentifierStr;
-			CompileExpect(tok_identifier, "Expected an identifier after .");
-			firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
-			return true;
+			pos = tokenizer.GetSourcePos();
+			if (tokenizer.CurTok == tok_identifier)
+			{
+				member = tokenizer.IdentifierStr;
+				tokenizer.GetNextToken();
+				firstexpr = make_unique<MemberExprAST>(std::move(firstexpr), member);
+				firstexpr->Pos = pos;
+				return true;
+			}
+			else
+			{
+				// or it is source code for auto-complete
+				CompileExpect(tok_colon, "Expected an identifier after .");
+				auto expr = make_unique<AutoCompletionExprAST>(std::move(firstexpr), AutoCompletionExprAST::DOT);
+				throw MetAutoCompletionException(std::move(expr));
+				return false; //should not have other . () [] after auto-complete
+			}
+
 		default:
 			return false;
 		}
@@ -804,10 +891,35 @@ std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
 
 /*
 Parse an expression when we don't know what kind of it is. Maybe an identifier? A function def?
+This function is for "top-level" expressions (in BasicBlock, top-level, ParseStatement...). It handles
+MetAutoCompletionException and will skip to the next line to avoid parser errors. For sub-expressions
+that are not top-level in a basic block or etc., use ParseExpressionUnknownImpl instead
 */
 BD_CORE_API std::unique_ptr<ExprAST> ParseExpressionUnknown()
 {
+	try 
+	{
+		return ParseExpressionUnknownImpl();
+	}
+	catch (MetAutoCompletionException& e)
+	{
+		//we have met an auto-completion token, skip to the next line
+		//to avoid parser error. e.g.:
+		// somefunc(obj.
+		//we can avoid the complaint of expecting ")" here
+		while (tokenizer.CurTok != tok_newline 
+			&& tokenizer.CurTok != tok_eof
+			&& tokenizer.CurTok != tok_then)
+			tokenizer.GetNextToken();
+		return std::move(e.ptr);
+	}
+}
 
+/*
+Add functions that ParseExpressionUnknownImpl may call should call ParseExpressionUnknownImpl instead of ParseExpressionUnknown
+*/
+std::unique_ptr<ExprAST> ParseExpressionUnknownImpl()
+{
 	return ParseBinOpRHS(0,
 		CompileExpectNotNull(ParsePrimaryExpression(), "Expected an expression"));
 }
@@ -1243,7 +1355,7 @@ std::unique_ptr<FunctionAST> ParseDeclareFunction(ClassAST* cls)
 //is_field: true for FieldDef, false for MemberFunctionDef
 //index: the index within fields/funcdef
 static const string INTERNAL_ANNO_VIRTUAL = "virtual";
-// static const string INTERNAL_ANNO_PURE_VIRTUAL = "pure_virtual";
+static const string INTERNAL_ANNO_STACK_CAPTURE = "stack_capture";
 static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, int index)>> interal_class_annontation_map = {
 	{INTERNAL_ANNO_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
 		CompileAssert(!is_field,"The \'virtual\' annotation can only be applied on member functions");
@@ -1252,18 +1364,15 @@ static unordered_map<string, std::function<void(ClassAST* cls, bool is_field, in
 		cls->needs_rtti = true;
 		//it is set to VIRT_UNRESOLVED if is marked virtual but unresolved before Phase0
 		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
-	}}
-	/*
-	{INTERNAL_ANNO_PURE_VIRTUAL, [](ClassAST* cls, bool is_field, int index) {
-		CompileAssert(!is_field,"The \'pure_virtual\' annotation can only be applied on member functions");
-		CompileAssert(!cls->is_struct, "The \'pure_virtual\' annotation can only be applied on class functions");
-		CompileAssert(!cls->isTemplate(), "The \'pure_virtual\' annotation cannot be applied on class templates");
-		cls->needs_rtti = true;
-		cls->is_abstract = true;
-		cls->funcs[index].is_pure = true;
-		cls->funcs[index].virtual_idx = MemberFunctionDef::VIRT_UNRESOLVED;
-	}}
-	*/
+	}},
+	{INTERNAL_ANNO_STACK_CAPTURE, [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(!is_field,"The \'stack_capture\' annotation can only be applied on member functions");
+		cls->funcs[index].decl->capture_on_stack = true;
+	}},
+	{"volatile", [](ClassAST* cls, bool is_field, int index) {
+		CompileAssert(is_field,"The \'volatile\' annotation can only be applied on member fields");
+		cls->fields[index].decl->is_volatile = true;
+	}},
 };
 
 BD_CORE_API bool ParseClassBody(ClassAST* ret)
@@ -1296,20 +1405,57 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		tokenizer.GetNextToken();
 		while (tokenizer.CurTok == tok_newline) tokenizer.GetNextToken();
 	}
-	/*
-	auto contain_annotation = [&anno_occurrence](const string & ano) -> bool {
-		return anno_occurrence.find(ano) != anno_occurrence.end();
-	}; 
-	*/
-	auto apply_annotations = [&anno, ret](bool is_field, int index)
+	bool preserve_annotations = false;
+	auto apply_annotations = [&anno, ret, &preserve_annotations](bool is_field, int index)
 	{
 		for (auto& ano : anno)
 		{
+			if (ano == "preserve")
+			{
+				CompileAssert(!is_field, "\'preserve\' can only be applied on functions");
+				preserve_annotations = true;
+				continue;
+			}
 			auto itr = interal_class_annontation_map.find(ano);
-			CompileAssert(itr != interal_class_annontation_map.end(), string("Unrecognized annotation: ") 
-				+ ano + " ,note that class members only supports internal annotations. Python annotations are not supported");
-			itr->second(ret, is_field, index);
+			if (itr == interal_class_annontation_map.end())
+			{
+				CompileAssert(!is_field, string("Unrecognized annotation: ")
+					+ ano + " ,note that class members fields only supports internal annotations. Python annotations are not supported");
+				ret->funcs[index].annotations->push_back(std::move(ano));
+			}
+			else
+			{
+				itr->second(ret, is_field, index);
+			}
 		}
+	};
+	auto parse_func = [ret, &classname_checker, &apply_annotations, &preserve_annotations](AccessModifier access) {
+		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
+		tokenizer.GetNextToken(); //eat function
+		ret->funcs.push_back(MemberFunctionDef(access, ParseFunction(ret), vector<string>()));
+		classname_checker(ret->funcs.back().decl->Pos, ret->funcs.back().decl->GetName());
+		ret->funcmap.insert(std::make_pair(reference_wrapper<const string>(ret->funcs.back().decl->GetName()),
+			ret->funcs.size() - 1));
+		CompileExpect(tok_newline, "Expected a new line after function definition");
+		apply_annotations(false, ret->funcs.size() - 1);
+		auto thefunc = ret->funcs.back().decl.get();
+		if (preserve_annotations || thefunc->isTemplate() && ret->funcs.back().annotations->size())
+			thefunc->annotation = ret->funcs.back().annotations.get();
+	};
+
+	auto parse_abstract = [ret, &classname_checker, &apply_annotations](AccessModifier access) {
+		tokenizer.GetNextToken(); //eat abstract
+		CompileExpect(tok_func, "Expected a function after abstract");
+		ret->needs_rtti = true;
+		ret->is_abstract = true;
+		auto& funcs = ret->funcs;
+		funcs.push_back(MemberFunctionDef(access, ParseFunction(ret, true), vector<string>(), MemberFunctionDef::VIRT_UNRESOLVED, true));
+		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
+		ret->funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
+			funcs.size() - 1));
+		CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
+		apply_annotations(false, funcs.size() - 1);
+		CompileAssert(ret->funcs.back().annotations->size() == 0, "Cannot annotate by Python script on abstract functions");
 	};
 	switch (tokenizer.CurTok)
 	{
@@ -1336,27 +1482,11 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 		else if (tokenizer.CurTok == tok_func)
 		{
-			CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
-			tokenizer.GetNextToken(); //eat function
-			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret)));
-			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-				funcs.size() - 1));
-			CompileExpect(tok_newline, "Expected a new line after function definition");
-			apply_annotations(false, funcs.size() - 1);
+			parse_func(access);
 		}
 		else if (tokenizer.CurTok == tok_abstract)
 		{
-			tokenizer.GetNextToken(); //eat abstract
-			CompileExpect(tok_func, "Expected a function after abstract");
-			ret->needs_rtti = true;
-			ret->is_abstract = true;
-			funcs.push_back(MemberFunctionDef(access, ParseFunction(ret, true), MemberFunctionDef::VIRT_UNRESOLVED, true));
-			classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-			funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-				funcs.size() - 1));
-			CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
-			apply_annotations(false, funcs.size() - 1);
+			parse_abstract(access);
 		}
 		else
 		{
@@ -1364,36 +1494,21 @@ BD_CORE_API bool ParseClassBody(ClassAST* ret)
 		}
 		break;
 	case tok_func:
-		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
-		tokenizer.GetNextToken(); //eat function
-		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret)));
-		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-			funcs.size() - 1));
-		CompileExpect(tok_newline, "Expected a new line after function definition");
-		apply_annotations(false, funcs.size() - 1);
+		parse_func(access_private);
 		break;
 	case tok_declare:
 		CompileAssert(!ret->is_interface, "interfaces can only contain abstract member functions");
 		tokenizer.GetNextToken(); //eat declare
 		CompileExpect(tok_func, "Expected a function after declare");
-		funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret)));
+		funcs.push_back(MemberFunctionDef(access_private, ParseDeclareFunction(ret), vector<string>()));
 		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
 		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
 			funcs.size() - 1));
 		apply_annotations(false, funcs.size() - 1);
+		CompileAssert(ret->funcs.back().annotations->size() == 0, "Cannot annotate by Python script on declared functions");
 		break;
 	case tok_abstract:
-		tokenizer.GetNextToken(); //eat abstract
-		CompileExpect(tok_func, "Expected a function after abstract");
-		ret->needs_rtti = true;
-		ret->is_abstract = true;
-		funcs.push_back(MemberFunctionDef(access_private, ParseFunction(ret, true), MemberFunctionDef::VIRT_UNRESOLVED, true));
-		classname_checker(funcs.back().decl->Pos, funcs.back().decl->GetName());
-		funcmap.insert(std::make_pair(reference_wrapper<const string>(funcs.back().decl->GetName()),
-			funcs.size() - 1));
-		CompileExpect(tok_newline, "Expected a new line after abstract function declaration");
-		apply_annotations(false, funcs.size() - 1);
+		parse_abstract(access_private);
 		break;
 	default :
 		return false;
@@ -1450,6 +1565,7 @@ void ParseClassInPlace(ClassAST* ret, bool is_struct, bool is_interface)
 				tokenizer.GetNextToken(); // eat comma
 			}
 		}
+		ret->needs_rtti = true;
 	}
 	
 	CompileExpect(tok_newline, "Expected newline or inheritance keyword after class name");
@@ -2066,9 +2182,18 @@ BD_CORE_API int ParseTopLevel(bool autoimport)
 		};
 		auto push_expr = [&anno, &out](std::unique_ptr<StatementAST>&& st)
 		{
-			ApplyInternalAnnotations(anno, st.get(), true);
+			bool preserve_annotations = ApplyInternalAnnotations(anno, st.get(), true);
 			if (anno.size())
-				out.push_back(make_unique<AnnotationStatementAST>(std::move(anno), std::move(st)));
+			{
+				auto annoast = make_unique<AnnotationStatementAST>(std::move(anno), std::move(st));
+				if (preserve_annotations)
+				{
+					auto funcast = dynamic_cast<FunctionAST*>(annoast->impl.get());
+					assert(funcast);
+					funcast->annotation = &annoast->anno;
+				}
+				out.push_back(std::move(annoast));
+			}
 			else
 				out.push_back(std::move(st));
 		};

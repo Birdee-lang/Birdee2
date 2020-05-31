@@ -35,6 +35,8 @@ struct BirdeeTypeInfo
 {
 	BirdeeString* name;
 	BirdeeTypeInfo* parent;
+	GenericArray* impls;
+	GenericArray* itables;
 	void* vtable[0];
 };
 

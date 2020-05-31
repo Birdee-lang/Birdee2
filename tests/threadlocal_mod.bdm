@@ -1,0 +1,2 @@
+@threadlocal
+dim gg as int

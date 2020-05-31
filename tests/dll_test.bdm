@@ -1,0 +1,5 @@
+func add(a as int, b as int) as int => a+b
+
+println("Main called")
+dim p as int=2
+func get() as int=>p

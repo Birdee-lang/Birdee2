@@ -55,6 +55,21 @@ function get_class_field_ptr[fname as string,T](obj as T) as pointer
     return get_field_ptr[fname, T](pointerof(obj))
 end
 
+function get_class_field[fname as string,T](obj as T) as {@
+T=get_func_type_templ_at(1)
+if not is_a_class(T) or not is_a_struct(T):
+    raise RuntimeError("T = {} should be a class or struct".format(T))
+T=T.get_detail()
+fname=get_func_expr_templ_at(0).value
+fidx,fld = T.find_field(fname)
+if not fld:
+    raise RuntimeError("The field {} is not in the class {}".format(fname, T))
+TY = fld.decl.resolved_type
+set_type(TY)
+@}
+    return unsafe.ptr_load[{@set_type(TY)@}](get_field_ptr[fname, T](pointerof(obj)))
+end
+
 function register[T]()
     {@
 T = get_func_type_templ_at(0).get_detail()

@@ -36,6 +36,13 @@ namespace Birdee
 		return SetPos(make_unique<StringLiteralAST>(*this),Pos);
 	}
 
+	ptrStatementAST AutoCompletionExprAST::Copy()
+	{
+		auto ret = make_unique<AutoCompletionExprAST>(unique_ptr_cast<ExprAST>(impl->Copy()), kind);
+		ret->parameter_number = parameter_number;
+		return std::move(ret);
+	}
+
 	std::unique_ptr<StatementAST> IdentifierExprAST::Copy()
 	{
 		auto that = make_unique<IdentifierExprAST>(Name);
@@ -207,6 +214,8 @@ namespace Birdee
 		ret->capture_import_idx = capture_import_idx;
 		ret->capture_export_type = capture_export_type;
 		ret->capture_export_idx = capture_export_idx;
+		ret->is_threadlocal = is_threadlocal;
+		ret->is_volatile = is_volatile;
 		return std::move(ret);
 	}
 
@@ -219,6 +228,8 @@ namespace Birdee
 		ret->capture_import_idx = capture_import_idx;
 		ret->capture_export_type = capture_export_type;
 		ret->capture_export_idx = capture_export_idx;
+		ret->is_threadlocal = is_threadlocal;
+		ret->is_volatile = is_volatile;
 		return std::move(ret);
 	}
 
@@ -303,6 +314,7 @@ namespace Birdee
 		auto ret = make_unique<FunctionAST>(Proto->Copy(), Body.Copy(), nullptr, is_vararg,std::move(vararg_n), Pos);
 		ret->isTemplateInstance = isTemplateInstance;
 		ret->is_extension = is_extension;
+		ret->annotation = annotation;
 		return std::move(ret);
 	}
 
@@ -349,6 +361,7 @@ namespace Birdee
 		clsdef->template_source_class = template_source_class;
 		assert(clsdef->template_instance_args==nullptr);
 		cur_cls = old_cls;
+		clsdef->annotation = annotation;
 		return std::move(clsdef);
 	}
 
@@ -386,7 +399,7 @@ namespace Birdee
 	}
 	MemberFunctionDef Birdee::MemberFunctionDef::Copy()
 	{
-		return MemberFunctionDef(access,unique_ptr_cast<FunctionAST>(decl->Copy()),virtual_idx);
+		return MemberFunctionDef(access,unique_ptr_cast<FunctionAST>(decl->Copy()), std::vector<std::string>(*annotations), virtual_idx, is_abstract);
 	}
 
 	std::unique_ptr<StatementAST> Birdee::ResolvedFuncExprAST::Copy()

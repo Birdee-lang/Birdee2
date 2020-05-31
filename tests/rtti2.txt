@@ -6,6 +6,14 @@ class subcls1 : cls1
 
 end
 
+class sub2cls1 : cls1
+
+end
+
+class sub3cls1 : cls1
+
+end
+
 dim a = new cls1
 {@bdassert('''typeof(a).get_name()=="rtti1.cls1" ''')@}
 
@@ -14,5 +22,19 @@ dim b = new cls2[int]
 
 dim c = new subcls1
 {@bdassert("get_type_info[cls1]().is_parent_of(typeof(c))")@}
+
+dim d as cls1 = new sub3cls1
+dim match_num=0
+dim matched = rtti.match(d,
+    func (v as subcls1)
+        throw new runtime_exception("ERROR")
+    end,
+    func (v as sub2cls1)
+        throw new runtime_exception("ERROR")
+    end,
+    func (v as sub3cls1)
+        match_num = 1
+    end)
+{@bdassert("matched && match_num == 1")@}
 
 println("RTTI test done!")

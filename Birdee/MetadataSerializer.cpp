@@ -15,13 +15,6 @@ using my_workaround_fifo_map = nlohmann::fifo_map<K, V, nlohmann::fifo_map_compa
 using json = nlohmann::basic_json<my_workaround_fifo_map>;
 using namespace Birdee;
 
-
-//fix-me: export: remember to include imported classes that is referenced by exported var/class/func
-//fix-me: import: first check if the DEFINED class has already been imported in CompileModule::orphan_classes
-//fix-me: import: first check if the IMPORTED class has already been imported in imported_package.find(..).class[...], then no need to add to orphan
-//fix-me: import: deserialize into ImportedModule & CompileModule::orphan_classes
-//fix-me: generate: pre-generate extern for var/class/func
-
 static unordered_map<PrototypeAST*, int> functype_idx_map;
 static vector<json> exported_functype;
 static long NextFunctionTypeIndex = -MAX_BASIC_TYPE_COUNT;
@@ -105,13 +98,13 @@ int ConvertClassToIndex(ClassAST* class_ast)
 				defined_classes->push_back(json());
 				(*defined_classes)[retidx] = BuildSingleClassJson(*class_ast, false);
 				auto& the_class = (*defined_classes)[retidx];
-				the_class["source"] = ConvertClassToIndex(class_ast->template_source_class);
+				the_class["template_source"] = ConvertClassToIndex(class_ast->template_source_class);
 				auto args = json::array();
 				for (auto& arg : *class_ast->template_instance_args)
 				{
 					args.push_back(BuildTemplateArgumentJson(arg));
 				}
-				the_class["arguments"] = args;
+				the_class["template_arguments"] = args;
 				//class_ast->template_instance_args
 				return retidx;
 			}
@@ -244,6 +237,10 @@ json BuildVariableJson(VariableSingleDefAST* var)
 	json ret;
 	ret["name"] = var->name;
 	ret["type"] = ConvertTypeToIndex(var->resolved_type);
+	if (var->is_threadlocal)
+		ret["threadlocal"] = var->is_threadlocal;
+	if (var->is_volatile)
+		ret["volatile"] = var->is_volatile;
 	return ret;
 }
 
@@ -256,6 +253,8 @@ json BuildFunctionJson(FunctionAST* func)
 		return ret;
 	}
 	ret["name"] = func->GetName();
+	if (func->annotation)
+		ret["annotations"] = *func->annotation;
 	if (!func->Proto->cls && func->isDeclare)
 		ret["link_name"] = func->link_name.empty()? func->GetName(): func->link_name;
 	json args = json::array();
@@ -268,6 +267,8 @@ json BuildFunctionJson(FunctionAST* func)
 	{
 		ret["is_extension"] = true;
 	}
+	ret["line"] = func->Pos.line;
+	ret["pos"] = func->Pos.pos;
 	ret["return"] = ConvertTypeToIndex(func->Proto->resolved_type);
 	return ret;
 }
@@ -287,6 +288,7 @@ void BuildClassJson(json& arr)
 	int idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
+		arr.push_back(json()); //add placeholder
 		class_idx_map[itr.second.first] = idx++;
 	}
 	if (class_idx_map.size() > MAX_CLASS_DEF_COUNT)
@@ -294,10 +296,12 @@ void BuildClassJson(json& arr)
 		std::cerr << "Defined too many classes\n";
 		abort();
 	}
+	idx = 0;
 	for (auto itr : Birdee::cu.classmap)
 	{
-		arr.push_back(BuildSingleClassJson(*itr.second.first,false));
-		arr.back()["is_public"] = itr.second.second;
+		arr[idx] = BuildSingleClassJson(*itr.second.first,false);
+		arr[idx]["is_public"] = itr.second.second;
+		idx++;
 	}
 }
 
@@ -307,7 +311,10 @@ json BuildGlobalVaribleJson()
 	for (auto itr : cu.dimmap)
 	{
 		arr.push_back(BuildVariableJson(itr.second.first));
-		arr.back()["is_public"] = itr.second.second;
+		auto& t = arr.back();
+		t["is_public"] = itr.second.second;
+		t["line"] = itr.second.first->Pos.line;
+		t["pos"] = itr.second.first->Pos.pos;
 	}
 	return arr;
 }
@@ -327,10 +334,11 @@ json BuildGlobalFuncJson(json& func_template)
 			json template_obj;
 			auto ptr = itr.second.first->template_param.get();
 			template_obj["template"] = ptr->source.get();
-			if (ptr->annotation)
-				template_obj["annotations"] = ptr->annotation->anno;
+			if (itr.second.first->annotation)
+				template_obj["annotations"] = *itr.second.first->annotation;
 			template_obj["source_line"] = itr.second.first->Pos.line;
 			template_obj["is_public"] = itr.second.second;
+			template_obj["name"] = itr.second.first->Proto->Name;
 			func_template.push_back(std::move(template_obj));
 		}
 		else
@@ -348,15 +356,16 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 	json json_cls;
 	json_cls["name"] = dump_qualified_name ? cls.GetUniqueName() : cls.name;
 
-	if (dump_qualified_name && cls.isTemplate()) // if is imported && is a template
+	if (dump_qualified_name && (cls.isTemplate() || !cls.isTemplateInstance())) // only dump template instances for imported classes
 	{
 		// redirect to the class definition in another module
 		return json_cls;
 	}
-
 	json_cls["needs_rtti"] = cls.needs_rtti;
 	json_cls["is_struct"] = cls.is_struct;
 	json_cls["is_interface"] = cls.is_interface;
+	if (cls.annotation)
+		json_cls["annotations"] = *cls.annotation;
 	if (cls.parent_class)
 	{
 		json_cls["parent"] = ConvertClassToIndex(cls.parent_class);
@@ -374,11 +383,11 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 		assert(!cls.template_param->source.empty());
 		json_cls["template"] = cls.template_param->source.get();
 		json_cls["source_line"] = cls.Pos.line;
-		if (cls.template_param->annotation)
-			json_cls["annotations"] = cls.template_param->annotation->anno;
 	}
 	else
 	{
+		json_cls["line"] = cls.Pos.line;
+		json_cls["pos"] = cls.Pos.pos;
 		json json_fields = json::array();
 		for (auto& field : cls.fields)
 		{
@@ -396,6 +405,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 			auto access = GetAccessModifierName(func.access);
 			json_func["access"] = access;
 			json_func["virtual_idx"] = func.virtual_idx;
+			if (func.is_abstract)
+				json_func["is_abstract"] = true;
 			if (func.decl->isTemplate())
 			{
 				/*for (auto& instance : (func.decl->template_param->instances))
@@ -417,8 +428,8 @@ json BuildSingleClassJson(ClassAST& cls, bool dump_qualified_name)
 				}
 				else
 					json_func["template"] = source.get();
-				if (func.decl->template_param->annotation)
-					json_func["annotations"] = func.decl->template_param->annotation->anno;
+				if (func.decl->annotation)
+					json_func["annotations"] = *func.decl->annotation;
 				json_func["source_line"] = func.decl->Pos.line;
 			}
 			else
@@ -459,7 +470,10 @@ void BuildExportedPrototypes()
 	for (auto& itr : cu.functypemap)
 	{
 		exported_functype[idx]=BuildPrototypeJson(itr.second.first.get());
-		exported_functype[idx]["is_public"] = itr.second.second;
+		auto& t = exported_functype[idx];
+		t["is_public"] = itr.second.second;
+		t["line"] = itr.second.first->pos.line;
+		t["pos"] = itr.second.first->pos.pos;
 		idx++;
 	}
 }

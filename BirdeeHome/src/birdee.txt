@@ -138,6 +138,10 @@ class runtime_exception
 	@virtual public func get_message() as string => msg
 end
 
+class invalid_index_exception: runtime_exception
+	public func __init__() => super.__init__("Invalid index exception")
+end
+
 declare function int2str alias "BirdeeI2S" (i as int) as string
 declare function pointer2str alias "BirdeeP2S" (i as pointer) as string
 declare function double2str alias "BirdeeD2S" (i as double) as string

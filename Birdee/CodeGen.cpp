@@ -26,6 +26,7 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 
 #include "CompileError.h"
 #include "BdAST.h"
@@ -248,6 +249,7 @@ struct GeneratorContext
 	~GeneratorContext()
 	{
 	}
+	Triple triple = Triple(sys::getProcessTriple());
 	TargetMachine* target_machine = nullptr;
 	Function* malloc_obj_func = nullptr;
 	Function* malloc_arr_func = nullptr;
@@ -368,7 +370,7 @@ static GlobalVariable* CreateTypeInfoWithVTableGlobal(ClassAST* cls)
 {
 	string name;
 	MangleNameAndAppend(name, cls->GetUniqueName());
-	name += "0_typeinfo_vtable";
+	name += "0_typeinfo";
 	auto newv = new GlobalVariable(*module, GetOrCreateVTableType(cls->vtabledef.size()),
 		true, GlobalVariable::LinkOnceODRLinkage, nullptr,
 		name, nullptr, GlobalValue::ThreadLocalMode::NotThreadLocal, 0, true);
@@ -796,8 +798,13 @@ void Birdee::VariableSingleDefAST::PreGenerateExternForGlobal(const string& pack
 	MangleNameAndAppend(resolved_name, package_name);
 	resolved_name += "_0";
 	MangleNameAndAppend(resolved_name, name);
+	GlobalValue::ThreadLocalMode tls;
+	if (is_threadlocal)
+		tls = GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel;
+	else
+		tls = GlobalValue::ThreadLocalMode::NotThreadLocal;
 	GlobalVariable* v = new GlobalVariable(*module, type, false, GlobalValue::ExternalLinkage,
-		nullptr, resolved_name);
+		nullptr, resolved_name, nullptr, tls);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
 		dinfo.cu, resolved_name, resolved_name, dinfo.cu->getFile(), 0, ty,
 		true);
@@ -813,8 +820,13 @@ void Birdee::VariableSingleDefAST::PreGenerateForGlobal()
 	DIType* ty = type_n.dty;
 	string var_name = GetMangledSymbolPrefix();
 	MangleNameAndAppend(var_name, name);
-	GlobalVariable* v = new GlobalVariable(*module, type,false,GlobalValue::CommonLinkage,
-		Constant::getNullValue(type), var_name);
+	GlobalValue::ThreadLocalMode tls;
+	if (is_threadlocal)
+		tls = GlobalValue::ThreadLocalMode::GeneralDynamicTLSModel;
+	else
+		tls = GlobalValue::ThreadLocalMode::NotThreadLocal;
+	GlobalVariable* v = new GlobalVariable(*module, type, false, GlobalValue::CommonLinkage,
+		Constant::getNullValue(type), var_name, nullptr, tls);
 	DIGlobalVariableExpression* D = DBuilder->createGlobalVariableExpression(
 			dinfo.cu, var_name, var_name, dinfo.cu->getFile(), Pos.line, ty,
 			true);
@@ -924,13 +936,6 @@ DISubprogram * PrepareFunctionDebugInfo(Function* TheFunction,DISubroutineType* 
 	return SP;
 }
 
-//https://stackoverflow.com/a/2072890/4790873
-inline bool ends_with(std::string const & value, std::string const & ending)
-{
-	if (ending.size() > value.size()) return false;
-	return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
-}
-
 extern void ClearPreprocessingState();
 extern void ClearParserState();
 
@@ -1017,8 +1022,6 @@ void Birdee::CompileUnit::SwitchModule()
 
 	//now all variables & functionASTs are moved to imported_packages
 	//or orphan_class. We clear all llvm_func and llvm_value
-	for (auto& cls : orphan_class)
-		cls.second->ClearLLVMFunction();
 	ResetLLVMValuesForFunctionsAndGV(&imported_packages);
 
 	gen_context._module = std::make_unique<Module>(name, context);
@@ -1047,6 +1050,11 @@ void Birdee::CompileUnit::SwitchModule()
 	gen_context.basic_block_info.clear();
 	gen_context.landingpadtype = nullptr;
 	gen_context.rtti_map.clear();
+	gen_context.vtable_type_map.clear();
+	gen_context.itable_single_type_map.clear();
+	gen_context.itable_single_gv_map.clear();
+	gen_context.itable_type_map.clear();
+	gen_context.itable_dtype_map.clear();
 	gen_context.function_wrapper_cache.clear();
 	gen_context.function_ptr_wrapper_cache.clear();
 
@@ -1104,7 +1112,7 @@ BD_CORE_API TargetMachine* GetAndSetTargetMachine()
 	auto Features = "";
 
 	TargetOptions opt;
-	auto RM = Optional<Reloc::Model>();
+	auto RM = Optional<Reloc::Model>(cu.options->is_pic ? Reloc::PIC_ : Reloc::Static);
 	auto TheTargetMachine =
 		Target->createTargetMachine(TargetTriple, CPU, Features, opt, RM);
 
@@ -1133,6 +1141,23 @@ static void RestoreLinkOnceGlobals(vector<GlobalValue*>& weak_globals)
 {
 	for(auto g: weak_globals)
 		g->setLinkage(GlobalValue::LinkOnceODRLinkage);
+}
+
+static void PrintGlobals(Module* m)
+{
+	auto mark = [m](GlobalValue& gv)
+	{
+		auto l = gv.getLinkage();
+		if ((l == GlobalValue::ExternalLinkage || l == GlobalValue::LinkOnceODRLinkage || l == GlobalValue::CommonLinkage)
+			&& !gv.isDeclaration())
+		{
+			std::cout << "GLOBAL$" << std::string(gv.getName())<<std::endl;
+		}
+	};
+	for (auto& gv : m->getGlobalList())
+		mark(gv);
+	for (auto& gv : m->getFunctionList())
+		mark(gv);
 }
 
 //regenerate all imported llvm_value for VariableSingleDef
@@ -1164,17 +1189,18 @@ static void RegenerateLLVMValuesForGV(ImportTree* tree, string& namebuffer)
 
 bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 {
-	if (ends_with(cu.targetpath, ".o"))
+	auto triple = Triple(sys::getProcessTriple());
+	if (!triple.isOSWindows())
 	{
 		// Add the current debug info version into the module.
 		module->addModuleFlag(Module::Warning, "Debug Info Version",
 			DEBUG_METADATA_VERSION);
 
 		// Darwin only supports dwarf2.
-		if (Triple(sys::getProcessTriple()).isOSDarwin())
+		if (triple.isOSDarwin())
 			module->addModuleFlag(llvm::Module::Warning, "Dwarf Version", 2);
 	}
-	else if (ends_with(cu.targetpath, ".obj"))
+	else
 	{
 		module->addModuleFlag(llvm::Module::Warning, "CodeView", 1);
 	}
@@ -1307,6 +1333,7 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 		{
 			stmt->Generate();
 		}
+		gen_context.basic_block_info.back()->GenerateJumpToDeferBlocks();
 		if (!dyncast_resolve_anno<ReturnAST>(toplevel.back().get()))
 		{
 			dinfo.emitLocation(toplevel.back().get());
@@ -1349,6 +1376,8 @@ bool Birdee::CompileUnit::GenerateIR(bool is_repl, bool needs_main_checking)
 	RestoreLinkOnceGlobals(weak_globals);
 	weak_globals.clear();
 
+	if (cu.options->is_print_symbols)
+		PrintGlobals(module);
 	if (cu.options->is_print_ir)
 		module->print(errs(), nullptr);
 
@@ -1371,7 +1400,7 @@ bool Birdee::CompileUnit::Generate()
 {
 	//fix-me: do we need to release target machine?
 
-	TargetMachine* TheTargetMachine = GetAndSetTargetMachine();;
+	TargetMachine* TheTargetMachine = GetAndSetTargetMachine();
 	if (GenerateIR(false, true))
 		return true;
 
@@ -1414,18 +1443,25 @@ bool Birdee::CompileUnit::Generate()
 	std::error_code EC;
 	raw_fd_ostream dest(Filename, EC, sys::fs::F_None);
 
-	if (EC) {
-		throw CompileError(string("Could not open file: ") + EC.message());
+	if (strHasEnding(cu.targetpath, ".bc"))
+	{
+		WriteBitcodeToFile(module, dest);
 	}
-	assert(cu.options->optimize_level >= 0 && cu.options->optimize_level <= 3);
-	TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level));
-	auto FileType = TargetMachine::CGFT_ObjectFile;
-	if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
-		throw CompileError("TheTargetMachine can't emit a file of this type");
-	}
+	else
+	{
+		if (EC) {
+			throw CompileError(string("Could not open file: ") + EC.message());
+		}
+		assert(cu.options->optimize_level >= 0 && cu.options->optimize_level <= 3);
+		TheTargetMachine->setOptLevel((CodeGenOpt::Level)((int)CodeGenOpt::None + cu.options->optimize_level));
+		auto FileType = TargetMachine::CGFT_ObjectFile;
+		if (TheTargetMachine->addPassesToEmitFile(MPM, dest, FileType)) {
+			throw CompileError("TheTargetMachine can't emit a file of this type");
+		}
 
-	MPM.run(*module);
-	dest.flush();
+		MPM.run(*module);
+		dest.flush();
+	}
 	return false;
 
 }
@@ -1614,7 +1650,7 @@ void Birdee::ClassAST::PreGenerate()
 	llvm_dtype = new_dty;
 	node.dty = is_struct ? llvm_dtype: DBuilder->createPointerType(llvm_dtype, 64);
 	
-	if (needs_rtti && !parent_class)
+	if (needs_rtti)
 	{
 		GetOrCreateTypeInfoGlobalRaw(this);
 	}
@@ -1818,7 +1854,7 @@ DIType* Birdee::FunctionAST::PreGenerate()
 	auto ftype=Proto->GenerateFunctionType();
 	auto myfunc = Function::Create(ftype, linkage, prefix, module);
 	llvm_func = myfunc;
-	if (strHasEnding(cu.targetpath,".obj") && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
+	if (gen_context.triple.isWindowsMSVCEnvironment() && (Proto->cls && Proto->cls->isTemplateInstance() || isTemplateInstance))
 	{
 		myfunc->setComdat(module->getOrInsertComdat(llvm_func->getName()));
 		myfunc->setDSOLocal(true);
@@ -2430,7 +2466,7 @@ llvm::Value * Birdee::StringLiteralAST::Generate()
 llvm::Value * Birdee::LocalVarExprAST::Generate()
 {
 	dinfo.emitLocation(this);
-	return builder.CreateLoad(def->GetLLVMValue());
+	return builder.CreateLoad(def->GetLLVMValue(), def->is_volatile);
 }
 
 llvm::Value * Birdee::ArrayInitializerExprAST::Generate()
@@ -2622,8 +2658,16 @@ llvm::Value * Birdee::CallExprAST::Generate()
 	if (memberexpr) //if it is a member expr AST of a member function
 	{
 		memberexpr->GenerateObj();
-		if(outfunc)
+		if (outfunc)
+		{
+			if (memberexpr->Obj && !memberexpr->llvm_obj)
+			{
+				//if there is a object reference and we only have a RValue of struct
+				memberexpr->llvm_obj = builder.CreateAlloca(memberexpr->Obj->resolved_type.class_ast->llvm_type); //alloca temp memory for the value
+				builder.CreateStore(memberexpr->Obj->Generate(), memberexpr->llvm_obj); //store the obj to the alloca
+			}
 			func = outfunc->GetLLVMFunc();
+		}
 		else
 			func = memberexpr->GenerateFunction();
 		obj = memberexpr->llvm_obj;
@@ -2796,7 +2840,7 @@ llvm::Value * Birdee::MemberExprAST::Generate()
 	{
 		if (llvm_obj)//if we have a pointer to the object
 		{
-			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }));
+			return builder.CreateLoad(builder.CreateGEP(llvm_obj, { builder.getInt32(0),builder.getInt32(field->index + field_offset) }), this->field->decl->is_volatile);
 		} else //else, we only have a RValue of struct
 			return builder.CreateExtractValue(Obj->Generate(), field->index + field_offset);
 	}
@@ -2986,7 +3030,7 @@ llvm::Value * Birdee::ClassAST::Generate()
 	{
 		auto tyinfo = GetOrCreateTypeInfoGlobalRaw(this);
 		tyinfo->setExternallyInitialized(false);
-		if (strHasEnding(cu.targetpath, ".obj") && isTemplateInstance())
+		if (gen_context.triple.isWindowsMSVCEnvironment() && isTemplateInstance())
 		{
 			tyinfo->setComdat(module->getOrInsertComdat(tyinfo->getName()));
 			tyinfo->setDSOLocal(true);
@@ -3285,8 +3329,19 @@ llvm::Value * Birdee::BinaryExprAST::Generate()
 		Value* lv = LHS->GetLValue(false);
 		assert(lv);
 		auto rv = RHS->Generate();
+		bool isvolatile = false;
+		if (auto identifier = dyncast_resolve_anno<IdentifierExprAST>(LHS.get()))
+		{
+			if (auto localvar = dyncast_resolve_anno<LocalVarExprAST>(identifier->impl.get()))
+				isvolatile = localvar->def->is_volatile;
+		}
+		else if (auto member = dyncast_resolve_anno<MemberExprAST>(LHS.get()))
+		{
+			assert(member->kind==MemberExprAST::member_field);
+			isvolatile = member->field->decl->is_volatile;
+		}
 		dinfo.emitLocation(this);
-		builder.CreateStore(rv, lv);
+		builder.CreateStore(rv, lv, isvolatile);
 		return nullptr;
 	}
 	if (LHS->resolved_type.isReference() || RHS->resolved_type.isReference() ||
@@ -3757,4 +3812,7 @@ llvm::Value* Birdee::ThrowAST::Generate()
 	return nullptr;
 }
 
-
+llvm::Value * Birdee::AutoCompletionExprAST::Generate()
+{
+	throw CompileError(Pos, "Met AutoCompletionExprAST");
+}

@@ -116,6 +116,13 @@ def is_expr_templ_arg(args,idx):
 	return (args.kind==TemplateArgument.TemplateArgumentType.TEMPLATE_ARG_EXPR , 
 		lambda:"The {}-th template argument is expected to be an expression".format(idx))
 
+def get_array_element_type(arrty):
+	require_(arrty.index_level>0)
+	Ele = ResolvedType()
+	Ele.set_detail(arrty.base, arrty.get_detail())
+	Ele.index_level = arrty.index_level - 1
+	return Ele
+
 '''
 Check if "type" is a prototype. Throw if not.
  - type: The ResolvedType to check

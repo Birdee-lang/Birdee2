@@ -27,7 +27,7 @@ ${BLIB_DIR}/birdee.o: birdee.txt ${BLIB_DIR} ${BIN}
 libs: ${BLIB_DIR}/birdee.o
 	python3 $(PARENT_DIR)/pylib/bbuild.py -i . -o ${BLIB_DIR} \
 		variant list hash tuple fmt vector queue stack unsafe concurrent.threading rtti system.io.stdio typedptr reflection concurrent.sync system.io.net \
-		functional.lazy concurrent.threadpool system.time
+		functional.lazy concurrent.threadpool system.time extensions.string system.io.stream serialization.json.serializer serialization.json.deserializer
 
 clean:
 	rm -rf ${BLIB_DIR}

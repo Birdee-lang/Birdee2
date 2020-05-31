@@ -7,6 +7,22 @@ using namespace Birdee;
 CompileError CompileError::last_error;
 TokenizerError TokenizerError::last_error(0, 0, "");
 
+#ifdef _WIN32
+#include <direct.h>
+#define GetCurrentDir _getcwd
+#else
+#include <unistd.h>
+#define GetCurrentDir getcwd
+#endif
+
+static std::string GetCurrentWorkingDir(void) {
+	char buff[FILENAME_MAX];
+	GetCurrentDir(buff, FILENAME_MAX);
+	std::string current_working_dir(buff);
+	return current_working_dir;
+}
+
+
 namespace Birdee
 {
 	BD_CORE_API std::vector<std::string> source_paths;
@@ -115,6 +131,29 @@ namespace Birdee
 	{
 		return r.type == tok_class && r.index_level == 0 && !r.class_ast->is_struct;
 	}
+
+	BD_CORE_API string GetSourcePathByIdx(int source_idx)
+	{
+		return source_idx == -1 ? cu.directory + "/" + cu.filename : source_paths[source_idx];
+	}
+
+	BD_CORE_API void SetSourceFilePath(const string& source)
+	{
+		size_t found;
+		found = source.find_last_of("/\\");
+		if (found == string::npos)
+		{
+			cu.directory = GetCurrentWorkingDir();
+			cu.filename = source;
+		}
+		else
+		{
+			cu.directory = source.substr(0, found);
+			if (cu.directory[0] == '.')
+				cu.directory = GetCurrentWorkingDir() + "/" + cu.directory;
+			cu.filename = source.substr(found + 1);
+		}
+	}
 }
 
 extern void ClearPreprocessingState();
@@ -126,24 +165,29 @@ void Birdee::CompileUnit::Clear()
 	classmap.clear();
 	funcmap.clear();
 	dimmap.clear();
+	functypemap.clear();
 	symbol_prefix.clear();
 
 	imported_classmap.clear();
 	imported_funcmap.clear();
 	imported_dimmap.clear();
+	imported_functypemap.clear();
+	generated_functy.clear();
 
 	imported_class_templates.clear();
 	imported_func_templates.clear();
-	orphan_class.clear();
 
+	class_extend_funcmap.clear();
+	init_scripts.clear();
 	imported_module_names.clear();
-	imported_packages.map.clear();
-	imported_packages.mod = nullptr;
+	imports.clear();
+	imported_packages.~ImportTree();
+	new (&imported_packages) ImportTree;
+
 	ClearPreprocessingState();
 	AbortGenerate();
 	ClearParserState();
 }
-
 
 BD_CORE_API Tokenizer tokenizer(nullptr, 0);
 
@@ -302,7 +346,7 @@ int Birdee::Tokenizer::GetChar()
 string Birdee::SourcePos::ToString() const
 {
 	std::stringstream buf;
-	buf << "File: " << (source_idx == -1 ? cu.directory+"/"+cu.filename : source_paths[source_idx]) << " Line: " << line << " Pos: " << pos;
+	buf << "File: " << GetSourcePathByIdx(source_idx) << " Line: " << line << " Pos: " << pos;
 	return buf.str();
 }
 
@@ -317,12 +361,15 @@ Birdee::Tokenizer& Birdee::Tokenizer::operator =(Tokenizer&& old_t)
 	IdentifierStr = std::move(old_t.IdentifierStr);
 	is_recording = old_t.is_recording;
 	NumVal = old_t.NumVal;
+	skip_newline = old_t.skip_newline;
 	template_source = std::move(old_t.template_source);
 	return *this;
 }
 
 Token Birdee::Tokenizer::gettok() {
 	static_assert(TOKENIZER_PENDING_CHAR != EOF, "expecting TOKENIZER_PENDING_CHAR != EOF");
+	bool skip_newline = this->skip_newline;
+	this->skip_newline = false;
 	if (!f)
 		return tok_error;
 	if (LastChar == TOKENIZER_PENDING_CHAR)
@@ -334,6 +381,16 @@ Token Birdee::Tokenizer::gettok() {
 	if (single_token != single_token_map.end())
 	{
 		LastChar = GetChar();
+		if (skip_newline && single_token->second == tok_newline)
+		{
+			// the skip_newline flag is set, skip the current newline token
+			this->skip_newline = true;
+			return gettok();
+		}
+		else if (single_token->second == tok_comma || single_token->second == tok_left_bracket)
+		{
+			this->skip_newline = true;
+		}
 		return single_token->second;
 	}
 	single_token = single_operator_map.find(LastChar);

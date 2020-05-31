@@ -96,7 +96,7 @@ BD_CORE_API void* LoadBindingFunction(const char* name)
 #define Birdee_RunScriptForString_NAME "_Z25Birdee_RunScriptForStringRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKN6Birdee9SourcePosE"
 #endif
 
-static void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
+void Birdee_RunAnnotationsOn(std::vector<std::string>& anno, StatementAST* ths, SourcePos pos, void* globalscope)
 {
 
 	typedef void(*PtrImpl)(std::vector<std::string>& anno, StatementAST* impl, SourcePos pos, void* globalscope);
@@ -589,6 +589,7 @@ public:
 		if (cls_field)
 		{
 			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
+			ret->Pos = pos;
 			ret->Phase1();
 			return ret;
 		}
@@ -596,6 +597,7 @@ public:
 		if (func_field)
 		{
 			auto ret = make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), name);
+			ret->Pos = pos;
 			ret->Phase1();
 			return ret;
 			// return make_unique<MemberExprAST>(make_unique<ThisExprAST>(class_stack.back(), pos), func_field, pos);
@@ -697,6 +699,24 @@ public:
 
 };
 
+
+using ClassTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<ClassAST>>;
+using FuncTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<FunctionAST>>;
+
+template <typename T>
+struct TemplateInstanceArgs
+{
+	T* map;
+	std::reference_wrapper<const std::vector<TemplateArgument>> args;
+	std::reference_wrapper<const std::vector<TemplateParameter>> params;
+	ImportedModule* mod;
+	SourcePos pos;
+
+	TemplateInstanceArgs(T* map, const std::vector<TemplateArgument>& args, const std::vector<TemplateParameter>& params,
+		ImportedModule* mod, SourcePos pos): map(map), args(args), params(params), mod(mod), pos(pos)
+	{}
+};
+
 struct PreprocessingState
 {
 	ScopeManager _scope_mgr;
@@ -704,11 +724,11 @@ struct PreprocessingState
 	FunctionAST* _cur_func = nullptr;
 	ClassAST* array_cls = nullptr;
 	ClassAST* string_cls = nullptr;
+	int current_phase = 0;
+	ExprAST* auto_compl_ast = nullptr;
 
-	using ClassTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<ClassAST>>;
-	using FuncTemplateInstMap = std::map<std::reference_wrapper<const std::vector<TemplateArgument>>, std::unique_ptr<FunctionAST>>;
-	std::vector<std::pair<ClassTemplateInstMap*, typename ClassTemplateInstMap::key_type>> class_templ_inst_rollback;
-	std::vector<std::pair<FuncTemplateInstMap*, typename FuncTemplateInstMap::key_type>> func_templ_inst_rollback;
+	std::vector<unique_ptr<TemplateInstanceArgs<ClassTemplateInstMap>>> class_templ_inst_rollback;
+	std::vector<unique_ptr<TemplateInstanceArgs<FuncTemplateInstMap>>> func_templ_inst_rollback;
 };
 
 #define scope_mgr (preprocessing_state._scope_mgr)
@@ -749,8 +769,8 @@ BD_CORE_API void RollbackTemplateInstances()
 	auto& funcs = preprocessing_state.func_templ_inst_rollback;
 	for(auto itr = funcs.rbegin();itr!=funcs.rend();++itr)
 	{
-		auto& the_map = *itr->first;
-		auto arg = itr->second;
+		auto& the_map = *itr->get()->map;
+		auto arg = itr->get()->args;
 		auto mapitr = the_map.find(arg);
 		if(mapitr!=the_map.end())
 			the_map.erase(mapitr);
@@ -758,8 +778,8 @@ BD_CORE_API void RollbackTemplateInstances()
 	auto& clazzes = preprocessing_state.class_templ_inst_rollback;
 	for(auto itr = clazzes.rbegin();itr!=clazzes.rend();++itr)
 	{
-		auto& the_map = *itr->first;
-		auto arg = itr->second;
+		auto& the_map = *itr->get()->map;
+		auto arg = itr->get()->args;
 		auto mapitr = the_map.find(arg);
 		if(mapitr!=the_map.end())
 			the_map.erase(mapitr);
@@ -933,6 +953,41 @@ inline bool IsClosure(const ResolvedType& v)
 inline bool IsFunctype(const ResolvedType& v)
 {
 	return v.index_level == 0 && v.type == tok_func && !v.proto_ast->is_closure;
+}
+
+BD_CORE_API bool TypeCanBeConvertedTo(ResolvedType& from, ResolvedType& target)
+{
+	if (target == from)
+	{
+		return true;
+	}
+	if (IsClosure(target) && IsFunctype(from))
+	{
+		//if both types are functions and target is closure & source value is not closure
+		if (target.proto_ast->IsSamePrototype(*from.proto_ast))
+		{
+			return true;
+		}
+	}
+	if (target.isReference() && from.isReference())
+	{
+		if (from.isNull())
+		{
+			return true;
+		}
+		if (IsResolvedTypeClass(from)
+			&& IsResolvedTypeClass(target)) // check for upcast
+		{
+			if (from.class_ast->HasParent(target.class_ast) ||
+				from.class_ast->HasImplement(target.class_ast))
+				return true;
+		}
+	}
+	else if (target.isNumber() && from.isNumber())
+	{
+		return true;
+	}
+	return false;
 }
 
 unique_ptr<ExprAST> FixTypeForAssignment(ResolvedType& target, unique_ptr<ExprAST>&& val,SourcePos pos)
@@ -1120,9 +1175,7 @@ namespace Birdee
 				[&this_template_args](IdentifierExprAST* ex) {
 				ImportTree* import_tree = nullptr;
 				auto ret = scope_mgr.ResolveNameNoThrow(ex->Name, ex->Pos, import_tree);
-				if (import_tree)
-					assert(0 && "Not implemented");
-				if (ret)
+				if (ret && !import_tree)
 				{
 					this_template_args.push_back(TemplateArgument(std::move(ret)));
 				}
@@ -1538,6 +1591,7 @@ namespace Birdee
 
 	void CompileUnit::Phase0()
 	{
+		preprocessing_state.current_phase = 0;
 		for (auto& node : funcmap)
 		{
 			node.second.first->Phase0();
@@ -1552,12 +1606,34 @@ namespace Birdee
 		}
 	}
 
+	// in phase0, the phase1 of template instances are not called. Call phase1 here with proper environment
+	static void Phase1OnlyForTemplateInstance(TemplateInstanceArgs<ClassTemplateInstMap>& inst)
+	{
+		auto& args = inst.args;
+		auto cls = inst.map->find(args)->second.get();
+
+		scope_mgr.SetClassTemplateEnv(args, inst.params, inst.mod, inst.pos);
+		scope_mgr.SetEmptyTemplateEnv(ScopeManager::PyScope(inst.mod));
+		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_class_stack, scope_mgr.template_class_stack.size() - 1));
+		cls->Phase1();
+		scope_mgr.template_trace_back_stack.pop_back();
+		scope_mgr.RestoreTemplateEnv();
+		scope_mgr.RestoreClassTemplateEnv();
+	}
+
 	void CompileUnit::Phase1()
 	{
+		preprocessing_state.current_phase = 1;
+		auto len = preprocessing_state.class_templ_inst_rollback.size();
 		//scope_mgr.PushBasicBlock();
 		for (auto& stmt : toplevel)
 		{
 			stmt->Phase1();
+		}
+		for (size_t i = 0; i < len; i++)
+		{
+			// in phase0, the phase1 of template instances are not called. Call phase1 here with proper environment
+			Phase1OnlyForTemplateInstance(*preprocessing_state.class_templ_inst_rollback.at(i));
 		}
 		//scope_mgr.PopBasicBlock();
 	}
@@ -1806,7 +1882,7 @@ namespace Birdee
 				{
 					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
 				}
-				cls->template_param->annotation = this;
+				cls->annotation = &anno;
 				return;
 			}
 			//if is not a template, fall through to the following code
@@ -1820,7 +1896,7 @@ namespace Birdee
 				{
 					Birdee_RunAnnotationsOn(anno, inst.second.get(), inst.second->Pos, globals);
 				}
-				func->template_param->annotation = this;
+				func->annotation = &anno;
 				return;
 			}
 			//if is not a template, fall through to the following code
@@ -2409,15 +2485,11 @@ If usage vararg name is "", match the closest vararg
 			return cu.imported_module_names[package_name_idx] + '.' + name;
 	}
 
-	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
-		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
+	static ClassAST* PrepareEnvForFunction(FunctionAST* func, vector<TemplateArgument>& v,
+		const vector<TemplateParameter>& parameters, vector<ClassAST*>& clsstack, ImportedModule* mod, SourcePos pos)
 	{
-		preprocessing_state.func_templ_inst_rollback.push_back(
-			std::make_pair(&src_func->template_param->instances, 
-			std::reference_wrapper<const std::vector<TemplateArgument>>(*v)));
-		func->Proto->Name += GetTemplateArgumentString(*v);
-		ClassAST* cls_template=nullptr;
-		if (func->Proto->cls) 
+		ClassAST* cls_template = nullptr;
+		if (func->Proto->cls)
 		{
 			cls_template = func->Proto->cls;
 			if (func->Proto->cls->template_instance_args)//if the function is defined in a template class, push the template environment
@@ -2433,11 +2505,71 @@ If usage vararg name is "", match the closest vararg
 		{
 			scope_mgr.SetEmptyClassTemplateEnv();
 		}
-		scope_mgr.SetTemplateEnv(*v, parameters, mod, pos);
+		scope_mgr.SetTemplateEnv(v, parameters, mod, pos);
 		scope_mgr.template_trace_back_stack.push_back(std::make_pair(&scope_mgr.template_stack, scope_mgr.template_stack.size() - 1));
-		vector<ClassAST*> clsstack;
-		if(!cls_template) // if it is not a member function, clear the class environment
+		
+		if (!cls_template) // if it is not a member function, clear the class environment
 			clsstack = std::move(scope_mgr.class_stack);
+		return cls_template;
+	}
+
+	static void RunAnnotationAndPopEnvForFunction(ClassAST* cls_template, FunctionAST* func, vector<ClassAST*>& clsstack, vector<string>* annotation, ImportedModule* mod)
+	{
+		auto oldfunc = cur_func;
+		cur_func = func;
+		if (annotation)
+		{
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(*annotation, func, func->Pos, globals);
+			PopPyScope();
+		}
+
+		if (!cls_template)
+			scope_mgr.class_stack = std::move(clsstack);
+		scope_mgr.template_trace_back_stack.pop_back();
+		scope_mgr.RestoreTemplateEnv();
+		if (cls_template)
+		{
+			scope_mgr.PopClass();
+		}
+		scope_mgr.RestoreClassTemplateEnv();
+		cur_func = oldfunc;
+	}
+
+	void RunAnnotationOnImportedFunction(FunctionAST* func, ImportedModule* mod)
+	{
+		vector<ClassAST*> clsstack;
+		vector<TemplateArgument>* targ;
+		vector<TemplateParameter>* tparam;
+		vector<TemplateArgument> tmparg;
+		vector<TemplateParameter> tmpparam;
+		if (func->template_instance_args)
+		{
+			targ = func->template_instance_args.get();
+			assert(func->template_source_func && func->template_source_func->template_param);
+			tparam = &func->template_source_func->template_param->params;
+		}
+		else
+		{
+			targ = &tmparg;
+			tparam = &tmpparam;
+		}
+		ClassAST* cls_template = PrepareEnvForFunction(func, *targ, *tparam, clsstack, mod, func->Pos);
+		RunAnnotationAndPopEnvForFunction(cls_template, func, clsstack, func->annotation, mod);
+	}
+
+	static void Phase1ForTemplateInstance(FunctionAST* func, FunctionAST* src_func, unique_ptr<vector<TemplateArgument>>&& v,
+		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
+	{
+		preprocessing_state.func_templ_inst_rollback.emplace_back(make_unique<TemplateInstanceArgs<FuncTemplateInstMap>>(
+			&src_func->template_param->instances, 
+			*v, parameters, mod, pos));
+		func->Proto->Name += GetTemplateArgumentString(*v);
+		vector<ClassAST*> clsstack;
+		ClassAST* cls_template= PrepareEnvForFunction(func, *v, parameters, clsstack, mod, pos);
+		
 		auto basic_blocks_backup = std::move(scope_mgr.function_scopes);
 		scope_mgr.function_scopes = vector <ScopeManager::FunctionScope>();
 		func->isTemplateInstance = true;
@@ -2445,16 +2577,9 @@ If usage vararg name is "", match the closest vararg
 		func->template_source_func = src_func;
 		func->Phase0();
 		func->Phase1();
-		if (!cls_template)
-			scope_mgr.class_stack = std::move(clsstack);
-		scope_mgr.RestoreTemplateEnv();
-		scope_mgr.template_trace_back_stack.pop_back();
+
 		scope_mgr.function_scopes = std::move(basic_blocks_backup);
-		if (cls_template)
-		{
-			scope_mgr.PopClass();
-		}
-		scope_mgr.RestoreClassTemplateEnv();
+		RunAnnotationAndPopEnvForFunction(cls_template, func, clsstack, src_func->annotation, mod);
 	}
 
 	/*
@@ -2463,9 +2588,9 @@ If usage vararg name is "", match the closest vararg
 	static void Phase1ForTemplateInstance(ClassAST* cls, ClassAST* src_cls, unique_ptr<vector<TemplateArgument>>&& v,
 		const vector<TemplateParameter>& parameters,ImportedModule* mod, SourcePos pos)
 	{
-		preprocessing_state.class_templ_inst_rollback.push_back(
-			std::make_pair(&src_cls->template_param->instances, 
-			std::reference_wrapper<const std::vector<TemplateArgument>>(*v)));
+		preprocessing_state.class_templ_inst_rollback.emplace_back(make_unique<TemplateInstanceArgs<ClassTemplateInstMap>>(
+			&src_cls->template_param->instances, 
+			*v, parameters, mod, pos));
 		auto& args = *v;
 		cls->template_instance_args = std::move(v);
 		cls->template_source_class = src_cls;
@@ -2478,7 +2603,18 @@ If usage vararg name is "", match the closest vararg
 			funcdef.decl->Proto->cls = cls;
 		}
 		cls->Phase0();
-		cls->Phase1();
+		if (preprocessing_state.current_phase >= 1)
+		{
+			cls->Phase1();
+		}
+		if (src_cls->annotation)
+		{
+			PushPyScope(mod);
+			void* globals, *locals;
+			GetPyScope(globals, locals);
+			Birdee_RunAnnotationsOn(*src_cls->annotation, cls, cls->Pos, globals);
+			PopPyScope();
+		}
 		scope_mgr.template_trace_back_stack.pop_back();
 		scope_mgr.RestoreTemplateEnv();
 		scope_mgr.RestoreClassTemplateEnv();
@@ -2498,14 +2634,6 @@ If usage vararg name is "", match the closest vararg
 		auto old_f_scopes = std::move(scope_mgr.function_scopes);
 		Phase1ForTemplateInstance(ret, source_template, std::move(v), params, mod, pos);
 		scope_mgr.function_scopes = std::move(old_f_scopes);
-		if (annotation)
-		{
-			PushPyScope(mod);
-			void* globals, *locals;
-			GetPyScope(globals, locals);
-			Birdee_RunAnnotationsOn(annotation->anno,ret,ret->Pos,globals);
-			PopPyScope();
-		}
 		return ret;
 	}
 
@@ -3036,6 +3164,22 @@ If usage vararg name is "", match the closest vararg
 				CompileAssert(type.type==tok_void && type.index_level==0, funcdef.decl->Pos, "__del__ destructor must not have return values");
 				CompileAssert(funcdef.access==access_public, funcdef.decl->Pos, "__del__ destructor must be public");
 			}
+			if (funcdef.annotations->size())
+			{
+				void* globals, *locals;
+				GetPyScope(globals, locals);
+				if (funcdef.decl->isTemplate())
+				{
+					for (auto& inst : funcdef.decl->template_param->instances)
+					{
+						Birdee_RunAnnotationsOn(*funcdef.annotations, inst.second.get(), Pos, globals);
+					}
+				}
+				else
+				{
+					Birdee_RunAnnotationsOn(*funcdef.annotations, funcdef.decl.get(), Pos, globals);
+				}
+			}
 		}
 		scope_mgr.PopClass();
 	}
@@ -3108,7 +3252,7 @@ If usage vararg name is "", match the closest vararg
 		CompileAssert(Obj->resolved_type.type == tok_class, Pos, "The expression before the member should be an object");
 		this->kind = MemberType::member_error;
 		resolved_type = ResolveClassMember(Obj.get(),this->member, Pos, this->casade_parents, this->kind, this->func, this->field, this->import_func);
-		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member);
+		CompileAssert(this->kind != MemberType::member_error, Pos, string("Cannot find member ") + member + " in type " + Obj->resolved_type.GetString());
 	}
 	string TemplateArgument::GetString() const
 	{
@@ -3761,4 +3905,66 @@ If usage vararg name is "", match the closest vararg
 			scope_mgr.PopBasicBlock();
 		}
 	}
+
+	AutoCompletionExprAST::AutoCompletionExprAST(unique_ptr<ExprAST>&& impl, 
+		AutoCompletionExprAST::CompletionKind kind): impl(std::move(impl)), kind(kind)
+	{
+		Pos = this->impl->Pos;
+	}
+
+	void AutoCompletionExprAST::print(int level)
+	{
+		ExprAST::print(level);
+		std::cout << "AutoCompletionExprAST\n";
+		impl->print(level + 1);
+	}
+
+	BD_CORE_API ExprAST* GetAutoCompletionAST()
+	{
+		return preprocessing_state.auto_compl_ast;
+	}
+
+	void AutoCompletionExprAST::Phase1()
+	{
+		if (kind == NEW)
+		{
+			auto n = dynamic_cast<NewExprAST*>(impl.get());
+			assert(n);
+			resolved_type = ResolvedType(*n->ty, n->Pos);
+		}
+		else if (kind == PARAMETER)
+		{
+			auto n = dynamic_cast<NewExprAST*>(impl.get());
+			if (n)
+			{
+				resolved_type = ResolvedType(*n->ty, n->Pos); // we need to change this because we use "this" in ResolveClassMember
+				if (resolved_type.type == tok_class && resolved_type.index_level == 0)
+				{
+					auto cls = resolved_type.class_ast;
+					auto method = n->method.empty() ? "__init__" : n->method;
+					int cascade_parents = 0;
+					MemberExprAST::MemberType kind = MemberExprAST::MemberType::member_error;
+					MemberFunctionDef* outfunc = nullptr;
+					FieldDef* outfield = nullptr;
+					FunctionAST* outextension = nullptr;
+					auto rty = ResolveClassMember(this, method, Pos, cascade_parents, kind, outfunc, outfield, outextension);
+					if (IsInternalMemberFunction(kind))
+						resolved_type = rty;
+				}
+			}
+			else
+			{
+				impl->Phase1();
+				resolved_type = impl->resolved_type;
+			}
+		}
+		else
+		{
+			impl->Phase1();
+			resolved_type = impl->resolved_type;
+		}
+		preprocessing_state.auto_compl_ast = this;
+		throw CompileError(Pos, "Met AutoCompletionExprAST");
+	}
+
 }

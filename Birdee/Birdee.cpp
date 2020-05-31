@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <CompilerOptions.h>
+#include <string.h>
 using namespace Birdee;
 
 extern int ParseTopLevel(bool autoimport=true);
@@ -17,36 +18,44 @@ extern string GetModuleNameByArray(const vector<string>& package, const char* de
 //GetCurrentDir copied from http://www.codebind.com/cpp-tutorial/c-get-current-directory-linuxwindows/
 #include <stdio.h>  /* defines FILENAME_MAX */
 // #define WINDOWS  /* uncomment this line to use it for windows.*/ 
-#ifdef _WIN32
-#include <direct.h>
-#define GetCurrentDir _getcwd
-#else
-#include <unistd.h>
-#define GetCurrentDir getcwd
-#endif
 
-std::string GetCurrentWorkingDir(void) {
-	char buff[FILENAME_MAX];
-	GetCurrentDir(buff, FILENAME_MAX);
-	std::string current_working_dir(buff);
-	return current_working_dir;
+namespace Birdee
+{
+	extern BD_CORE_API void SetSourceFilePath(const string& source);
 }
 
-
 #ifdef _WIN32
-extern int RunGenerativeScript();
+extern "C" int RunGenerativeScript(int argc, char** argv);
 #else
 #include <dlfcn.h>
-extern void* LoadBindingFunction(const char* name);
-	static int RunGenerativeScript()
+	extern void* LoadBindingFunction(const char* name);
+	struct DLLoader{
+		void* handle = nullptr;
+		DLLoader(const char* path){
+			handle = dlopen(path, RTLD_LAZY| RTLD_GLOBAL);
+			if (!handle) {
+				fprintf(stderr, "%s\n", dlerror());
+				exit(1);
+			}
+		}
+		~DLLoader()
+		{
+			if (handle)
+				dlclose(handle);
+		}
+	};
+	static int RunGenerativeScript(int argc, char** argv)
 	{
-		typedef void(*PtrImpl)();
+		//raii loader for the SO
+		//load the SO to bypass lib-dyn bugs in Python
+		DLLoader dl = ("libpython" PY_VER ".so");
+		typedef int(*PtrImpl)(int argc, char** argv);
 		static PtrImpl impl = nullptr;
 		if (impl == nullptr)
 		{   
-			impl = (PtrImpl)LoadBindingFunction( "_Z19RunGenerativeScriptv");
+			impl = (PtrImpl)LoadBindingFunction( "RunGenerativeScript");
 		}
-		impl();
+		return impl(argc, argv);
 	}
 #endif
 BD_CORE_API extern Tokenizer tokenizer;
@@ -111,9 +120,17 @@ void ParseParameters(int argc, char** argv)
 				string ret = args.Get();
 				cu.symbol_prefix = ret;
 			}
+			else if (cmd == "--static")
+			{
+				cu.options->is_pic = false;
+			}
 			else if (cmd == "--print-import")
 			{
 				is_print_import_mode = true;
+			}
+			else if (cmd == "--print-symbols")
+			{
+				cu.options->is_print_symbols = true;
 			}
 			else if (cmd == "--script" || cmd== "-s")
 			{
@@ -191,20 +208,7 @@ void ParseParameters(int argc, char** argv)
 			goto fail;
 		}
 		//cut the source path into filename & dir path
-		size_t found;
-		found = source.find_last_of("/\\");
-		if (found == string::npos)
-		{
-			cu.directory = GetCurrentWorkingDir();
-			cu.filename = source;
-		}
-		else
-		{
-			cu.directory = source.substr(0, found);
-			if (cu.directory[0] == '.')
-				cu.directory = GetCurrentWorkingDir() + "/" + cu.directory;
-			cu.filename = source.substr(found + 1);
-		}
+		SetSourceFilePath(source);
 		if (!cu.is_script_mode)
 		{
 			auto f = std::make_unique<FileStream>(source.c_str());
@@ -216,7 +220,7 @@ void ParseParameters(int argc, char** argv)
 			Birdee::source_paths.push_back(source);
 			tokenizer = Tokenizer(std::move(f), 0);
 		}
-		found = target.find_last_of('.');
+		auto found = target.find_last_of('.');
 		if (found != string::npos)
 		{
 			cu.targetmetapath = target.substr(0, found) + ".bmm";
@@ -236,6 +240,18 @@ fail:
 int main(int argc,char** argv)
 {
 	cu.is_compiler_mode = true;
+
+	if (argc > 1)
+	{
+		if (!strcmp(argv[1], "bpack")) //run bpack tool
+		{
+			cu.is_script_mode = true;
+			cu.directory = cu.homepath + "pylib/";
+			cu.filename = "bpack.py";
+			return RunGenerativeScript(argc - 1, argv + 1);
+		}
+	}
+
 	ParseParameters(argc, argv);
 	
 	//it is important to clear the imported modules before python interpreter quits
@@ -244,7 +260,7 @@ int main(int argc,char** argv)
 
 	if (cu.is_script_mode)
 	{
-		return RunGenerativeScript();
+		return RunGenerativeScript(0, nullptr);
 	}
 	int is_empty = false;
 	try {

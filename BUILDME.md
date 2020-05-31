@@ -1,7 +1,7 @@
 
 # Building Birdee on Ubuntu
 
-Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11, bdwgc, libunwind (already installed with gcc) and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
+Birdee compiler depends on: LLVM (version 6, newer are not tested), g++ (any version that supports -std=c++14), pybind11, bdwgc, libreadline,libunwind (already installed with gcc) and [nlohmann's JSON library](https://github.com/nlohmann/json). First, you need to update your g++ to make it support C++14 and update git (>=2.0).
 
 Then, install LLVM. You may refer to [LLVM's apt site](https://apt.llvm.org/) for instructions. Here we provide commands for installing LLVM on Ubuntu 14.04. You need first add the following lines to /etc/apt/sources.list:
 
@@ -18,7 +18,7 @@ wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update
 sudo apt-get install llvm-6.0
 sudo apt-get install python3-dev
-sudo apt-get install libgc-dev
+sudo apt-get install libgc-dev libreadline-dev
 pip3 install pybind11
 sudo ln -s -r /usr/include/llvm-6.0/llvm /usr/include/llvm
 sudo ln -s -r /usr/include/llvm-c-6.0/llvm-c/ /usr/include/llvm-c
@@ -89,7 +89,7 @@ If you have downloaded pre-compiled LLVM,
 
 First download LLVM dynamic library and headers for Windows built by me.
 
- * LLVM-shared-build [Github](https://github.com/Menooker/Birdee2/releases/tag/llvm6-v2) [GoogleDrive](https://drive.google.com/open?id=1RZkrTojyoNqL_9IUNxLn_-aLQsV9ySjc)
+ * LLVM-shared-build [Github](https://github.com/Birdee-lang/Birdee2/releases/tag/llvm6.0-2020-02-04)
  * Headers for Windows x64 (The same as in the above section) [BaiduYun](https://pan.baidu.com/s/1kOfgfwvV37VHNa5vwqHciw) [GoogleDrive](https://drive.google.com/open?id=1UONnbLtPzAftrAks9Vhdkb8iDC4rmdqA)
 
 Then,

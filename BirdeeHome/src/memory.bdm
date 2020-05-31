@@ -1,0 +1,7 @@
+import typedptr:sizeof
+
+@private declare function memcpy alias "llvm.memcpy.p0i8.p0i8.i32"(dest as pointer,src as pointer, len as uint, align as uint, is_volatile as boolean)
+
+function copy_array[T](dest as T[], dest_start as uint, src as T[],  src_start as uint, len as uint)
+	memcpy(addressof(dest[dest_start]), addressof(src[src_start]), len * sizeof[T](), 1, true)
+end

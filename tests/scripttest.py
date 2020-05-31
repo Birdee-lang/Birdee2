@@ -1,46 +1,157 @@
 from birdeec import *
-
-def assert_fail(istr):
-	try:
-		top_level(istr)
-		process_top_level()
-		assert(False)
-	except TokenizerException:
-		e=get_tokenizer_error()
-		print(e.linenumber,e.pos,e.msg)
-	except CompileException:
-		e=get_compile_error()
-		print(e.linenumber,e.pos,e.msg)		
-	clear_compile_unit()
-
-def assert_ok(istr):
-	top_level(istr)
-	process_top_level()
-	clear_compile_unit()
-
-def assert_generate_ok(istr):
-	top_level(istr)
-	process_top_level()
-	generate()
-	clear_compile_unit()
-
-def assert_generate_fail(istr):
-	try:
-		top_level(istr)
-		process_top_level()
-		generate()
-		assert(False)
-	except TokenizerException:
-		e=get_tokenizer_error()
-		print(e.linenumber,e.pos,e.msg)
-	except CompileException:
-		e=get_compile_error()
-		print(e.linenumber,e.pos,e.msg)		
-	clear_compile_unit()
+from bdtesting.utils import * 
+import os
 
 set_print_ir(False)
 
 print("The OS name is ", get_os_name(), ". The target bit width is ", get_target_bits())
+
+assert_ok('''
+func add(a as int,
+	b as int) as int
+	return a+b
+end
+
+add(
+	12,
+	3)
+''')
+
+assert_ok('''
+{@
+annotated=[]
+def some(f):
+	print(f.proto.name)
+	annotated.append(f.proto.name)
+@}
+class AAA
+	@some
+	public func asd()
+	end
+
+	@some
+	public func asd2[T]()
+	end
+end
+
+dim t = new AAA
+t.asd2[int]()
+
+{@
+assert(annotated[0]=="asd")
+assert(annotated[1]=="asd2[int]")
+@}
+''')
+
+assert_fail('''
+{@def some(f):
+	print(f.proto.name)@}
+
+class AAA
+	@some
+	abstract func bbb()
+end
+@}
+''')
+
+assert_fail('''
+{@def some(f):
+	print(f.proto.name)@}
+
+class AAA
+	@some
+	public a as int
+end
+@}
+''')
+
+assert_generate_ok('''
+class AAA
+	@volatile
+	public v as int
+end
+
+dim t = new AAA
+t.v=1
+dim t2=t.v
+
+@volatile
+dim t3 as int
+
+t3=12
+dim g=t3
+g=23
+''')
+
+top_level('''import vector''')
+v=expr("birdee")
+mod=v.get().resolved_type.get_detail()
+assert(len(mod.get_submodules())==0)
+mod=mod.mod
+assert(len(mod.get_classmap())!=0)
+clear_compile_unit()
+
+###Auto-complete Test
+try:
+	top_level('''
+	dim p as string
+	println(p.:)
+	''')
+	process_top_level()
+except CompileException:
+	pass
+assert(get_auto_completion_ast()!=None)
+clear_compile_unit()
+assert(get_auto_completion_ast()==None)
+#####
+
+####Test complicated source & clearing
+srcpath=os.path.join(os.environ["BIRDEE_HOME"], "src", "serialization", "json", "deserializer.bdm")
+print("Test source path", srcpath)
+with open(srcpath) as f:
+	src=f.read()
+top_level(src)
+process_top_level()
+clear_compile_unit()
+
+top_level(src)
+process_top_level()
+clear_compile_unit()
+######done
+
+assert_fail("import a.b.c")
+
+top_level("dim a=1")
+CallExprAST.new(expr("println"), [expr('"hello"')])
+process_top_level()
+generate()
+clear_compile_unit()
+
+#top-level defer test
+assert_generate_ok('''
+println("AAAA")
+defer
+	println("BBBB")
+end
+dim c= int2str(12)
+defer
+	println("BBBB")
+end
+dim d = bool2str(true)
+''')
+
+assert_generate_ok('''
+struct AAA
+	public a as int
+	public func b[T]() as string
+	end
+end
+
+func c() as AAA
+end
+
+c().b[int]()
+''')
 
 assert_generate_ok('''
 function aaa()

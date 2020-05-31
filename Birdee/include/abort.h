@@ -1,10 +1,9 @@
 #pragma once
-#include <stdlib.h>
+#include "CompileError.h"
 inline void BirdeeAssert(bool b, const char* text)
 {
 	if (!b)
 	{
-		std::cerr << text << '\n';
-		abort();
+		throw Birdee::CompileError(text);
 	}
 }

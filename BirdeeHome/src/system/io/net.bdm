@@ -6,6 +6,7 @@ import {@"system.specific.win32.net" if get_os_name()=="windows" else "system.sp
 import system.io.netdef:*
 import typedptr:sizeof
 import functional.option:*
+import system.io.stream:input_stream
 
 {@
 if get_os_name()=="windows":
@@ -20,6 +21,11 @@ class socket
 		this.sock = sock
 	end
 	
+
+	public function read(buf as byte[], start as uint, len as uint) as uint => recv(buf,start,len)
+
+	public function write(buf as byte[], start as uint, len as uint) as uint => send(buf,start,len)
+
 	public function send(buf as byte[], offset as uint, len as uint) as uint
 		dim retlen = _send(sock, addressof(buf[offset]), len, 0)
 		if retlen != len then
@@ -118,7 +124,7 @@ function connect_to(ip as string, port as short) as socket
     dim sin = mk_sockaddr_in()
 	sin.sin_family = {@AF_INET()@}
 	sin.sin_port = _htons(port)
-	sin.sin_addr = _inet_addr("127.0.0.1".get_raw())
+	sin.sin_addr = _inet_addr(ip.get_raw())
 
     dim result = _connect(s, addressof(sin), sizeof[sockaddr_in]())
     if result == {@SOCKET_ERROR()@} then
@@ -127,4 +133,9 @@ function connect_to(ip as string, port as short) as socket
 		throw new socket_exception("Connect error", err)
 	end
 	return new socket(s)
+end
+
+
+class socket_input_stream: input_stream[socket]
+
 end

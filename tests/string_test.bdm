@@ -1,0 +1,105 @@
+import extensions.string:*
+
+{@from bdassert import *@}
+dim v = "012345678"
+{@bdassert("*(v.viewall())==\"012345678\"")@}
+{@bdassert("v.view(0, 6).__deref__()==\"012345\"")@}
+try
+    v.view(0, 10)
+    {@bdassert("false")@}
+catch e as invalid_index_exception
+    
+end
+
+try
+    v.view(10,5)
+    {@bdassert("false")@}
+catch e as invalid_index_exception
+end
+
+try
+    dim aaaaa=v.viewall()[10]
+    {@bdassert("false")@}
+catch e as invalid_index_exception
+end
+
+{@bdassert('"AA123AA22AA".replace("AA","BB")=="BB123BB22BB"')@}
+{@bdassert('"AA123AA22AA".replace("CC","BB")=="AA123AA22AA"')@}
+{@bdassert('"AAAAA".replace("AA","BB")=="BBBBA"')@}
+{@bdassert('"AA123".replace("AA","1234")=="1234123"')@}
+
+{@bdassert('v.find("678",0)==6')@}
+{@bdassert('v.find("6789",0)==-1')@}
+
+#check if 'find' correctly handles non-null-ternimated substr
+{@bdassert('v.findview("6789".view(0,3),0)==6')@}
+
+{@bdassert('v.find("012",1)==-1')@}
+{@bdassert('v.find("345",1)==3')@}
+
+{@bdassert('v.find("",1)==-1')@}
+{@bdassert('"".find("1",1)==-1')@}
+{@bdassert('v.find(v,0)==0')@}
+{@bdassert('v.find(v,100000)==-1')@}
+
+{@bdassert('v.view(1,8).is_at_end()')@}
+{@bdassert('!v.view(1,7).is_at_end()')@}
+
+{@bdassert('v.viewall().find("1567890".view(1, 4),0)==5')@}
+{@bdassert('v.view(0,8).find("5678".viewall(),0)==-1')@}
+
+{@bdassert('v.viewall().find("345".viewall(),1)==3')@}
+{@bdassert('v.view(1,7).find("345".viewall(),1)==2')@}
+
+{@bdassert('v.view(1,7).view(0,6)=="123456".viewall()')@}
+{@bdassert('v.view(1,7).find("1234567".viewall(),0)==0')@}
+{@bdassert('v.view(1,7).find("01234567100".view(1, 7),0)==0')@}
+{@bdassert('v.view(1,7).find("1".viewall(),10000)==-1')@}
+
+#split test
+func checksplit(result as string_view[], chk as string[])
+    {@bdassert('result.length()==chk.length()')@}
+    for dim i=0 till result.length()
+        #println(*result[i] + "?=" + chk[i] + " ")
+        {@bdassert('result[i]==chk[i].viewall()')@}
+    end
+end
+
+checksplit("123,456,789".split(","), ["123","456","789"])
+checksplit(",123,,456,789,".split(","), ["","123","","456","789",""])
+checksplit(",123,,456,789,".split(",,"), [",123","456,789,"])
+checksplit(",123,,,,456,789,".split(",,"), [",123","","456,789,"])
+checksplit(",123,,,,456,789,".splitview(",,,".view(0,2)), [",123","","456,789,"])
+checksplit(",123,,,,456,789,".view(1, 14).split(",,,".view(0,2)), ["123","","456,789"])
+
+#to number test
+{@bdassert('"1234".to_int()==1234')@}
+{@bdassert('"1.25".to_double()==1.25')@}
+{@bdassert('"125456".to_long()==125456')@}
+
+
+{@bdassert('"12344".view(0,4).to_int()==1234')@}
+{@bdassert('"1.2599999".view(0,4).to_double()==1.25')@}
+{@bdassert('"125456777".view(0,6).to_long()==125456')@}
+
+#starts/ends with test
+{@bdassert('v.starts_with("0123".viewall())')@}
+{@bdassert('!v.starts_with("0123".view(1,2))')@}
+{@bdassert('v.ends_with("678".viewall())')@}
+{@bdassert('!v.ends_with("678".view(0,2))')@}
+
+{@bdassert('v.view(0,6).starts_with("0123".viewall())')@}
+{@bdassert('!v.view(1,6).starts_with("0123".viewall())')@}
+{@bdassert('v.view(1,8).ends_with("678".viewall())')@}
+{@bdassert('!v.view(1,8).ends_with("678".view(0,2))')@}
+
+dim trims = " \tab cd\t".viewall()
+{@bdassert('trims.trim_left()=="ab cd\t".viewall()')@}
+{@bdassert('trims.trim_right()==" \tab cd".viewall()')@}
+{@bdassert('trims.trim()=="ab cd".viewall()')@}
+
+dim trimsv = "1 \tab cd\t1".view(1, 8)
+{@bdassert('trimsv.trim_left()=="ab cd\t".viewall()')@}
+{@bdassert('trimsv.trim_right()==" \tab cd".viewall()')@}
+{@bdassert('trimsv.trim()=="ab cd".viewall()')@}
+println("String test ok")
