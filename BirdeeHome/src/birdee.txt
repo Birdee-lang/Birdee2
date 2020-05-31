@@ -118,15 +118,23 @@ class type_info
 				return true
 			end
 		end
+		if parent !== null then
+			if parent.is_impl_of(interf) then
+				return true
+			end
+		end
 		return false
 	end
 
 	public function get_impl_itable(interf as type_info) as pointer
 		for dim i=0 till impls.length()
 			dim cur = impls[i]
-			if interf === cur then
+			if interf.is_parent_of(cur) then
 				return itables[i]
 			end
+		end
+		if parent !== null then
+			return parent.get_impl_itable(interf)
 		end
 		return pointerof(null)
 	end

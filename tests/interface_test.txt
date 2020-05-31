@@ -166,3 +166,53 @@ catch e as runtime_exception
 end
 
 println("dyn_cast for interface test ok")
+
+@enable_rtti
+class eagle
+	public func a() as string
+		return "eagle itest a"
+	end
+
+	public func b(i as int) as string
+		return "eagle itest b " + int2str(i)
+	end
+
+	public func c(i as int) as string
+		return "eagle itest c " + int2str(i)
+	end
+end
+
+class falcon : eagle implements itest
+	public func d() as string
+		return "falcon d"
+	end
+end
+
+dim f = new falcon
+dim e as eagle = f
+dim i as itest = f
+
+{@bdassert('f.a() == "eagle itest a"')@}
+{@bdassert('f.b(6) == "eagle itest b 6"')@}
+{@bdassert('f.c(7) == "eagle itest c 7"')@}
+{@bdassert('f.d() == "falcon d"')@}
+
+{@bdassert('e.a() == "eagle itest a"')@}
+{@bdassert('e.b(6) == "eagle itest b 6"')@}
+{@bdassert('e.c(7) == "eagle itest c 7"')@}
+
+{@bdassert('i.a() == "eagle itest a"')@}
+{@bdassert('i.b(6) == "eagle itest b 6"')@}
+
+{@bdassert('dyn_cast[itest](e) !== null')@}
+{@bdassert('dyn_cast[itest](f) !== null')@}
+
+i = dyn_cast[itest](e)
+{@bdassert('i.a() == "eagle itest a"')@}
+{@bdassert('i.b(6) == "eagle itest b 6"')@}
+
+i = dyn_cast[itest](f)
+{@bdassert('i.a() == "eagle itest a"')@}
+{@bdassert('i.b(6) == "eagle itest b 6"')@}
+
+println("implements interface through parent func test ok!")
